@@ -119,6 +119,10 @@ class TestCLI:
 
 
 class TestPytorchEnhancements:
+    @pytest.fixture(autouse=True)
+    def skip_if_no_torch(self):
+        pytest.importorskip("torch")
+
     def test_to_device(self):
         import torch
         from autotrainer.utils import to_device
