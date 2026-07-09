@@ -28,8 +28,22 @@ autotrainer doctor               # diagnose your environment first
 
 ## Install (dev mode)
 
+Using `uv` (recommended):
+
 ```bash
-pip install -e ".[torch]"
+uv venv
+# On Windows:
+.venv\Scripts\activate
+# On macOS/Linux:
+source .venv/bin/activate
+
+uv pip install -e ".[dev,torch,sklearn,tf,boosting,tune]"
+```
+
+Or using standard pip:
+
+```bash
+pip install -e ".[dev,torch,sklearn,tf,boosting,tune]"
 ```
 
 ## Use
@@ -66,9 +80,19 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 
 ## Publish to PyPI
 
+Using `uv`:
+
+```bash
+uv run python -m build
+uv run twine upload --repository testpypi dist/*   # test first
+uv run twine upload dist/*
+```
+
+Or using standard python:
+
 ```bash
 python -m build
-twine upload --repository testpypi dist/*   # test first
+twine upload --repository testpypi dist/*
 twine upload dist/*
 ```
 

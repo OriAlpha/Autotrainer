@@ -30,4 +30,4 @@ for epoch in range(3):
         loss.backward()
         optimizer.step()
         total += loss.item()
-    print(f"epoch {epoch}: loss {total / len(loader):.4f}")
+    autotrainer.print0(f"epoch {epoch}: loss {total / len(loader):.4f}")
