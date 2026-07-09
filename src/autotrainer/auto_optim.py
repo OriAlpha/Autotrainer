@@ -24,9 +24,15 @@ def _infer_loss(model, yb, xb):
     """Pick a loss from target dtype/shape, sanity-checked against model output."""
     import torch
     import torch.nn as nn
+    from .utils import get_model_device, to_device, slice_batch, robust_forward
+
+    device = get_model_device(model)
+    xb_dev = to_device(xb, device)
+    yb = to_device(yb, device)
 
     with torch.no_grad():
-        out = model(xb[:2])
+        xb_slice = slice_batch(xb_dev, 2)
+        out = robust_forward(model, xb_slice)
     out_dim = out.shape[-1] if out.ndim > 1 else 1
 
     if not torch.is_floating_point(yb):
@@ -101,34 +107,49 @@ def find_lr(model, dataloader, loss_fn, optimizer_name: str = "adamw",
 
     import torch
 
-    m = copy.deepcopy(model)
+    import os
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    from .utils import to_device, robust_forward
+
+    m = copy.deepcopy(model).to(device)
+    if hasattr(loss_fn, "to"):
+        loss_fn = loss_fn.to(device)
     m.train()
     opt, _, _ = _make_optimizer(m, optimizer_name, lr=min_lr, weight_decay=0.0)
     gamma = (max_lr / min_lr) ** (1 / max(num_iters - 1, 1))
 
     lrs, losses, lr, it = [], [], min_lr, 0
     smoothed, best = None, float("inf")
-    while it < num_iters:
-        for xb, yb in dataloader:
-            if it >= num_iters:
-                break
-            for g in opt.param_groups:
-                g["lr"] = lr
-            opt.zero_grad()
-            loss = loss_fn(m(xb), yb)
-            loss.backward()
-            opt.step()
+    try:
+        while it < num_iters:
+            for xb, yb in dataloader:
+                if it >= num_iters:
+                    break
+                for g in opt.param_groups:
+                    g["lr"] = lr
+                opt.zero_grad()
+                xb_dev = to_device(xb, device)
+                yb_dev = to_device(yb, device)
+                out = robust_forward(m, xb_dev)
+                loss = loss_fn(out, yb_dev)
+                loss.backward()
+                opt.step()
 
-            v = loss.item()
-            smoothed = v if smoothed is None else 0.9 * smoothed + 0.1 * v
-            if not math.isfinite(smoothed) or smoothed > 4 * best:
-                it = num_iters  # diverged - stop early
-                break
-            best = min(best, smoothed)
-            lrs.append(lr)
-            losses.append(smoothed)
-            lr *= gamma
-            it += 1
+                v = loss.item()
+                smoothed = v if smoothed is None else 0.9 * smoothed + 0.1 * v
+                if not math.isfinite(smoothed) or smoothed > 4 * best:
+                    it = num_iters  # diverged - stop early
+                    break
+                best = min(best, smoothed)
+                lrs.append(lr)
+                losses.append(smoothed)
+                lr *= gamma
+                it += 1
+    finally:
+        del m, opt
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     if len(losses) < 5:
         return 3e-4  # sweep failed; safe default

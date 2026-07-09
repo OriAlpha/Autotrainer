@@ -116,3 +116,104 @@ class TestCLI:
         r = subprocess.run([sys.executable, "-m", "autotrainer.cli", "doctor"],
                            capture_output=True, text=True)
         assert "detected mode" in r.stdout
+
+
+class TestPytorchEnhancements:
+    def test_to_device(self):
+        import torch
+        from autotrainer.utils import to_device
+        device = torch.device("cpu")
+        x = torch.tensor([1, 2, 3])
+        data = {
+            "tensor": x,
+            "list": [x, 42],
+            "tuple": (x, "hello"),
+            "nested": {"tensor": x}
+        }
+        res = to_device(data, device)
+        assert torch.equal(res["tensor"], x)
+        assert torch.equal(res["list"][0], x)
+        assert res["list"][1] == 42
+        assert torch.equal(res["tuple"][0], x)
+        assert res["tuple"][1] == "hello"
+        assert torch.equal(res["nested"]["tensor"], x)
+
+    def test_slice_batch(self):
+        import torch
+        from autotrainer.utils import slice_batch
+        x = torch.tensor([[1, 2], [3, 4], [5, 6]])
+        data = {
+            "tensor": x,
+            "list": [x, 42],
+            "tuple": (x, "hello")
+        }
+        res = slice_batch(data, 2)
+        assert res["tensor"].shape[0] == 2
+        assert res["list"][0].shape[0] == 2
+        assert res["tuple"][0].shape[0] == 2
+
+    def test_robust_forward(self):
+        import torch
+        import torch.nn as nn
+        from autotrainer.utils import robust_forward
+
+        class DictModel(nn.Module):
+            def forward(self, x, y=None):
+                return x + (y if y is not None else 0)
+
+        class ListModel(nn.Module):
+            def forward(self, *args):
+                return sum(args)
+
+        dm = DictModel()
+        lm = ListModel()
+        
+        assert robust_forward(dm, {"x": 5, "y": 10}) == 15
+        assert robust_forward(dm, {"x": 5}) == 5
+        assert robust_forward(lm, [1, 2, 3]) == 6
+        assert robust_forward(lm, (4, 5)) == 9
+        assert robust_forward(dm, 7) == 7
+
+    def test_grad_scaler(self):
+        import torch
+        from autotrainer.utils import GradScaler
+        scaler = GradScaler()
+        if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+            assert isinstance(scaler, (torch.amp.GradScaler, torch.cuda.amp.GradScaler))
+        else:
+            assert isinstance(scaler, torch.cuda.amp.GradScaler)
+        expected_enabled = False
+        if torch.cuda.is_available() and not torch.cuda.is_bf16_supported():
+            expected_enabled = True
+        assert scaler.is_enabled() == expected_enabled
+
+    def test_find_lr_with_dict(self):
+        import torch
+        import torch.nn as nn
+        from torch.utils.data import DataLoader
+        from autotrainer.auto_optim import find_lr
+
+        class SimpleModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = nn.Linear(5, 1)
+            def forward(self, x):
+                return self.linear(x)
+
+        model = SimpleModel()
+        class DictDataset(torch.utils.data.Dataset):
+            def __init__(self):
+                self.x = torch.randn(50, 5)
+                self.y = torch.randn(50, 1)
+            def __len__(self):
+                return len(self.x)
+            def __getitem__(self, idx):
+                return {"x": self.x[idx]}, self.y[idx]
+
+        loader = DataLoader(DictDataset(), batch_size=5)
+        loss_fn = nn.MSELoss()
+        
+        best_lr = find_lr(model, loader, loss_fn, min_lr=1e-5, max_lr=1e-1, num_iters=10)
+        assert isinstance(best_lr, float)
+        assert best_lr > 0
+

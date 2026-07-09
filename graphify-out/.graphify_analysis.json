@@ -1,0 +1,401 @@
+{
+  "communities": {
+    "0": [
+      "device",
+      "src_autotrainer_auto_optim",
+      "src_autotrainer_auto_optim_auto",
+      "src_autotrainer_auto_optim_find_lr",
+      "src_autotrainer_auto_optim_infer_loss",
+      "src_autotrainer_auto_optim_looks_like_cnn",
+      "src_autotrainer_auto_optim_make_loss",
+      "src_autotrainer_auto_optim_make_optimizer",
+      "src_autotrainer_auto_optim_param_groups",
+      "src_autotrainer_auto_optim_peek_batch",
+      "src_autotrainer_auto_optim_rationale_1",
+      "src_autotrainer_auto_optim_rationale_101",
+      "src_autotrainer_auto_optim_rationale_164",
+      "src_autotrainer_auto_optim_rationale_24",
+      "src_autotrainer_auto_optim_rationale_74",
+      "src_autotrainer_init_auto",
+      "src_autotrainer_init_find_batch_size",
+      "src_autotrainer_init_find_lr",
+      "src_autotrainer_init_rationale_80",
+      "src_autotrainer_init_rationale_86",
+      "src_autotrainer_init_rationale_92",
+      "src_autotrainer_init_tune",
+      "src_autotrainer_tuning",
+      "src_autotrainer_tuning_evaluate",
+      "src_autotrainer_tuning_rationale_1",
+      "src_autotrainer_tuning_rationale_72",
+      "src_autotrainer_tuning_rebuild_loader",
+      "src_autotrainer_tuning_suggest",
+      "src_autotrainer_tuning_tune",
+      "src_autotrainer_utils_get_batch_size",
+      "src_autotrainer_utils_get_model_device",
+      "src_autotrainer_utils_rationale_105",
+      "src_autotrainer_utils_rationale_120",
+      "src_autotrainer_utils_rationale_68",
+      "src_autotrainer_utils_rationale_77",
+      "src_autotrainer_utils_robust_forward",
+      "src_autotrainer_utils_to_device"
+    ],
+    "1": [
+      "src_autotrainer_cli",
+      "src_autotrainer_cli_main",
+      "src_autotrainer_cli_rationale_1",
+      "src_autotrainer_detect",
+      "src_autotrainer_detect_detect",
+      "src_autotrainer_detect_environment",
+      "src_autotrainer_detect_environment_world_size",
+      "src_autotrainer_detect_gpu_count",
+      "src_autotrainer_detect_rationale_1",
+      "src_autotrainer_detect_rationale_34",
+      "src_autotrainer_detect_rationale_56",
+      "src_autotrainer_detect_rationale_75",
+      "src_autotrainer_detect_slurm_master_addr",
+      "src_autotrainer_doctor",
+      "src_autotrainer_doctor_check_frameworks",
+      "src_autotrainer_doctor_check_gpu",
+      "src_autotrainer_doctor_check_port",
+      "src_autotrainer_doctor_check_slurm",
+      "src_autotrainer_doctor_rationale_1",
+      "src_autotrainer_doctor_run_doctor",
+      "src_autotrainer_launcher",
+      "src_autotrainer_launcher_launch",
+      "src_autotrainer_launcher_rationale_1",
+      "src_autotrainer_launcher_rationale_38",
+      "src_autotrainer_launcher_rendezvous_env",
+      "src_autotrainer_launcher_run_script_inplace",
+      "tests_test_autotrainer_testdetect",
+      "tests_test_autotrainer_testdetect_test_single_mode_default",
+      "tests_test_autotrainer_testdetect_test_slurm_cpu_only_falls_back_to_ntasks",
+      "tests_test_autotrainer_testdetect_test_slurm_detection"
+    ],
+    "2": [
+      "src_autotrainer_init",
+      "src_autotrainer_init_is_sklearn_estimator",
+      "src_autotrainer_init_is_torch_module",
+      "src_autotrainer_init_prepare",
+      "src_autotrainer_init_rationale_1",
+      "src_autotrainer_init_rationale_48",
+      "src_autotrainer_utils",
+      "src_autotrainer_utils_autocast_context",
+      "src_autotrainer_utils_barrier",
+      "src_autotrainer_utils_gradscaler",
+      "src_autotrainer_utils_is_main",
+      "src_autotrainer_utils_print0",
+      "src_autotrainer_utils_rank",
+      "src_autotrainer_utils_rationale_1",
+      "src_autotrainer_utils_rationale_138",
+      "src_autotrainer_utils_rationale_19",
+      "src_autotrainer_utils_rationale_24",
+      "src_autotrainer_utils_rationale_30",
+      "src_autotrainer_utils_rationale_37",
+      "src_autotrainer_utils_rationale_51",
+      "src_autotrainer_utils_save0",
+      "tests_test_autotrainer_testpytorchenhancements_test_grad_scaler"
+    ],
+    "3": [
+      "_github_workflows_ci_publish",
+      "_github_workflows_ci_test",
+      "changelog_dispatcher",
+      "changelog_find_lr",
+      "changelog_loss_inference",
+      "changelog_mixed_precision",
+      "changelog_optuna_tuning",
+      "changelog_pytorch_backend",
+      "changelog_sklearn_backend",
+      "changelog_tf_scope",
+      "changelog_xgboost_lightgbm_backend",
+      "contributing_backend_pattern",
+      "examples_readme_examples",
+      "readme_auto",
+      "readme_autotrainer",
+      "readme_environment_detection",
+      "readme_prepare",
+      "readme_run_cli",
+      "readme_slurm_support",
+      "readme_tune"
+    ],
+    "4": [
+      "tests_test_autotrainer",
+      "tests_test_autotrainer_clean_env",
+      "tests_test_autotrainer_rationale_1",
+      "tests_test_autotrainer_rationale_15",
+      "tests_test_autotrainer_testboostparams",
+      "tests_test_autotrainer_testboostparams_test_lgbm_key",
+      "tests_test_autotrainer_testboostparams_test_xgb_key",
+      "tests_test_autotrainer_testcli",
+      "tests_test_autotrainer_testcli_test_doctor_runs",
+      "tests_test_autotrainer_testcli_test_info_runs",
+      "tests_test_autotrainer_testdispatcher",
+      "tests_test_autotrainer_testdispatcher_test_sklearn_routing",
+      "tests_test_autotrainer_testdispatcher_test_slurm_cpu_allocation_respected",
+      "tests_test_autotrainer_testdispatcher_test_unknown_model_raises",
+      "tests_test_autotrainer_testdispatcher_test_xgboost_routes_before_sklearn",
+      "tests_test_autotrainer_testutils",
+      "tests_test_autotrainer_testutils_test_barrier_noop_without_dist",
+      "tests_test_autotrainer_testutils_test_nonzero_rank_is_silent",
+      "tests_test_autotrainer_testutils_test_rank_zero_helpers"
+    ],
+    "5": [
+      "src_autotrainer_backends_tf_backend",
+      "src_autotrainer_backends_tf_backend_build_tf_config",
+      "src_autotrainer_backends_tf_backend_rationale_1",
+      "src_autotrainer_backends_tf_backend_rationale_43",
+      "src_autotrainer_backends_tf_backend_rationale_56",
+      "src_autotrainer_backends_tf_backend_rationale_80",
+      "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "src_autotrainer_backends_tf_backend_scope",
+      "src_autotrainer_backends_tf_backend_slurm_hostnames",
+      "src_autotrainer_init_rationale_30",
+      "src_autotrainer_init_rationale_36",
+      "src_autotrainer_init_scale_batch_size",
+      "src_autotrainer_init_scope",
+      "tests_test_autotrainer_testtfconfig",
+      "tests_test_autotrainer_testtfconfig_test_tf_config_shape"
+    ],
+    "6": [
+      "src_autotrainer_backends_boosting_backend",
+      "src_autotrainer_backends_boosting_backend_boost_params",
+      "src_autotrainer_backends_boosting_backend_prepare",
+      "src_autotrainer_backends_boosting_backend_rationale_1",
+      "src_autotrainer_backends_boosting_backend_rationale_23",
+      "src_autotrainer_backends_boosting_backend_rationale_42",
+      "src_autotrainer_backends_boosting_backend_warn_if_multinode",
+      "src_autotrainer_backends_sklearn_backend",
+      "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "src_autotrainer_backends_sklearn_backend_prepare",
+      "src_autotrainer_backends_sklearn_backend_rationale_1",
+      "src_autotrainer_backends_sklearn_backend_rationale_31",
+      "src_autotrainer_init_boost_params",
+      "src_autotrainer_init_rationale_42"
+    ],
+    "7": [
+      "src_autotrainer_backends_torch_backend",
+      "src_autotrainer_backends_torch_backend_dist_info",
+      "src_autotrainer_backends_torch_backend_find_batch_size",
+      "src_autotrainer_backends_torch_backend_prepare",
+      "src_autotrainer_backends_torch_backend_rationale_1",
+      "src_autotrainer_backends_torch_backend_rationale_21",
+      "src_autotrainer_backends_torch_backend_rationale_71"
+    ],
+    "8": [
+      "src_autotrainer_utils_rationale_91",
+      "src_autotrainer_utils_slice_batch",
+      "tests_test_autotrainer_testpytorchenhancements",
+      "tests_test_autotrainer_testpytorchenhancements_test_find_lr_with_dict",
+      "tests_test_autotrainer_testpytorchenhancements_test_robust_forward",
+      "tests_test_autotrainer_testpytorchenhancements_test_slice_batch",
+      "tests_test_autotrainer_testpytorchenhancements_test_to_device"
+    ],
+    "9": [
+      "changelog_rank_utilities",
+      "changelog_worker_failure_handling"
+    ],
+    "10": [
+      "examples_pytorch_auto",
+      "examples_pytorch_auto_rationale_1"
+    ],
+    "11": [
+      "examples_pytorch_ddp",
+      "examples_pytorch_ddp_rationale_1"
+    ],
+    "12": [
+      "examples_pytorch_tune",
+      "examples_pytorch_tune_rationale_1"
+    ],
+    "13": [
+      "examples_sklearn_example",
+      "examples_sklearn_example_rationale_1"
+    ],
+    "14": [
+      "examples_tensorflow_scope",
+      "examples_tensorflow_scope_rationale_1"
+    ],
+    "15": [
+      "examples_xgboost_example",
+      "examples_xgboost_example_rationale_1"
+    ],
+    "16": [
+      "changelog_doctor"
+    ],
+    "17": [
+      "pkg_autotrainer"
+    ],
+    "18": [
+      "readme_find_batch_size"
+    ],
+    "19": [
+      "src_autotrainer_backends_init"
+    ]
+  },
+  "cohesion": {
+    "0": 0.0915915915915916,
+    "1": 0.12183908045977011,
+    "2": 0.14285714285714285,
+    "3": 0.1368421052631579,
+    "4": 0.10526315789473684,
+    "5": 0.1523809523809524,
+    "6": 0.2087912087912088,
+    "7": 0.3333333333333333,
+    "8": 0.2857142857142857,
+    "9": 1.0,
+    "10": 1.0,
+    "11": 1.0,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0,
+    "17": 1.0,
+    "18": 1.0,
+    "19": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_autotrainer_detect_detect",
+      "label": "detect()",
+      "degree": 14
+    },
+    {
+      "id": "src_autotrainer_auto_optim_auto",
+      "label": "auto()",
+      "degree": 10
+    },
+    {
+      "id": "src_autotrainer_auto_optim_infer_loss",
+      "label": "_infer_loss()",
+      "degree": 9
+    },
+    {
+      "id": "src_autotrainer_auto_optim_find_lr",
+      "label": "find_lr()",
+      "degree": 9
+    },
+    {
+      "id": "src_autotrainer_tuning_tune",
+      "label": "tune()",
+      "degree": 9
+    },
+    {
+      "id": "src_autotrainer_utils_to_device",
+      "label": "to_device()",
+      "degree": 9
+    },
+    {
+      "id": "src_autotrainer_utils_robust_forward",
+      "label": "robust_forward()",
+      "degree": 9
+    },
+    {
+      "id": "src_autotrainer_doctor_run_doctor",
+      "label": "run_doctor()",
+      "degree": 8
+    },
+    {
+      "id": "src_autotrainer_auto_optim_make_optimizer",
+      "label": "_make_optimizer()",
+      "degree": 7
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_boost_params",
+      "label": "boost_params()",
+      "degree": 6
+    }
+  ],
+  "surprises": [
+    {
+      "source": "autotrainer.auto()",
+      "target": "autocast_context() mixed precision",
+      "source_files": [
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "conceptually_related_to",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; peripheral node `autocast_context() mixed precision` unexpectedly reaches hub `autotrainer.auto()`"
+    },
+    {
+      "source": "Backend contribution pattern",
+      "target": "Backend dispatcher / routing",
+      "source_files": [
+        "CONTRIBUTING.md",
+        "CHANGELOG.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "rationale_for",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; peripheral node `Backend contribution pattern` unexpectedly reaches hub `Backend dispatcher / routing`"
+    },
+    {
+      "source": "autotrainer.prepare()",
+      "target": "PyTorch backend (DDP + DistributedSampler)",
+      "source_files": [
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "conceptually_related_to",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories"
+    },
+    {
+      "source": "autotrainer.auto()",
+      "target": "autotrainer.find_lr() (LR range test)",
+      "source_files": [
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "conceptually_related_to",
+      "why": "connects across different repos/directories; peripheral node `autotrainer.find_lr() (LR range test)` unexpectedly reaches hub `autotrainer.auto()`"
+    },
+    {
+      "source": "autotrainer.auto()",
+      "target": "Loss function inference (CrossEntropy/BCE/MSE/Huber)",
+      "source_files": [
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "conceptually_related_to",
+      "why": "connects across different repos/directories; peripheral node `Loss function inference (CrossEntropy/BCE/MSE/Huber)` unexpectedly reaches hub `autotrainer.auto()`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `TestPytorchEnhancements` connect `Community 8` to `Community 2`, `Community 4`?",
+      "why": "High betweenness centrality (0.262) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `to_device()` connect `Community 0` to `Community 8`, `Community 2`?",
+      "why": "High betweenness centrality (0.061) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 3 inferred relationships involving `detect()` (e.g. with `.test_single_mode_default()` and `.test_slurm_cpu_only_falls_back_to_ntasks()`) actually correct?",
+      "why": "`detect()` has 3 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `Smart defaults: loss, optimizer, LR, and schedule inferred automatically. Run: a`, `Minimal example: a tiny model on random data, launched via `autotrainer run`.`, `Hyperparameter search: find the best training recipe for YOUR model. Run: python` to the rest of the system?",
+      "why": "64 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.0915915915915916 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 1` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.12183908045977011 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 2` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.14285714285714285 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

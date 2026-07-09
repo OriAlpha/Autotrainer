@@ -8,7 +8,7 @@ version = "0.7.0"
 description = "Automatic distributed training for ML models: detects hardware, picks a strategy, tunes batch size."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Suhas Goravale Siidaramu" }]
 keywords = ["distributed-training", "pytorch", "slurm", "machine-learning"]
 classifiers = [

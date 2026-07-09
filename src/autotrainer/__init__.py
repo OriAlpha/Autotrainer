@@ -16,6 +16,7 @@ from __future__ import annotations
 __version__ = "0.7.0"
 
 from .utils import (  # noqa: E402,F401
+    GradScaler,
     autocast_context,
     barrier,
     is_main,

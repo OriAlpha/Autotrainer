@@ -52,13 +52,17 @@ def _rebuild_loader(loader, batch_size: int):
 
 def _evaluate(model, val_loader, loss_fn, device) -> float:
     import torch
+    from .utils import to_device, robust_forward, get_batch_size
     model.eval()
     total, n = 0.0, 0
     with torch.no_grad():
         for xb, yb in val_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            total += loss_fn(model(xb), yb).item() * len(xb)
-            n += len(xb)
+            xb_dev = to_device(xb, device)
+            yb_dev = to_device(yb, device)
+            out = robust_forward(model, xb_dev)
+            bs = get_batch_size(yb_dev) or get_batch_size(xb_dev) or 1
+            total += loss_fn(out, yb_dev).item() * bs
+            n += bs
     return total / max(n, 1)
 
 
@@ -101,12 +105,15 @@ def tune(model, train_loader, val_loader, *, trials: int = 20,
         tl = (_rebuild_loader(train_loader, params["batch_size"])
               if "batch_size" in params else train_loader)
 
+        from .utils import to_device, robust_forward
         for epoch in range(epochs_per_trial):
             m.train()
             for bx, by in tl:
-                bx, by = bx.to(device), by.to(device)
+                bx_dev = to_device(bx, device)
+                by_dev = to_device(by, device)
                 opt.zero_grad()
-                loss_val = loss_fn(m(bx), by)
+                out = robust_forward(m, bx_dev)
+                loss_val = loss_fn(out, by_dev)
                 loss_val.backward()
                 opt.step()
             val = _evaluate(m, val_loader, loss_fn, device)

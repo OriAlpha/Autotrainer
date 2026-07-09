@@ -1,0 +1,4367 @@
+{
+  "nodes": [
+    {
+      "id": "examples_pytorch_auto",
+      "label": "pytorch_auto.py",
+      "file_type": "code",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_pytorch_auto_rationale_1",
+      "label": "Smart defaults: loss, optimizer, LR, and schedule inferred automatically. Run: a",
+      "file_type": "rationale",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_pytorch_ddp",
+      "label": "pytorch_ddp.py",
+      "file_type": "code",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_pytorch_ddp_rationale_1",
+      "label": "Minimal example: a tiny model on random data, launched via `autotrainer run`.",
+      "file_type": "rationale",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_pytorch_tune",
+      "label": "pytorch_tune.py",
+      "file_type": "code",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_pytorch_tune_rationale_1",
+      "label": "Hyperparameter search: find the best training recipe for YOUR model. Run: python",
+      "file_type": "rationale",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_sklearn_example",
+      "label": "sklearn_example.py",
+      "file_type": "code",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_sklearn_example_rationale_1",
+      "label": "scikit-learn: auto n_jobs (respects SLURM_CPUS_PER_TASK on clusters). Run: pytho",
+      "file_type": "rationale",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_tensorflow_scope",
+      "label": "tensorflow_scope.py",
+      "file_type": "code",
+      "source_file": "examples/tensorflow_scope.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_tensorflow_scope_rationale_1",
+      "label": "TensorFlow: create the model INSIDE autotrainer.scope(). Run: autotrainer run te",
+      "file_type": "rationale",
+      "source_file": "examples/tensorflow_scope.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_xgboost_example",
+      "label": "xgboost_example.py",
+      "file_type": "code",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "examples_xgboost_example_rationale_1",
+      "label": "XGBoost & LightGBM: auto thread count for both API styles. Run: python xgboost_e",
+      "file_type": "rationale",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "pkg_autotrainer",
+      "label": "autotrainer",
+      "file_type": "code",
+      "type": "package",
+      "ecosystem": "python",
+      "source_file": "pyproject.toml",
+      "source_location": "L1",
+      "version": "0.7.0",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init",
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_scope",
+      "label": "scope()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L29",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_scale_batch_size",
+      "label": "scale_batch_size()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L35",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_boost_params",
+      "label": "boost_params()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L41",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_prepare",
+      "label": "prepare()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L47",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_find_batch_size",
+      "label": "find_batch_size()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L74",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_auto",
+      "label": "auto()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L79",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_find_lr",
+      "label": "find_lr()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L85",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_tune",
+      "label": "tune()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L91",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_is_torch_module",
+      "label": "_is_torch_module()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L97",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_is_sklearn_estimator",
+      "label": "_is_sklearn_estimator()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L105",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_1",
+      "label": "autotrainer: automatic distributed training.  Usage inside a training script (on",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_30",
+      "label": "TensorFlow: strategy scope. Create and compile your model inside it.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_36",
+      "label": "TensorFlow: convert a per-replica batch size to the global batch size.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L36",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_42",
+      "label": "XGBoost/LightGBM native API: params dict with auto thread count.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L42",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_48",
+      "label": "Framework dispatcher: route to the right backend by model type.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L48",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_80",
+      "label": "PyTorch: infer loss, optimizer, LR, and schedule, then distribute.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L80",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_86",
+      "label": "PyTorch: LR range test on a throwaway model copy.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L86",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_init_rationale_92",
+      "label": "PyTorch: search training hyperparameters (lr, wd, optimizer, batch size).",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L92",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim",
+      "label": "auto_optim.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_peek_batch",
+      "label": "_peek_batch()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L18",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_infer_loss",
+      "label": "_infer_loss()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L23",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_make_loss",
+      "label": "_make_loss()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L62",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_looks_like_cnn",
+      "label": "_looks_like_cnn()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L68",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_param_groups",
+      "label": "_param_groups()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L73",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_make_optimizer",
+      "label": "_make_optimizer()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L84",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_find_lr",
+      "label": "find_lr()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L99",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_auto",
+      "label": "auto()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L161",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_rationale_1",
+      "label": "Auto model optimization (PyTorch).  Smart defaults, not AutoML: infer sensible o",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_rationale_24",
+      "label": "Pick a loss from target dtype/shape, sanity-checked against model output.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L24",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_rationale_74",
+      "label": "Exclude biases and norm params from weight decay (the common mistake).",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L74",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_rationale_101",
+      "label": "LR range test (Leslie Smith): sweep LR exponentially, track loss,     return the",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L101",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_auto_optim_rationale_164",
+      "label": "Returns (model, dataloader, optimizer, loss_fn[, scheduler]).      Runs BEFORE d",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L164",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_init",
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/__init__.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend",
+      "label": "boosting_backend.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_prepare",
+      "label": "prepare()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L22",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_boost_params",
+      "label": "boost_params()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L41",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_warn_if_multinode",
+      "label": "_warn_if_multinode()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L55",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_rationale_1",
+      "label": "Gradient boosting backend (XGBoost, LightGBM).  Tree libraries have no batch siz",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_rationale_23",
+      "label": "Configure thread count on an XGBoost/LightGBM estimator (in place).",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L23",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_boosting_backend_rationale_42",
+      "label": "Return a params dict with the right thread key set, for native APIs.      Exampl",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L42",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_sklearn_backend",
+      "label": "sklearn_backend.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "label": "_available_cpus()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L19",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_sklearn_backend_prepare",
+      "label": "prepare()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_sklearn_backend_rationale_1",
+      "label": "scikit-learn backend.  Classical ML doesn't do gradient synchronization; paralle",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_sklearn_backend_rationale_31",
+      "label": "Set n_jobs on the estimator and any nested estimators that support it.      Retu",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L31",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend",
+      "label": "tf_backend.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_slurm_hostnames",
+      "label": "_slurm_hostnames()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L26",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_build_tf_config",
+      "label": "build_tf_config()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L42",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_scope",
+      "label": "scope()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L55",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "label": "scale_batch_size()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L79",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_rationale_1",
+      "label": "TensorFlow/Keras backend.  TF requires models to be *created inside* a strategy",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_rationale_43",
+      "label": "Build the TF_CONFIG dict for MultiWorkerMirroredStrategy from SLURM vars.      O",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L43",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_rationale_56",
+      "label": "Return the right tf.distribute strategy scope for this environment.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L56",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_tf_backend_rationale_80",
+      "label": "TF splits the *global* batch across replicas; scale accordingly.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L80",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend",
+      "label": "torch_backend.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend_dist_info",
+      "label": "_dist_info()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend_prepare",
+      "label": "prepare()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend_find_batch_size",
+      "label": "find_batch_size()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L70",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend_rationale_1",
+      "label": "PyTorch backend.  Called from user code via `autotrainer.prepare(...)`. Reads th",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend_rationale_21",
+      "label": "Make (model, dataloader, optimizer) distribution-ready.      Single device: retu",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L21",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_backends_torch_backend_rationale_71",
+      "label": "Double batch size until OOM, then back off one step.      sample_batch_fn(bs) mu",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L71",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_cli",
+      "label": "cli.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_cli_main",
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L12",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_cli_rationale_1",
+      "label": "CLI: `autotrainer run train.py [args...]` and `autotrainer info`.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect",
+      "label": "detect.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_environment",
+      "label": "Environment",
+      "file_type": "code",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L18",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_environment_world_size",
+      "label": ".world_size()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L29",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_gpu_count",
+      "label": "_gpu_count()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_slurm_master_addr",
+      "label": "_slurm_master_addr()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L55",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_detect",
+      "label": "detect()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L74",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_rationale_1",
+      "label": "Hardware and cluster environment detection.  Detection hierarchy:     1. SLURM e",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_rationale_34",
+      "label": "Count GPUs without importing torch (works pre-install too).",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L34",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_rationale_56",
+      "label": "First hostname in the SLURM node list is the rendezvous master.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L56",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_detect_rationale_75",
+      "label": "Inspect the environment and return a launch plan.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L75",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor",
+      "label": "doctor.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor_check_frameworks",
+      "label": "_check_frameworks()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L15",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor_check_gpu",
+      "label": "_check_gpu()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor_check_slurm",
+      "label": "_check_slurm()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L47",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor_check_port",
+      "label": "_check_port()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L63",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor_run_doctor",
+      "label": "run_doctor()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L73",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_doctor_rationale_1",
+      "label": "`autotrainer doctor` - diagnose the environment before a job wastes GPU hours.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_launcher",
+      "label": "launcher.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_launcher_rendezvous_env",
+      "label": "_rendezvous_env()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L23",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_launcher_run_script_inplace",
+      "label": "_run_script_inplace()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L37",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_launcher_launch",
+      "label": "launch()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L43",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_launcher_rationale_1",
+      "label": "Process launcher.  Spawns one worker process per device and sets the standard re",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_launcher_rationale_38",
+      "label": "Execute the user's script in the current process as __main__.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L38",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning",
+      "label": "tuning.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning_suggest",
+      "label": "_suggest()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning_rebuild_loader",
+      "label": "_rebuild_loader()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L44",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning_evaluate",
+      "label": "_evaluate()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L53",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning_tune",
+      "label": "tune()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L69",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning_rationale_1",
+      "label": "Hyperparameter tuning (PyTorch): the model is the user's, the recipe is ours.  T",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_tuning_rationale_72",
+      "label": "Search training hyperparameters for the user's model.      Returns (best_model,",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L72",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils",
+      "label": "utils.py",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rank",
+      "label": "rank()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_is_main",
+      "label": "is_main()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L18",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_print0",
+      "label": "print0()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L23",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_save0",
+      "label": "save0()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L29",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_barrier",
+      "label": "barrier()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L36",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_autocast_context",
+      "label": "autocast_context()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L50",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_get_model_device",
+      "label": "get_model_device()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L67",
+      "_origin": "ast"
+    },
+    {
+      "id": "device",
+      "label": "device",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_to_device",
+      "label": "to_device()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L76",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_slice_batch",
+      "label": "slice_batch()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L90",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_robust_forward",
+      "label": "robust_forward()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L104",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_get_batch_size",
+      "label": "get_batch_size()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L119",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_gradscaler",
+      "label": "GradScaler()",
+      "file_type": "code",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L137",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_1",
+      "label": "Rank-aware utilities and mixed precision.  In distributed training, every proces",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_19",
+      "label": "True on exactly one process (global rank 0).",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L19",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_24",
+      "label": "Print only on rank 0 - use for logging inside training loops.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L24",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_30",
+      "label": "torch.save, but only on rank 0, so workers don't clobber the file.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L30",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_37",
+      "label": "Wait for all workers (no-op when not distributed).      Typical use: barrier() a",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L37",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_51",
+      "label": "Mixed-precision context: bf16 on modern GPUs, fp16 otherwise, no-op on CPU.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L51",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_68",
+      "label": "Get the device of the model's first parameter, defaulting to CPU.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L68",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_77",
+      "label": "Recursively move tensors in dictionaries, lists, tuples, or raw tensors to devic",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L77",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_91",
+      "label": "Recursively slice batch data structures to the first n samples.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L91",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_105",
+      "label": "Call a model robustly with dict unpacking, list/tuple unpacking, or direct args.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L105",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_120",
+      "label": "Recursively find the batch size of the target or input data structure.",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L120",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_autotrainer_utils_rationale_138",
+      "label": "Return a GradScaler enabled only if fp16 is active.      If CUDA is not availabl",
+      "file_type": "rationale",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L138",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer",
+      "label": "test_autotrainer.py",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_clean_env",
+      "label": "clean_env()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdetect",
+      "label": "TestDetect",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L21",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdetect_test_single_mode_default",
+      "label": ".test_single_mode_default()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L22",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdetect_test_slurm_detection",
+      "label": ".test_slurm_detection()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L27",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdetect_test_slurm_cpu_only_falls_back_to_ntasks",
+      "label": ".test_slurm_cpu_only_falls_back_to_ntasks()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L39",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdispatcher",
+      "label": "TestDispatcher",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L47",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdispatcher_test_sklearn_routing",
+      "label": ".test_sklearn_routing()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L48",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdispatcher_test_xgboost_routes_before_sklearn",
+      "label": ".test_xgboost_routes_before_sklearn()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L54",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdispatcher_test_slurm_cpu_allocation_respected",
+      "label": ".test_slurm_cpu_allocation_respected()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L60",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testdispatcher_test_unknown_model_raises",
+      "label": ".test_unknown_model_raises()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L67",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testboostparams",
+      "label": "TestBoostParams",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L72",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testboostparams_test_xgb_key",
+      "label": ".test_xgb_key()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L73",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testboostparams_test_lgbm_key",
+      "label": ".test_lgbm_key()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L77",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testtfconfig",
+      "label": "TestTFConfig",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L82",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testtfconfig_test_tf_config_shape",
+      "label": ".test_tf_config_shape()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L83",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testutils",
+      "label": "TestUtils",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L92",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testutils_test_rank_zero_helpers",
+      "label": ".test_rank_zero_helpers()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L93",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testutils_test_nonzero_rank_is_silent",
+      "label": ".test_nonzero_rank_is_silent()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L99",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testutils_test_barrier_noop_without_dist",
+      "label": ".test_barrier_noop_without_dist()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L105",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testcli",
+      "label": "TestCLI",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L109",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testcli_test_info_runs",
+      "label": ".test_info_runs()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L110",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testcli_test_doctor_runs",
+      "label": ".test_doctor_runs()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L115",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testpytorchenhancements",
+      "label": "TestPytorchEnhancements",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L121",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testpytorchenhancements_test_to_device",
+      "label": ".test_to_device()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L122",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testpytorchenhancements_test_slice_batch",
+      "label": ".test_slice_batch()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L141",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testpytorchenhancements_test_robust_forward",
+      "label": ".test_robust_forward()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L155",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testpytorchenhancements_test_grad_scaler",
+      "label": ".test_grad_scaler()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L177",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_testpytorchenhancements_test_find_lr_with_dict",
+      "label": ".test_find_lr_with_dict()",
+      "file_type": "code",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L190",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_rationale_1",
+      "label": "Test suite. Run with: pytest tests/ -v",
+      "file_type": "rationale",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "tests_test_autotrainer_rationale_15",
+      "label": "Strip SLURM/rank vars so tests don't leak into each other.",
+      "file_type": "rationale",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L15",
+      "_origin": "ast"
+    }
+  ],
+  "edges": [
+    {
+      "source": "examples_pytorch_auto",
+      "target": "torch",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_auto",
+      "target": "torch_nn",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_auto",
+      "target": "torch_utils_data",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_auto",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_auto_rationale_1",
+      "target": "examples_pytorch_auto",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_auto.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_ddp",
+      "target": "torch",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_ddp",
+      "target": "torch_nn",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_ddp",
+      "target": "torch_utils_data",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_ddp",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_ddp_rationale_1",
+      "target": "examples_pytorch_ddp",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_ddp.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_tune",
+      "target": "torch",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_tune",
+      "target": "torch_nn",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_tune",
+      "target": "torch_utils_data",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_tune",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_pytorch_tune_rationale_1",
+      "target": "examples_pytorch_tune",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/pytorch_tune.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example",
+      "target": "sklearn_datasets",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example",
+      "target": "sklearn_ensemble",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example",
+      "target": "sklearn_model_selection",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example",
+      "target": "sklearn_pipeline",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example",
+      "target": "sklearn_preprocessing",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_sklearn_example_rationale_1",
+      "target": "examples_sklearn_example",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/sklearn_example.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_tensorflow_scope",
+      "target": "numpy",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/tensorflow_scope.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_tensorflow_scope",
+      "target": "tensorflow",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/tensorflow_scope.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_tensorflow_scope",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/tensorflow_scope.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_tensorflow_scope_rationale_1",
+      "target": "examples_tensorflow_scope",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/tensorflow_scope.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_xgboost_example",
+      "target": "sklearn_datasets",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_xgboost_example",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_xgboost_example",
+      "target": "xgboost",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_xgboost_example",
+      "target": "xgboost",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "examples_xgboost_example_rationale_1",
+      "target": "examples_xgboost_example",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "examples/xgboost_example.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "pkg_autotrainer",
+      "target": "pkg_psutil",
+      "relation": "depends_on",
+      "context": "dependency",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pyproject.toml",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_scope",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_scale_batch_size",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_boost_params",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_prepare",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_find_batch_size",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_auto",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_find_lr",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L85",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_tune",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L91",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_is_torch_module",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L97",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_init_is_sklearn_estimator",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L105",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_prepare",
+      "target": "src_autotrainer_init_is_torch_module",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_prepare",
+      "target": "src_autotrainer_init_is_sklearn_estimator",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_1",
+      "target": "src_autotrainer_init",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_30",
+      "target": "src_autotrainer_init_scope",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_36",
+      "target": "src_autotrainer_init_scale_batch_size",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_42",
+      "target": "src_autotrainer_init_boost_params",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_48",
+      "target": "src_autotrainer_init_prepare",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_80",
+      "target": "src_autotrainer_init_auto",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_86",
+      "target": "src_autotrainer_init_find_lr",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L86",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_rationale_92",
+      "target": "src_autotrainer_init_tune",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L92",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_peek_batch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_infer_loss",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_make_loss",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L62",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_looks_like_cnn",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_param_groups",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_make_optimizer",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L84",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_find_lr",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L99",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_auto_optim_auto",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L161",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_make_optimizer",
+      "target": "src_autotrainer_auto_optim_param_groups",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L87",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_make_optimizer",
+      "target": "src_autotrainer_auto_optim_looks_like_cnn",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L89",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_find_lr",
+      "target": "src_autotrainer_auto_optim_make_optimizer",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L117",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_auto",
+      "target": "src_autotrainer_auto_optim_peek_batch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L171",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_auto",
+      "target": "src_autotrainer_auto_optim_make_loss",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L174",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_auto",
+      "target": "src_autotrainer_auto_optim_infer_loss",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L176",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_auto",
+      "target": "src_autotrainer_auto_optim_find_lr",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L181",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_auto",
+      "target": "src_autotrainer_auto_optim_make_optimizer",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L184",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_rationale_1",
+      "target": "src_autotrainer_auto_optim",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_rationale_24",
+      "target": "src_autotrainer_auto_optim_infer_loss",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_rationale_74",
+      "target": "src_autotrainer_auto_optim_param_groups",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_rationale_101",
+      "target": "src_autotrainer_auto_optim_find_lr",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_rationale_164",
+      "target": "src_autotrainer_auto_optim_auto",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L164",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend",
+      "target": "src_autotrainer_backends_sklearn_backend",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend",
+      "target": "src_autotrainer_backends_boosting_backend_prepare",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend",
+      "target": "src_autotrainer_backends_boosting_backend_boost_params",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend",
+      "target": "src_autotrainer_backends_boosting_backend_warn_if_multinode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_prepare",
+      "target": "src_autotrainer_backends_boosting_backend_warn_if_multinode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_boost_params",
+      "target": "src_autotrainer_backends_boosting_backend_warn_if_multinode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_rationale_1",
+      "target": "src_autotrainer_backends_boosting_backend",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_rationale_23",
+      "target": "src_autotrainer_backends_boosting_backend_prepare",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_rationale_42",
+      "target": "src_autotrainer_backends_boosting_backend_boost_params",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_sklearn_backend",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_sklearn_backend",
+      "target": "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_sklearn_backend",
+      "target": "src_autotrainer_backends_sklearn_backend_prepare",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_sklearn_backend_prepare",
+      "target": "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_sklearn_backend_rationale_1",
+      "target": "src_autotrainer_backends_sklearn_backend",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_sklearn_backend_rationale_31",
+      "target": "src_autotrainer_backends_sklearn_backend_prepare",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/sklearn_backend.py",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "json",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "shutil",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "subprocess",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "src_autotrainer_backends_tf_backend_slurm_hostnames",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "src_autotrainer_backends_tf_backend_build_tf_config",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "src_autotrainer_backends_tf_backend_scope",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend",
+      "target": "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend_build_tf_config",
+      "target": "src_autotrainer_backends_tf_backend_slurm_hostnames",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend_scope",
+      "target": "src_autotrainer_backends_tf_backend_build_tf_config",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L65",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend_rationale_1",
+      "target": "src_autotrainer_backends_tf_backend",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend_rationale_43",
+      "target": "src_autotrainer_backends_tf_backend_build_tf_config",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend_rationale_56",
+      "target": "src_autotrainer_backends_tf_backend_scope",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L56",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_tf_backend_rationale_80",
+      "target": "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/tf_backend.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend",
+      "target": "src_autotrainer_backends_torch_backend_dist_info",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend",
+      "target": "src_autotrainer_backends_torch_backend_prepare",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend",
+      "target": "src_autotrainer_backends_torch_backend_find_batch_size",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L70",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend_prepare",
+      "target": "src_autotrainer_backends_torch_backend_dist_info",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend_rationale_1",
+      "target": "src_autotrainer_backends_torch_backend",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend_rationale_21",
+      "target": "src_autotrainer_backends_torch_backend_prepare",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_torch_backend_rationale_71",
+      "target": "src_autotrainer_backends_torch_backend_find_batch_size",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/torch_backend.py",
+      "source_location": "L71",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "argparse",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "sys",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "src_autotrainer_detect",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "src_autotrainer_launcher",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "src_autotrainer_cli_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli_rationale_1",
+      "target": "src_autotrainer_cli",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "shutil",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "subprocess",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "dataclasses",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "src_autotrainer_detect_environment",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_environment",
+      "target": "src_autotrainer_detect_environment_world_size",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "src_autotrainer_detect_gpu_count",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "src_autotrainer_detect_slurm_master_addr",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_detect",
+      "target": "src_autotrainer_detect_environment",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_detect",
+      "target": "src_autotrainer_detect_environment",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_detect",
+      "target": "src_autotrainer_detect_slurm_master_addr",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L85",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_detect",
+      "target": "src_autotrainer_detect_gpu_count",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L92",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_rationale_1",
+      "target": "src_autotrainer_detect",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_rationale_34",
+      "target": "src_autotrainer_detect_gpu_count",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_rationale_56",
+      "target": "src_autotrainer_detect_slurm_master_addr",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L56",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_detect_rationale_75",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/detect.py",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "importlib_util",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "shutil",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "socket",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_detect",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_doctor_check_frameworks",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_doctor_check_gpu",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_doctor_check_slurm",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_doctor_check_port",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_doctor_run_doctor",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor_run_doctor",
+      "target": "src_autotrainer_doctor_check_frameworks",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor_run_doctor",
+      "target": "src_autotrainer_doctor_check_gpu",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor_run_doctor",
+      "target": "src_autotrainer_doctor_check_slurm",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor_run_doctor",
+      "target": "src_autotrainer_doctor_check_port",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L82",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor_rationale_1",
+      "target": "src_autotrainer_doctor",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "runpy",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "subprocess",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "time",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "sys",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "src_autotrainer_detect",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "src_autotrainer_launcher_rendezvous_env",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher_rendezvous_env",
+      "target": "src_autotrainer_detect_environment",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "src_autotrainer_launcher_run_script_inplace",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "src_autotrainer_launcher_launch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher_launch",
+      "target": "src_autotrainer_launcher_rendezvous_env",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L54",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher_launch",
+      "target": "src_autotrainer_launcher_run_script_inplace",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher_rationale_1",
+      "target": "src_autotrainer_launcher",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher_rationale_38",
+      "target": "src_autotrainer_launcher_run_script_inplace",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L38",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "copy",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_tuning_suggest",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_tuning_rebuild_loader",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_tuning_evaluate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L53",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_tuning_tune",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L69",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_rationale_1",
+      "target": "src_autotrainer_tuning",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_rationale_72",
+      "target": "src_autotrainer_tuning_tune",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L72",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_rank",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_is_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_print0",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_save0",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_barrier",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_autocast_context",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L50",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_get_model_device",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_get_model_device",
+      "target": "device",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L76",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_slice_batch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L90",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L104",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_get_batch_size",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L119",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils",
+      "target": "src_autotrainer_utils_gradscaler",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L137",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_is_main",
+      "target": "src_autotrainer_utils_rank",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_print0",
+      "target": "src_autotrainer_utils_is_main",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_save0",
+      "target": "src_autotrainer_utils_is_main",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_get_model_device",
+      "target": "device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_1",
+      "target": "src_autotrainer_utils",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_19",
+      "target": "src_autotrainer_utils_is_main",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_24",
+      "target": "src_autotrainer_utils_print0",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_30",
+      "target": "src_autotrainer_utils_save0",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_37",
+      "target": "src_autotrainer_utils_barrier",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_51",
+      "target": "src_autotrainer_utils_autocast_context",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_68",
+      "target": "src_autotrainer_utils_get_model_device",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_77",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L77",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_91",
+      "target": "src_autotrainer_utils_slice_batch",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L91",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_105",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L105",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_120",
+      "target": "src_autotrainer_utils_get_batch_size",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L120",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_utils_rationale_138",
+      "target": "src_autotrainer_utils_gradscaler",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/utils.py",
+      "source_location": "L138",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "subprocess",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "sys",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "pytest",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "autotrainer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "autotrainer_detect",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_clean_env",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testdetect",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdetect",
+      "target": "tests_test_autotrainer_testdetect_test_single_mode_default",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdetect",
+      "target": "tests_test_autotrainer_testdetect_test_slurm_detection",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdetect",
+      "target": "tests_test_autotrainer_testdetect_test_slurm_cpu_only_falls_back_to_ntasks",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L39",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testdispatcher",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdispatcher",
+      "target": "tests_test_autotrainer_testdispatcher_test_sklearn_routing",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdispatcher",
+      "target": "tests_test_autotrainer_testdispatcher_test_xgboost_routes_before_sklearn",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L54",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdispatcher",
+      "target": "tests_test_autotrainer_testdispatcher_test_slurm_cpu_allocation_respected",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L60",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdispatcher",
+      "target": "tests_test_autotrainer_testdispatcher_test_unknown_model_raises",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testboostparams",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L72",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testboostparams",
+      "target": "tests_test_autotrainer_testboostparams_test_xgb_key",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L73",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testboostparams",
+      "target": "tests_test_autotrainer_testboostparams_test_lgbm_key",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L77",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testtfconfig",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L82",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testtfconfig",
+      "target": "tests_test_autotrainer_testtfconfig_test_tf_config_shape",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L83",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testutils",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L92",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testutils",
+      "target": "tests_test_autotrainer_testutils_test_rank_zero_helpers",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testutils",
+      "target": "tests_test_autotrainer_testutils_test_nonzero_rank_is_silent",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L99",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testutils",
+      "target": "tests_test_autotrainer_testutils_test_barrier_noop_without_dist",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L105",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testcli",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L109",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testcli",
+      "target": "tests_test_autotrainer_testcli_test_info_runs",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L110",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testcli",
+      "target": "tests_test_autotrainer_testcli_test_doctor_runs",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L115",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer",
+      "target": "tests_test_autotrainer_testpytorchenhancements",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L121",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements",
+      "target": "tests_test_autotrainer_testpytorchenhancements_test_to_device",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L122",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements",
+      "target": "tests_test_autotrainer_testpytorchenhancements_test_slice_batch",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L141",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements",
+      "target": "tests_test_autotrainer_testpytorchenhancements_test_robust_forward",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L155",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements",
+      "target": "tests_test_autotrainer_testpytorchenhancements_test_grad_scaler",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L177",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements",
+      "target": "tests_test_autotrainer_testpytorchenhancements_test_find_lr_with_dict",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L190",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_rationale_1",
+      "target": "tests_test_autotrainer",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_rationale_15",
+      "target": "tests_test_autotrainer_clean_env",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_tf_backend",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_boosting_backend",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_torch_backend",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_sklearn_backend",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_auto_optim",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_tuning",
+      "relation": "re_exports",
+      "context": "export",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_gradscaler",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_autocast_context",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_barrier",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_is_main",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_print0",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_rank",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_utils_save0",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_tf_backend_scope",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_boosting_backend_boost_params",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_torch_backend_prepare",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_boosting_backend_prepare",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L64",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_sklearn_backend_prepare",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_backends_torch_backend_find_batch_size",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_auto_optim_auto",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_auto_optim_find_lr",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L87",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init",
+      "target": "src_autotrainer_tuning_tune",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_utils_get_model_device",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_utils_slice_batch",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim",
+      "target": "src_autotrainer_backends_torch_backend_prepare",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L169",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend",
+      "target": "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "src_autotrainer_launcher_launch",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli",
+      "target": "src_autotrainer_doctor_run_doctor",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "src_autotrainer_detect_environment",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_utils_get_batch_size",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L55",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_auto_optim_infer_loss",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_auto_optim_make_loss",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning",
+      "target": "src_autotrainer_auto_optim_make_optimizer",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_scope",
+      "target": "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_scale_batch_size",
+      "target": "src_autotrainer_backends_tf_backend_scale_batch_size",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L38",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_boost_params",
+      "target": "src_autotrainer_backends_boosting_backend_boost_params",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_prepare",
+      "target": "src_autotrainer_backends_sklearn_backend_prepare",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L53",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_find_batch_size",
+      "target": "src_autotrainer_auto_optim_find_lr",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L76",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_auto",
+      "target": "src_autotrainer_auto_optim_auto",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L82",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_find_lr",
+      "target": "src_autotrainer_auto_optim_find_lr",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L88",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_init_tune",
+      "target": "src_autotrainer_tuning_tune",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/__init__.py",
+      "source_location": "L94",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_infer_loss",
+      "target": "src_autotrainer_utils_get_model_device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_infer_loss",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_infer_loss",
+      "target": "src_autotrainer_utils_slice_batch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_infer_loss",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_find_lr",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L130",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_find_lr",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L132",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_auto_optim_auto",
+      "target": "src_autotrainer_backends_torch_backend_prepare",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/auto_optim.py",
+      "source_location": "L191",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_prepare",
+      "target": "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_backends_boosting_backend_boost_params",
+      "target": "src_autotrainer_backends_sklearn_backend_available_cpus",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/backends/boosting_backend.py",
+      "source_location": "L48",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli_main",
+      "target": "src_autotrainer_doctor_run_doctor",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli_main",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_cli_main",
+      "target": "src_autotrainer_launcher_launch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/cli.py",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_doctor_run_doctor",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/doctor.py",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_launcher_launch",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/launcher.py",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_evaluate",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L60",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_evaluate",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L62",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_evaluate",
+      "target": "src_autotrainer_utils_get_batch_size",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_tune",
+      "target": "src_autotrainer_auto_optim_make_loss",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L89",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_tune",
+      "target": "src_autotrainer_auto_optim_infer_loss",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L91",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_tune",
+      "target": "src_autotrainer_auto_optim_make_optimizer",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_tune",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L112",
+      "weight": 1.0
+    },
+    {
+      "source": "src_autotrainer_tuning_tune",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/autotrainer/tuning.py",
+      "source_location": "L115",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdetect_test_single_mode_default",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L23",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdetect_test_slurm_detection",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testdetect_test_slurm_cpu_only_falls_back_to_ntasks",
+      "target": "src_autotrainer_detect_detect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L43",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testtfconfig_test_tf_config_shape",
+      "target": "src_autotrainer_backends_tf_backend_build_tf_config",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L87",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements_test_to_device",
+      "target": "src_autotrainer_utils_to_device",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L133",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements_test_slice_batch",
+      "target": "src_autotrainer_utils_slice_batch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L150",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements_test_robust_forward",
+      "target": "src_autotrainer_utils_robust_forward",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L171",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_test_autotrainer_testpytorchenhancements_test_grad_scaler",
+      "target": "src_autotrainer_utils_gradscaler",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "tests/test_autotrainer.py",
+      "source_location": "L180",
+      "weight": 1.0
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

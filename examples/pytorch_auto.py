@@ -14,6 +14,7 @@ model = nn.Sequential(nn.Linear(32, 128), nn.ReLU(), nn.Linear(128, 10))
 # One call: infers CrossEntropyLoss, AdamW, LR (range test), warmup+cosine
 model, loader, opt, loss_fn, sched = autotrainer.auto(model, loader, epochs=3)
 device = next(model.parameters()).device
+scaler = autotrainer.GradScaler()  # handles mixed-precision scaling automatically
 
 for epoch in range(3):
     if hasattr(loader.sampler, "set_epoch"):
@@ -23,8 +24,9 @@ for epoch in range(3):
         opt.zero_grad()
         with autotrainer.autocast_context():          # mixed precision on GPU
             loss = loss_fn(model(xb), yb)
-        loss.backward()
-        opt.step()
+        scaler.scale(loss).backward()
+        scaler.step(opt)
+        scaler.update()
         sched.step()
     autotrainer.print0(f"epoch {epoch} done")          # prints once, not N times
 
