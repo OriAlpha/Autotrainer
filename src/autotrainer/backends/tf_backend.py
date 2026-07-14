@@ -21,6 +21,7 @@ import json
 import os
 import shutil
 import subprocess
+from typing import Any
 
 
 def _slurm_hostnames() -> list[str]:
@@ -29,7 +30,9 @@ def _slurm_hostnames() -> list[str]:
         try:
             out = subprocess.run(
                 ["scontrol", "show", "hostnames", nodelist],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             hosts = out.stdout.split()
             if hosts:
@@ -52,7 +55,7 @@ def build_tf_config(port: int = 29500) -> dict:
     }
 
 
-def scope():
+def scope() -> Any:
     """Return the right tf.distribute strategy scope for this environment."""
     import tensorflow as tf
 
@@ -64,8 +67,10 @@ def scope():
         port = int(os.environ.get("AUTOTRAINER_PORT", "29500"))
         os.environ["TF_CONFIG"] = json.dumps(build_tf_config(port))
         strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        print(f"[autotrainer] tf backend: MultiWorkerMirroredStrategy "
-              f"({nnodes} nodes, {strategy.num_replicas_in_sync} replicas)")
+        print(
+            f"[autotrainer] tf backend: MultiWorkerMirroredStrategy "
+            f"({nnodes} nodes, {strategy.num_replicas_in_sync} replicas)"
+        )
     elif gpus > 1:
         strategy = tf.distribute.MirroredStrategy()
         print(f"[autotrainer] tf backend: MirroredStrategy ({gpus} GPUs)")

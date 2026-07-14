@@ -12,19 +12,25 @@ and data instead of searching. Design rules:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import torch.nn as nn
+
 LOSSES = ("cross_entropy", "bce", "mse", "huber")
 
 
-def _peek_batch(dataloader):
+def _peek_batch(dataloader: Any) -> tuple[Any, Any]:
     xb, yb = next(iter(dataloader))
     return xb, yb
 
 
-def _infer_loss(model, yb, xb):
+def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
     """Pick a loss from target dtype/shape, sanity-checked against model output."""
     import torch
     import torch.nn as nn
-    from .utils import get_model_device, to_device, slice_batch, robust_forward
+
+    from .utils import get_model_device, robust_forward, slice_batch, to_device
 
     device = get_model_device(model)
     xb_dev = to_device(xb, device)
@@ -37,7 +43,10 @@ def _infer_loss(model, yb, xb):
 
     if not torch.is_floating_point(yb):
         n_classes = int(yb.max().item()) + 1
-        if out_dim == 1 or n_classes == 2 and out_dim == 1:
+        # Binary classification (exactly 2 classes) with a single output -> BCE.
+        # Parentheses required: without them `and` binds tighter than `or` and
+        # the n_classes check becomes dead code (any 1-output model -> BCE).
+        if n_classes == 2 and out_dim == 1:
             reason = f"integer targets, binary ({n_classes} classes), 1 output"
             return nn.BCEWithLogitsLoss(), "bce", reason
         reason = f"integer targets with {n_classes} classes, model outputs {out_dim}"
@@ -50,7 +59,7 @@ def _infer_loss(model, yb, xb):
     y = yb.float().flatten()
     med = y.median()
     mad = (y - med).abs().median() * 1.4826  # ~std for normal data
-    if mad > 0:
+    if mad > 0:  # noqa: SIM108
         outliers = ((y - med).abs() > 3 * mad).float().mean().item()
     else:
         outliers = 0.0
@@ -59,36 +68,50 @@ def _infer_loss(model, yb, xb):
     return nn.MSELoss(), "mse", "float targets, no heavy outliers"
 
 
-def _make_loss(name: str):
+def _make_loss(name: str) -> nn.Module:
     import torch.nn as nn
-    return {"cross_entropy": nn.CrossEntropyLoss, "bce": nn.BCEWithLogitsLoss,
-            "mse": nn.MSELoss, "huber": nn.HuberLoss}[name]()
+
+    return {
+        "cross_entropy": nn.CrossEntropyLoss,
+        "bce": nn.BCEWithLogitsLoss,
+        "mse": nn.MSELoss,
+        "huber": nn.HuberLoss,
+    }[name]()
 
 
-def _looks_like_cnn(model) -> bool:
+def _looks_like_cnn(model: Any) -> bool:
     import torch.nn as nn
+
     return any(isinstance(m, (nn.Conv2d, nn.Conv3d)) for m in model.modules())
 
 
-def _param_groups(model, weight_decay: float):
+def _param_groups(model: Any, weight_decay: float) -> list[dict[str, Any]]:
     """Exclude biases and norm params from weight decay (the common mistake)."""
-    decay, no_decay = [], []
+    decay: list[Any] = []
+    no_decay: list[Any] = []
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
         (no_decay if p.ndim <= 1 or name.endswith(".bias") else decay).append(p)
-    return [{"params": decay, "weight_decay": weight_decay},
-            {"params": no_decay, "weight_decay": 0.0}]
+    return [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
 
 
-def _make_optimizer(model, name: str | None, lr: float, weight_decay: float):
+def _make_optimizer(
+    model: Any, name: str | None, lr: float, weight_decay: float
+) -> tuple[Any, str, str]:
     import torch
 
     groups = _param_groups(model, weight_decay)
     if name is None:
         name = "sgd" if _looks_like_cnn(model) else "adamw"
-        reason = ("conv layers detected -> SGD+momentum (classic CNN recipe)"
-                  if name == "sgd" else "general default -> AdamW")
+        reason = (
+            "conv layers detected -> SGD+momentum (classic CNN recipe)"
+            if name == "sgd"
+            else "general default -> AdamW"
+        )
     else:
         reason = "user override"
     if name == "sgd":
@@ -96,21 +119,45 @@ def _make_optimizer(model, name: str | None, lr: float, weight_decay: float):
     return torch.optim.AdamW(groups, lr=lr), name, reason
 
 
-def find_lr(model, dataloader, loss_fn, optimizer_name: str = "adamw",
-            min_lr: float = 1e-7, max_lr: float = 1.0, num_iters: int = 100) -> float:
+def find_lr(
+    model: Any,
+    dataloader: Any,
+    loss_fn: Any,
+    optimizer_name: str = "adamw",
+    min_lr: float = 1e-7,
+    max_lr: float = 1.0,
+    num_iters: int = 100,
+) -> float:
     """LR range test (Leslie Smith): sweep LR exponentially, track loss,
-    return the LR at the steepest descent. Runs on a throwaway copy of the
-    model so real weights are untouched.
+    return the LR at the steepest descent.
+
+    Runs on a deep-copied throwaway model so the real weights are untouched.
+    The sweep stops early if the loss diverges (non-finite or 4x the best
+    seen). The returned LR is the steepest-descent point backed off 10x for
+    stability; if the sweep fails (too few samples), a safe ``3e-4`` default
+    is returned.
+
+    Args:
+        model: a ``torch.nn.Module``.
+        dataloader: batches to train on during the sweep.
+        loss_fn: the loss to minimize.
+        optimizer_name: ``"adamw"`` or ``"sgd"`` for the sweep.
+        min_lr: starting LR of the exponential sweep.
+        max_lr: ending LR of the exponential sweep.
+        num_iters: number of LR steps to evaluate.
+
+    Returns:
+        The suggested learning rate.
     """
     import copy
     import math
+    import os
 
     import torch
 
-    import os
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
-    from .utils import to_device, robust_forward
+    from .utils import robust_forward, to_device
 
     m = copy.deepcopy(model).to(device)
     if hasattr(loss_fn, "to"):
@@ -160,13 +207,40 @@ def find_lr(model, dataloader, loss_fn, optimizer_name: str = "adamw",
     return max(lrs[steepest] / 10, min_lr)
 
 
-def auto(model, dataloader, *, loss: str | None = None, optimizer: str | None = None,
-         lr: float | None = None, weight_decay: float = 0.01,
-         schedule: bool = True, epochs: int = 10):
-    """Returns (model, dataloader, optimizer, loss_fn[, scheduler]).
+def auto(
+    model: Any,
+    dataloader: Any,
+    *,
+    loss: str | None = None,
+    optimizer: str | None = None,
+    lr: float | None = None,
+    weight_decay: float = 0.01,
+    schedule: bool = True,
+    epochs: int = 10,
+) -> tuple[Any, ...]:
+    """Infer loss/optimizer/LR/schedule, then distribute the model.
 
-    Runs BEFORE distribution: infers loss/optimizer/lr on the raw model,
-    then calls prepare() to handle DDP/device placement.
+    Smart defaults, not AutoML: every inferred choice is printed with its
+    reasoning and can be overridden via the keyword arguments below. Runs
+    BEFORE distribution - it infers on the raw model, then calls
+    ``prepare()`` for DDP/device placement.
+
+    Args:
+        model: a ``torch.nn.Module``.
+        dataloader: a training DataLoader; one batch is peeked to infer the
+            loss from the target dtype/shape.
+        loss: override the inferred loss; one of ``"cross_entropy"``,
+            ``"bce"``, ``"mse"``, ``"huber"``. If ``None``, inferred.
+        optimizer: ``"adamw"`` or ``"sgd"``; if ``None``, picked from the
+            architecture (SGD for CNNs, AdamW otherwise).
+        lr: learning rate; if ``None``, found via an LR range test.
+        weight_decay: decoupled weight decay (excluded from biases/norms).
+        schedule: if True, build a warmup(5%)+cosine schedule.
+        epochs: assumed epoch count, used to size the schedule.
+
+    Returns:
+        ``(model, dataloader, optimizer, loss_fn)`` when ``schedule=False``,
+        otherwise ``(model, dataloader, optimizer, loss_fn, scheduler)``.
     """
     from .backends.torch_backend import prepare
 
@@ -186,24 +260,31 @@ def auto(model, dataloader, *, loss: str | None = None, optimizer: str | None = 
     opt, opt_name, opt_why = _make_optimizer(model, optimizer, lr_val, weight_decay)
 
     print(f"[autotrainer] auto: loss={loss_name} ({loss_why})")
-    print(f"[autotrainer] auto: optimizer={opt_name} ({opt_why}), "
-          f"weight_decay={weight_decay} (excluded from biases/norms)")
+    print(
+        f"[autotrainer] auto: optimizer={opt_name} ({opt_why}), "
+        f"weight_decay={weight_decay} (excluded from biases/norms)"
+    )
     print(f"[autotrainer] auto: lr={lr_val:.2e} ({lr_why})")
 
     model, dataloader, opt = prepare(model, dataloader, opt)
 
     if schedule:
         import torch
+
         steps = max(len(dataloader) * epochs, 1)
         warmup = max(int(0.05 * steps), 1)
         sched = torch.optim.lr_scheduler.SequentialLR(
             opt,
-            [torch.optim.lr_scheduler.LinearLR(opt, 0.01, 1.0, warmup),
-             torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps - warmup)],
+            [
+                torch.optim.lr_scheduler.LinearLR(opt, 0.01, 1.0, warmup),
+                torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps - warmup),
+            ],
             milestones=[warmup],
         )
-        print(f"[autotrainer] auto: schedule=warmup({warmup} steps)+cosine "
-              f"(assumes {epochs} epochs; pass epochs=N to change)")
+        print(
+            f"[autotrainer] auto: schedule=warmup({warmup} steps)+cosine "
+            f"(assumes {epochs} epochs; pass epochs=N to change)"
+        )
         return model, dataloader, opt, loss_fn, sched
 
     return model, dataloader, opt, loss_fn

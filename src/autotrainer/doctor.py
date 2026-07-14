@@ -20,26 +20,33 @@ def _check_frameworks(report: list[str]) -> None:
     if found:
         report.append(f"{OK} frameworks installed: {', '.join(found)}")
     else:
-        report.append(f"{FAIL} no supported ML framework found "
-                      "(install torch, tensorflow, scikit-learn, xgboost, or lightgbm)")
+        report.append(
+            f"{FAIL} no supported ML framework found "
+            "(install torch, tensorflow, scikit-learn, xgboost, or lightgbm)"
+        )
 
 
 def _check_gpu(report: list[str]) -> None:
     try:
         import torch
+
         n = torch.cuda.device_count()
         if n:
             names = {torch.cuda.get_device_name(i) for i in range(n)}
             report.append(f"{OK} {n} CUDA GPU(s): {', '.join(sorted(names))}")
             if not torch.distributed.is_nccl_available():
-                report.append(f"{WARN} NCCL not available - multi-GPU will fall back to gloo (slow)")
+                report.append(
+                    f"{WARN} NCCL not available - multi-GPU will fall back to gloo (slow)"
+                )
         else:
             report.append(f"{WARN} no CUDA GPUs visible (CPU mode)")
         return
     except ImportError:
         pass
     if shutil.which("nvidia-smi"):
-        report.append(f"{WARN} nvidia-smi present but torch not installed - can't verify CUDA setup")
+        report.append(
+            f"{WARN} nvidia-smi present but torch not installed - can't verify CUDA setup"
+        )
     else:
         report.append(f"{WARN} no GPU tooling detected")
 
@@ -56,8 +63,10 @@ def _check_slurm(report: list[str]) -> None:
     ntasks = os.environ.get("SLURM_NTASKS_PER_NODE")
     gpus = os.environ.get("SLURM_GPUS_ON_NODE")
     if ntasks and gpus and ntasks != gpus:
-        report.append(f"{WARN} ntasks-per-node={ntasks} != gpus-on-node={gpus} - "
-                      "for DDP these should usually match (one task per GPU)")
+        report.append(
+            f"{WARN} ntasks-per-node={ntasks} != gpus-on-node={gpus} - "
+            "for DDP these should usually match (one task per GPU)"
+        )
 
 
 def _check_port(report: list[str]) -> None:
@@ -83,5 +92,6 @@ def run_doctor() -> int:
 
     print("\n".join(report))
     failed = any(line.startswith(FAIL) for line in report)
-    print(f"\n{'issues found - fix [FAIL] items before training' if failed else 'environment looks good'}")
+    msg = "issues found - fix [FAIL] items before training" if failed else "environment looks good"
+    print(f"\n{msg}")
     return 1 if failed else 0

@@ -15,6 +15,7 @@ Bad trials are pruned early by Optuna's median pruner to save compute.
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 DEFAULT_SPACE = {
     "lr": ("loguniform", 1e-5, 1e-1),
@@ -24,7 +25,7 @@ DEFAULT_SPACE = {
 }
 
 
-def _suggest(trial, space: dict) -> dict:
+def _suggest(trial: Any, space: dict) -> dict:
     params = {}
     for name, spec in space.items():
         kind = spec[0]
@@ -41,18 +42,24 @@ def _suggest(trial, space: dict) -> dict:
     return params
 
 
-def _rebuild_loader(loader, batch_size: int):
+def _rebuild_loader(loader: Any, batch_size: int) -> Any:
     from torch.utils.data import DataLoader
+
     return DataLoader(
-        loader.dataset, batch_size=batch_size, shuffle=True,
-        num_workers=loader.num_workers, drop_last=loader.drop_last,
+        loader.dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=loader.num_workers,
+        drop_last=loader.drop_last,
         collate_fn=loader.collate_fn,
     )
 
 
-def _evaluate(model, val_loader, loss_fn, device) -> float:
+def _evaluate(model: Any, val_loader: Any, loss_fn: Any, device: Any) -> float:
     import torch
-    from .utils import to_device, robust_forward, get_batch_size
+
+    from .utils import get_batch_size, robust_forward, to_device
+
     model.eval()
     total, n = 0.0, 0
     with torch.no_grad():
@@ -66,13 +73,44 @@ def _evaluate(model, val_loader, loss_fn, device) -> float:
     return total / max(n, 1)
 
 
-def tune(model, train_loader, val_loader, *, trials: int = 20,
-         epochs_per_trial: int = 3, space: dict | None = None,
-         loss: str | None = None, seed: int = 0, verbose: bool = True):
+def tune(
+    model: Any,
+    train_loader: Any,
+    val_loader: Any,
+    *,
+    trials: int = 20,
+    epochs_per_trial: int = 3,
+    space: dict | None = None,
+    loss: str | None = None,
+    seed: int = 0,
+    verbose: bool = True,
+) -> tuple[Any, dict, Any]:
     """Search training hyperparameters for the user's model.
 
-    Returns (best_model, best_params, study). best_model carries the weights
-    from the best trial; the input model is left untouched.
+    Searches over the training *recipe* only (lr, weight decay, optimizer,
+    batch size) - never the architecture. Every trial starts from the model's
+    ORIGINAL initial weights (deep-copied), so trials are comparable and the
+    input model is left untouched. Bad trials are pruned early by Optuna's
+    median pruner to save compute.
+
+    Args:
+        model: a ``torch.nn.Module``; never mutated.
+        train_loader: training DataLoader (batch size may be overridden
+            per trial if ``batch_size`` is in the search space).
+        val_loader: validation DataLoader used to score each trial.
+        trials: number of Optuna trials to run.
+        epochs_per_trial: epochs trained per trial before scoring/pruning.
+        space: custom search space (defaults to ``DEFAULT_SPACE``). Each
+            entry is ``(kind, *args)`` where kind is one of
+            ``loguniform``/``uniform``/``int``/``categorical``.
+        loss: override the inferred loss; if ``None``, inferred once from
+            the first training batch.
+        seed: Optuna TPESampler seed for reproducibility.
+        verbose: print the inferred loss and a final summary.
+
+    Returns:
+        ``(best_model, best_params, study)`` where ``best_model`` carries the
+        weights from the best trial.
     """
     import optuna
     import torch
@@ -92,20 +130,26 @@ def tune(model, train_loader, val_loader, *, trials: int = 20,
         if verbose:
             print(f"[autotrainer] tune: loss={loss_name} ({why})")
 
-    best = {"loss": float("inf"), "state": None}
+    best: dict[str, Any] = {"loss": float("inf"), "state": None}
 
     def objective(trial):
         params = _suggest(trial, space)
         m = copy.deepcopy(model).to(device)
         m.load_state_dict(init_state)  # every trial starts identically
         opt, _, _ = _make_optimizer(
-            m, params.get("optimizer"), params.get("lr", 1e-3),
+            m,
+            params.get("optimizer"),
+            params.get("lr", 1e-3),
             params.get("weight_decay", 0.0),
         )
-        tl = (_rebuild_loader(train_loader, params["batch_size"])
-              if "batch_size" in params else train_loader)
+        tl = (
+            _rebuild_loader(train_loader, params["batch_size"])
+            if "batch_size" in params
+            else train_loader
+        )
 
-        from .utils import to_device, robust_forward
+        from .utils import robust_forward, to_device
+
         for epoch in range(epochs_per_trial):
             m.train()
             for bx, by in tl:
@@ -126,14 +170,19 @@ def tune(model, train_loader, val_loader, *, trials: int = 20,
             best["state"] = copy.deepcopy(m.state_dict())
         return val
 
-    optuna.logging.set_verbosity(
-        optuna.logging.INFO if verbose else optuna.logging.WARNING)
-    study = optuna.create_study(
-        direction="minimize",
-        sampler=optuna.samplers.TPESampler(seed=seed),
-        pruner=optuna.pruners.MedianPruner(n_warmup_steps=1),
-    )
-    study.optimize(objective, n_trials=trials)
+    # Optuna's verbosity is process-global; save and restore it so a tune()
+    # call doesn't quietly change logging behavior for the rest of the program.
+    prior_verbosity = optuna.logging.get_verbosity()
+    try:
+        optuna.logging.set_verbosity(optuna.logging.INFO if verbose else optuna.logging.WARNING)
+        study = optuna.create_study(
+            direction="minimize",
+            sampler=optuna.samplers.TPESampler(seed=seed),
+            pruner=optuna.pruners.MedianPruner(n_warmup_steps=1),
+        )
+        study.optimize(objective, n_trials=trials)
+    finally:
+        optuna.logging.set_verbosity(prior_verbosity)
 
     best_model = copy.deepcopy(model)
     if best["state"] is not None:
@@ -141,6 +190,8 @@ def tune(model, train_loader, val_loader, *, trials: int = 20,
 
     if verbose:
         pruned = sum(t.state.name == "PRUNED" for t in study.trials)
-        print(f"[autotrainer] tune: best val loss {study.best_value:.4f} "
-              f"with {study.best_params} ({pruned}/{trials} trials pruned early)")
+        print(
+            f"[autotrainer] tune: best val loss {study.best_value:.4f} "
+            f"with {study.best_params} ({pruned}/{trials} trials pruned early)"
+        )
     return best_model, study.best_params, study

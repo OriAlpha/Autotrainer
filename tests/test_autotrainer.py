@@ -1,6 +1,5 @@
 """Test suite. Run with: pytest tests/ -v"""
 
-import os
 import subprocess
 import sys
 
@@ -8,14 +7,6 @@ import pytest
 
 import autotrainer
 from autotrainer.detect import detect
-
-
-@pytest.fixture(autouse=True)
-def clean_env(monkeypatch):
-    """Strip SLURM/rank vars so tests don't leak into each other."""
-    for k in list(os.environ):
-        if k.startswith(("SLURM_", "RANK", "LOCAL_RANK", "WORLD_SIZE", "AUTOTRAINER_")):
-            monkeypatch.delenv(k, raising=False)
 
 
 class TestDetect:
@@ -46,14 +37,16 @@ class TestDetect:
 
 class TestDispatcher:
     def test_sklearn_routing(self):
-        sklearn = pytest.importorskip("sklearn")
+        pytest.importorskip("sklearn")
         from sklearn.ensemble import RandomForestClassifier
+
         rf = autotrainer.prepare(RandomForestClassifier())
         assert rf.n_jobs >= 1
 
     def test_xgboost_routes_before_sklearn(self):
-        xgboost = pytest.importorskip("xgboost")
+        pytest.importorskip("xgboost")
         from xgboost import XGBClassifier
+
         m = autotrainer.prepare(XGBClassifier())
         assert m.n_jobs >= 1
 
@@ -61,6 +54,7 @@ class TestDispatcher:
         pytest.importorskip("sklearn")
         monkeypatch.setenv("SLURM_CPUS_PER_TASK", "6")
         from sklearn.ensemble import RandomForestClassifier
+
         rf = autotrainer.prepare(RandomForestClassifier())
         assert rf.n_jobs == 6
 
@@ -84,6 +78,7 @@ class TestTFConfig:
         monkeypatch.setenv("SLURM_NODELIST", "a01,a02")
         monkeypatch.setenv("SLURM_NODEID", "1")
         from autotrainer.backends.tf_backend import build_tf_config
+
         cfg = build_tf_config(port=12345)
         assert cfg["cluster"]["worker"] == ["a01:12345", "a02:12345"]
         assert cfg["task"] == {"type": "worker", "index": 1}
@@ -108,13 +103,15 @@ class TestUtils:
 
 class TestCLI:
     def test_info_runs(self):
-        r = subprocess.run([sys.executable, "-m", "autotrainer.cli", "info"],
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            [sys.executable, "-m", "autotrainer.cli", "info"], capture_output=True, text=True
+        )
         assert r.returncode == 0 and "mode" in r.stdout
 
     def test_doctor_runs(self):
-        r = subprocess.run([sys.executable, "-m", "autotrainer.cli", "doctor"],
-                           capture_output=True, text=True)
+        r = subprocess.run(
+            [sys.executable, "-m", "autotrainer.cli", "doctor"], capture_output=True, text=True
+        )
         assert "detected mode" in r.stdout
 
 
@@ -125,15 +122,12 @@ class TestPytorchEnhancements:
 
     def test_to_device(self):
         import torch
+
         from autotrainer.utils import to_device
+
         device = torch.device("cpu")
         x = torch.tensor([1, 2, 3])
-        data = {
-            "tensor": x,
-            "list": [x, 42],
-            "tuple": (x, "hello"),
-            "nested": {"tensor": x}
-        }
+        data = {"tensor": x, "list": [x, 42], "tuple": (x, "hello"), "nested": {"tensor": x}}
         res = to_device(data, device)
         assert torch.equal(res["tensor"], x)
         assert torch.equal(res["list"][0], x)
@@ -144,21 +138,19 @@ class TestPytorchEnhancements:
 
     def test_slice_batch(self):
         import torch
+
         from autotrainer.utils import slice_batch
+
         x = torch.tensor([[1, 2], [3, 4], [5, 6]])
-        data = {
-            "tensor": x,
-            "list": [x, 42],
-            "tuple": (x, "hello")
-        }
+        data = {"tensor": x, "list": [x, 42], "tuple": (x, "hello")}
         res = slice_batch(data, 2)
         assert res["tensor"].shape[0] == 2
         assert res["list"][0].shape[0] == 2
         assert res["tuple"][0].shape[0] == 2
 
     def test_robust_forward(self):
-        import torch
         import torch.nn as nn
+
         from autotrainer.utils import robust_forward
 
         class DictModel(nn.Module):
@@ -171,7 +163,7 @@ class TestPytorchEnhancements:
 
         dm = DictModel()
         lm = ListModel()
-        
+
         assert robust_forward(dm, {"x": 5, "y": 10}) == 15
         assert robust_forward(dm, {"x": 5}) == 5
         assert robust_forward(lm, [1, 2, 3]) == 6
@@ -180,7 +172,9 @@ class TestPytorchEnhancements:
 
     def test_grad_scaler(self):
         import torch
+
         from autotrainer.utils import GradScaler
+
         scaler = GradScaler()
         if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
             assert isinstance(scaler, (torch.amp.GradScaler, torch.cuda.amp.GradScaler))
@@ -195,29 +189,33 @@ class TestPytorchEnhancements:
         import torch
         import torch.nn as nn
         from torch.utils.data import DataLoader
+
         from autotrainer.auto_optim import find_lr
 
         class SimpleModel(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.linear = nn.Linear(5, 1)
+
             def forward(self, x):
                 return self.linear(x)
 
         model = SimpleModel()
+
         class DictDataset(torch.utils.data.Dataset):
             def __init__(self):
                 self.x = torch.randn(50, 5)
                 self.y = torch.randn(50, 1)
+
             def __len__(self):
                 return len(self.x)
+
             def __getitem__(self, idx):
                 return {"x": self.x[idx]}, self.y[idx]
 
         loader = DataLoader(DictDataset(), batch_size=5)
         loss_fn = nn.MSELoss()
-        
+
         best_lr = find_lr(model, loader, loss_fn, min_lr=1e-5, max_lr=1e-1, num_iters=10)
         assert isinstance(best_lr, float)
         assert best_lr > 0
-

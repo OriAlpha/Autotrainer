@@ -15,11 +15,12 @@ Handles both API styles:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from .sklearn_backend import _available_cpus
 
 
-def prepare(model, n_jobs: int | None = None):
+def prepare(model: Any, n_jobs: int | None = None) -> Any:
     """Configure thread count on an XGBoost/LightGBM estimator (in place)."""
     jobs = n_jobs if n_jobs is not None else _available_cpus()
     lib = type(model).__module__.split(".")[0]
@@ -33,8 +34,10 @@ def prepare(model, n_jobs: int | None = None):
         )
 
     _warn_if_multinode()
-    print(f"[autotrainer] {lib} backend: n_jobs={jobs} "
-          f"(source={'SLURM' if os.environ.get('SLURM_CPUS_PER_TASK') else 'local cores'})")
+    print(
+        f"[autotrainer] {lib} backend: n_jobs={jobs} "
+        f"(source={'SLURM' if os.environ.get('SLURM_CPUS_PER_TASK') else 'local cores'})"
+    )
     return model
 
 
@@ -54,5 +57,7 @@ def boost_params(params: dict | None = None, lib: str = "xgboost") -> dict:
 
 def _warn_if_multinode() -> None:
     if int(os.environ.get("SLURM_NNODES", "1")) > 1:
-        print("[autotrainer] note: multi-node boosting (xgboost.dask) lands in "
-              "v0.4b - currently using threads on this node only.")
+        print(
+            "[autotrainer] note: multi-node boosting (xgboost.dask) lands in "
+            "v0.4b - currently using threads on this node only."
+        )

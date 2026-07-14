@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Environment:
-    mode: str                      # "slurm" | "local_multi_gpu" | "single"
+    mode: str  # "slurm" | "local_multi_gpu" | "single"
     nnodes: int = 1
     nproc_per_node: int = 1
     node_rank: int = 0
@@ -38,15 +38,14 @@ def _gpu_count() -> int:
         return 0 if cvd.strip() in ("", "-1") else len(cvd.split(","))
     try:
         import torch  # noqa: PLC0415
+
         return torch.cuda.device_count()
     except Exception:
         pass
     if shutil.which("nvidia-smi"):
         try:
-            out = subprocess.run(
-                ["nvidia-smi", "-L"], capture_output=True, text=True, timeout=10
-            )
-            return len([l for l in out.stdout.splitlines() if l.startswith("GPU")])
+            out = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=10)
+            return len([ln for ln in out.stdout.splitlines() if ln.startswith("GPU")])
         except Exception:
             return 0
     return 0
@@ -59,7 +58,9 @@ def _slurm_master_addr() -> str:
         try:
             out = subprocess.run(
                 ["scontrol", "show", "hostnames", nodelist],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             hosts = out.stdout.split()
             if hosts:

@@ -1,30 +1,91 @@
 name: CI
 on:
-  push: { branches: [main] }
+  push:
+    branches: [main]
   pull_request:
-  release: { types: [published] }
+  release:
+    types: [published]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check src/ tests/
+      - run: ruff format --check src/ tests/
+
   test:
     runs-on: ubuntu-latest
     strategy:
-      matrix: { python: ["3.9", "3.11", "3.13"] }
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "${{ matrix.python }}" }
+        with:
+          python-version: "${{ matrix.python }}"
       - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: pytest tests/ -v
+      # Coverage XML is uploaded so coverage trends are inspectable without a
+      # third-party account. pytest already produces it via addopts.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python }}
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: mypy src/autotrainer
+
+  # TensorFlow is heavy and its install can break on the newest Python in the
+  # matrix, so it gets its own single-version job rather than running in every
+  # matrix cell. Only the TF-specific tests run here.
+  test-tf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev,tf]"
+      - run: pytest tests/ -v -k "TFConfig or tf"
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: pdoc -o docs/build src/autotrainer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: docs/build/
 
   publish:
     if: github.event_name == 'release'
-    needs: test
+    needs: [lint, test, typecheck]
     runs-on: ubuntu-latest
     environment: pypi
-    permissions: { id-token: write }   # trusted publishing, no API token needed
+    permissions:
+      id-token: write # trusted publishing, no API token needed
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
       - run: pip install build && python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1

@@ -14,6 +14,7 @@ estimators (pipelines, ensembles, CV wrappers) that accept it.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 
 def _available_cpus() -> int:
@@ -22,12 +23,12 @@ def _available_cpus() -> int:
         return max(int(slurm_cpus), 1)
     # sched_getaffinity respects cgroups/containers, unlike cpu_count
     try:
-        return max(len(os.sched_getaffinity(0)), 1)
+        return max(len(os.sched_getaffinity(0)), 1)  # type: ignore[attr-defined]  # POSIX-only
     except AttributeError:  # non-Linux
         return max(os.cpu_count() or 1, 1)
 
 
-def prepare(model, n_jobs: int | None = None):
+def prepare(model: Any, n_jobs: int | None = None) -> Any:
     """Set n_jobs on the estimator and any nested estimators that support it.
 
     Returns the same estimator, configured in place.
@@ -40,7 +41,9 @@ def prepare(model, n_jobs: int | None = None):
         model.set_params(**updates)
 
     verb = "set" if updates else "no n_jobs parameter found on"
-    print(f"[autotrainer] sklearn backend: {verb} {type(model).__name__} "
-          f"(workers={jobs}, source="
-          f"{'SLURM' if os.environ.get('SLURM_CPUS_PER_TASK') else 'local cores'})")
+    print(
+        f"[autotrainer] sklearn backend: {verb} {type(model).__name__} "
+        f"(workers={jobs}, source="
+        f"{'SLURM' if os.environ.get('SLURM_CPUS_PER_TASK') else 'local cores'})"
+    )
     return model
