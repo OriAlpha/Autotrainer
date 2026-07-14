@@ -14,8 +14,8 @@ from __future__ import annotations
 import os
 import runpy
 import subprocess
-import time
 import sys
+import time
 
 from .detect import Environment, detect
 
@@ -42,8 +42,10 @@ def _run_script_inplace(script: str, script_args: list[str]) -> None:
 
 def launch(script: str, script_args: list[str]) -> int:
     env = detect()
-    print(f"[autotrainer] mode={env.mode} nodes={env.nnodes} "
-          f"procs/node={env.nproc_per_node} world_size={env.world_size}")
+    print(
+        f"[autotrainer] mode={env.mode} nodes={env.nnodes} "
+        f"procs/node={env.nproc_per_node} world_size={env.world_size}"
+    )
     for note in env.notes:
         print(f"[autotrainer] {note}")
 
@@ -62,9 +64,7 @@ def launch(script: str, script_args: list[str]) -> int:
         procs = []
         for local_rank in range(env.nproc_per_node):
             child_env = _rendezvous_env(env, rank=local_rank, local_rank=local_rank)
-            p = subprocess.Popen(
-                [sys.executable, script, *script_args], env=child_env
-            )
+            p = subprocess.Popen([sys.executable, script, *script_args], env=child_env)
             procs.append(p)
 
         rc = 0
@@ -77,8 +77,10 @@ def launch(script: str, script_args: list[str]) -> int:
                     procs.remove(p)
                     if ret != 0:
                         rc = ret
-                        print(f"[autotrainer] worker (pid {p.pid}) exited with "
-                              f"code {ret}; terminating remaining workers")
+                        print(
+                            f"[autotrainer] worker (pid {p.pid}) exited with "
+                            f"code {ret}; terminating remaining workers"
+                        )
                         for q in procs:
                             q.terminate()
                         for q in procs:

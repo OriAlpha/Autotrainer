@@ -4,16 +4,33 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autotrainer"
-version = "0.7.0"
+version = "0.8.0"
 description = "Automatic distributed training for ML models: detects hardware, picks a strategy, tunes batch size."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
-authors = [{ name = "Suhas Goravale Siidaramu" }]
+license-files = ["LICENSE"]
+authors = [{ name = "Suhas Goravale Siddaramu" }]
 keywords = ["distributed-training", "pytorch", "slurm", "machine-learning"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
 ]
 dependencies = [
     "psutil>=5.9",
@@ -25,16 +42,69 @@ sklearn = ["scikit-learn>=1.3"]
 tf = ["tensorflow>=2.13"]
 boosting = ["xgboost>=2.0", "lightgbm>=4.0"]
 tune = ["optuna>=3.0"]
-dev = ["pytest", "ruff", "build", "twine"]
+dev = ["pytest", "pytest-cov>=4.1", "ruff", "mypy>=1.8", "pdoc>=14", "build", "twine"]
 
 [project.urls]
 Homepage = "https://github.com/OriAlpha/autotrainer"
 Repository = "https://github.com/OriAlpha/autotrainer"
 Changelog = "https://github.com/OriAlpha/autotrainer/blob/main/CHANGELOG.md"
 Issues = "https://github.com/OriAlpha/autotrainer/issues"
+Security = "https://github.com/OriAlpha/autotrainer/blob/main/SECURITY.md"
 
 [project.scripts]
 autotrainer = "autotrainer.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Ship the PEP 561 marker so downstream type checkers pick up our annotations.
+[tool.setuptools.package-data]
+autotrainer = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, UP = pyupgrade,
+# B = bugbear, C4 = comprehensions, SIM = simplify
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+# Module-level lazy imports of optional frameworks are intentional; the
+# dispatcher defers torch/tf/sklearn/etc. to call time so the base install
+# needs no ML framework.
+ignore = ["E402"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+# mypy 2.x dropped 3.9 as a target; 3.11 is in the CI matrix. Code uses
+# `from __future__ import annotations`, so `X | None` syntax stays 3.9-safe.
+# (ruff's target-version = "py39" enforces 3.9 runtime syntax separately.)
+python_version = "3.11"
+# torch/tf/sklearn/xgboost/lightgbm/optuna are optional extras; don't fail
+# the typecheck when they're absent. Skip following into their (and numpy's)
+# bundled stubs so an unrelated stub syntax error can't block our check.
+ignore_missing_imports = true
+follow_imports = "skip"
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[tool.coverage.run]
+source = ["src/autotrainer"]
+branch = true
+
+[tool.coverage.report]
+# Set after measuring actual coverage with the expanded suite. Leave at 0
+# until the suite lands, then raise to the achieved floor.
+fail_under = 75
+show_missing = true
+skip_covered = false
+
+[tool.pytest.ini_options]
+# Coverage is computed on every run; the XML is uploaded as a CI artifact.
+addopts = "--cov=autotrainer --cov-report=term-missing --cov-report=xml"
+testpaths = ["tests"]

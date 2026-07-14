@@ -18,8 +18,9 @@ def main() -> None:
 
     run_p = sub.add_parser("run", help="Launch a training script with auto-distribution")
     run_p.add_argument("script", help="Path to the training script")
-    run_p.add_argument("script_args", nargs=argparse.REMAINDER,
-                       help="Arguments forwarded to the script")
+    run_p.add_argument(
+        "script_args", nargs=argparse.REMAINDER, help="Arguments forwarded to the script"
+    )
 
     sub.add_parser("info", help="Show detected environment and exit")
     sub.add_parser("doctor", help="Diagnose the environment for common problems")
@@ -28,6 +29,7 @@ def main() -> None:
 
     if args.command == "doctor":
         from .doctor import run_doctor
+
         sys.exit(run_doctor())
 
     if args.command == "info":

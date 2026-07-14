@@ -9,6 +9,10 @@ one-liner.
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
 
 
 def rank() -> int:
@@ -30,6 +34,7 @@ def save0(obj, path: str) -> None:
     """torch.save, but only on rank 0, so workers don't clobber the file."""
     if is_main():
         import torch
+
         torch.save(obj, path)
 
 
@@ -41,6 +46,7 @@ def barrier() -> None:
     """
     try:
         import torch.distributed as dist
+
         if dist.is_available() and dist.is_initialized():
             dist.barrier()
     except ImportError:
@@ -67,6 +73,7 @@ def autocast_context():
 def get_model_device(model) -> torch.device:
     """Get the device of the model's first parameter, defaulting to CPU."""
     import torch
+
     try:
         return next(model.parameters()).device
     except StopIteration:
@@ -76,6 +83,7 @@ def get_model_device(model) -> torch.device:
 def to_device(data, device):
     """Recursively move tensors in dictionaries, lists, tuples, or raw tensors to device."""
     import torch
+
     if isinstance(data, torch.Tensor):
         return data.to(device)
     elif isinstance(data, dict):
@@ -90,6 +98,7 @@ def to_device(data, device):
 def slice_batch(data, n: int = 2):
     """Recursively slice batch data structures to the first n samples."""
     import torch
+
     if isinstance(data, torch.Tensor):
         return data[:n]
     elif isinstance(data, dict):
@@ -119,6 +128,7 @@ def robust_forward(model, xb):
 def get_batch_size(data) -> int:
     """Recursively find the batch size of the target or input data structure."""
     import torch
+
     if isinstance(data, torch.Tensor):
         return data.shape[0]
     elif isinstance(data, dict):
@@ -141,11 +151,10 @@ def GradScaler(*args, **kwargs):
     GradScaler (which behaves as a no-op / pass-through).
     """
     import torch
+
     enabled = False
     if torch.cuda.is_available() and not torch.cuda.is_bf16_supported():
         enabled = True
     if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
         return torch.amp.GradScaler("cuda", *args, enabled=enabled, **kwargs)
     return torch.cuda.amp.GradScaler(*args, enabled=enabled, **kwargs)
-
-

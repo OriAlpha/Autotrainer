@@ -8,6 +8,7 @@ model in DDP, and swaps the DataLoader's sampler for a DistributedSampler.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 
 def _dist_info() -> tuple[int, int, int]:
@@ -17,7 +18,7 @@ def _dist_info() -> tuple[int, int, int]:
     return rank, local_rank, world_size
 
 
-def prepare(model, dataloader=None, optimizer=None):
+def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
     Single device: returns inputs unchanged (moved to GPU if available).
@@ -46,9 +47,7 @@ def prepare(model, dataloader=None, optimizer=None):
         model = DDP(model, device_ids=[local_rank] if use_cuda else None)
 
         if dataloader is not None:
-            sampler = DistributedSampler(
-                dataloader.dataset, num_replicas=world_size, rank=rank
-            )
+            sampler = DistributedSampler(dataloader.dataset, num_replicas=world_size, rank=rank)
             dataloader = DataLoader(
                 dataloader.dataset,
                 batch_size=dataloader.batch_size,
@@ -67,7 +66,7 @@ def prepare(model, dataloader=None, optimizer=None):
     return out[0] if len(out) == 1 else tuple(out)
 
 
-def find_batch_size(model, sample_batch_fn, start: int = 2, max_bs: int = 4096) -> int:
+def find_batch_size(model: Any, sample_batch_fn: Any, start: int = 2, max_bs: int = 4096) -> int:
     """Double batch size until OOM, then back off one step.
 
     sample_batch_fn(bs) must run one forward+backward pass at batch size bs.
