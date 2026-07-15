@@ -21,11 +21,12 @@ def _available_cpus() -> int:
     slurm_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
     if slurm_cpus:
         return max(int(slurm_cpus), 1)
-    # sched_getaffinity respects cgroups/containers, unlike cpu_count
-    try:
-        return max(len(os.sched_getaffinity(0)), 1)  # type: ignore[attr-defined]  # POSIX-only
-    except AttributeError:  # non-Linux
-        return max(os.cpu_count() or 1, 1)
+    # sched_getaffinity respects cgroups/containers, unlike cpu_count. It is
+    # POSIX-only, so guard with hasattr instead of relying on a type: ignore
+    # (which mypy would flag as unused on Linux where the attr IS defined).
+    if hasattr(os, "sched_getaffinity"):
+        return max(len(os.sched_getaffinity(0)), 1)
+    return max(os.cpu_count() or 1, 1)
 
 
 def prepare(model: Any, n_jobs: int | None = None) -> Any:
