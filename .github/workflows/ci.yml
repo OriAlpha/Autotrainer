@@ -59,7 +59,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,tf]"
-      - run: pytest tests/ -v -k "TFConfig or tf"
+      # Coverage is off here: the global addopts enforce a 75% floor, but this
+      # job runs only the TF-specific subset (~1 test) which can't reach it.
+      - run: pytest tests/ -v -k "TFConfig or tf" --no-cov
 
   docs:
     runs-on: ubuntu-latest
