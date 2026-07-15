@@ -1,4 +1,4 @@
-# autotrainer
+# Autotrainer
 
 [![CI](https://github.com/OriAlpha/autotrainer/actions/workflows/ci.yml/badge.svg)](https://github.com/OriAlpha/autotrainer/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/autotrainer.svg)](https://pypi.org/project/autotrainer/)
@@ -106,20 +106,6 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 - [Environment variables](.env.example) - every knob autotrainer reads.
 - [Contributing](CONTRIBUTING.md) | [Security policy](SECURITY.md) |
   [Code of Conduct](CODE_OF_CONDUCT.md).
-
-## Release history
-
-- **v0.7** Hyperparameter tuning: `autotrainer.tune()` searches lr, weight
-  decay, optimizer, and batch size with Optuna (TPE + early pruning).
-- **v0.6** Auto model optimization: `autotrainer.auto()` infers loss, optimizer,
-  LR (range test), and a warmup+cosine schedule.
-- **v0.5** Hardening: worker failure handling, rank-0 logging helpers, auto
-  mixed precision, `autotrainer doctor`, tests, CI.
-- **v0.4** XGBoost / LightGBM: single-node thread auto-tuning.
-- **v0.3** TensorFlow/Keras: `autotrainer.scope()`, MirroredStrategy /
-  MultiWorkerMirroredStrategy, auto `TF_CONFIG` on SLURM.
-- **v0.2** PyTorch (DDP, SLURM, batch-size finder) + scikit-learn
-  (SLURM-aware `n_jobs`).
 
 ## Roadmap
 
