@@ -40,6 +40,32 @@ def _sync_from_rank0(payload: list, distributed: bool) -> list:
     return payload
 
 
+def _save_checkpoint(path: str, payload: dict) -> None:
+    """Atomically write the checkpoint on rank 0 (a preemption mid-write must
+    never corrupt the previous good checkpoint)."""
+    from .utils import is_main
+
+    if not is_main():
+        return
+    import os
+
+    import torch
+
+    tmp = path + ".tmp"
+    torch.save(payload, tmp)
+    os.replace(tmp, path)
+
+
+def _load_checkpoint(path: str | None) -> dict | None:
+    import os
+
+    if path is None or not os.path.exists(path):
+        return None
+    import torch
+
+    return torch.load(path, map_location="cpu", weights_only=True)
+
+
 def fit(
     model: Any,
     train_loader: Any,
@@ -52,6 +78,7 @@ def fit(
     loss: str | None = None,
     patience: int = 5,
     min_delta: float = 0.0,
+    checkpoint: str | None = None,
     seed: int = 0,
     verbose: bool = True,
 ) -> tuple[Any, dict, Any]:
@@ -85,6 +112,13 @@ def fit(
         patience: stop phase 2 after this many epochs without val
             improvement.
         min_delta: minimum val-loss decrease that counts as improvement.
+        checkpoint: path for preemption-safe checkpointing. Rank 0 writes
+            the full training state (weights, optimizer, scheduler, recipe,
+            early-stop counters) atomically after every phase-2 epoch. If
+            the file already exists when fit() starts, the search is
+            skipped and training RESUMES from it - so a requeued SLURM job
+            rerunning the same script picks up where it died. Delete the
+            file to start fresh.
         seed: Optuna sampler seed for reproducibility.
         verbose: print tuning output and per-epoch val losses.
 
@@ -110,10 +144,22 @@ def fit(
     distributed = _ensure_process_group()
     init_state = copy.deepcopy(model.state_dict())
 
+    # Resume: an existing checkpoint carries the winning recipe and the full
+    # training state, so the search is skipped entirely. Every rank reads
+    # the same file, so no broadcast is needed for the recipe.
+    ckpt = _load_checkpoint(checkpoint)
+    if ckpt is not None and verbose:
+        print0(
+            f"[autotrainer] fit: resuming from {checkpoint} "
+            f"(epoch {ckpt['epoch'] + 1} done, best val_loss={ckpt['best_val']:.4f})"
+        )
+
     # ---- Phase 1: search the recipe (rank 0 only when distributed) ----
     study = None
     best_params: dict[str, Any] = {}
-    if not distributed or rank() == 0:
+    if ckpt is not None:
+        best_params, loss = ckpt["params"], ckpt["loss"]
+    elif not distributed or rank() == 0:
         if loss is None:
             xb, yb = next(iter(train_loader))
             _, loss, loss_why = _infer_loss(model, yb, xb)
@@ -132,8 +178,9 @@ def fit(
         )
     # One sync point: ranks > 0 wait here while rank 0 searches. The loss
     # name rides along so a shuffled first batch can't flip the inference
-    # on some rank.
-    best_params, loss = _sync_from_rank0([best_params, loss], distributed)
+    # on some rank. (A resumed run already agrees - all ranks read the file.)
+    if ckpt is None:
+        best_params, loss = _sync_from_rank0([best_params, loss], distributed)
     loss_fn = _make_loss(loss)
 
     # ---- Phase 2: full retrain of the winner from the original init ----
@@ -170,8 +217,19 @@ def fit(
         )
 
     scaler = GradScaler()
-    best_val, best_state, bad_epochs = float("inf"), None, 0
-    for epoch in range(epochs):
+    best_val, best_state, bad_epochs, start_epoch = float("inf"), None, 0, 0
+    if ckpt is not None:
+        _unwrap(m).load_state_dict(ckpt["model"])
+        opt.load_state_dict(ckpt["optimizer"])
+        sched.load_state_dict(ckpt["scheduler"])
+        best_val = ckpt["best_val"]
+        best_state = ckpt["best_state"]
+        bad_epochs = ckpt["bad_epochs"]
+        start_epoch = ckpt["epoch"] + 1
+        if bad_epochs >= patience:
+            start_epoch = epochs  # run had already early-stopped; nothing left to train
+
+    for epoch in range(start_epoch, epochs):
         set_epoch(tl, epoch)
         m.train()
         for xb, yb in tl:
@@ -208,13 +266,32 @@ def fit(
             best_state = {k: v.detach().cpu().clone() for k, v in _unwrap(m).state_dict().items()}
         else:
             bad_epochs += 1
-            if bad_epochs >= patience:
-                if verbose:
-                    print0(
-                        f"[autotrainer] fit: early stop at epoch {epoch + 1} "
-                        f"(no improvement for {patience} epochs)"
-                    )
-                break
+
+        if checkpoint is not None:
+            _save_checkpoint(
+                checkpoint,
+                {
+                    "params": best_params,
+                    "loss": loss,
+                    "epoch": epoch,
+                    "model": {
+                        k: v.detach().cpu().clone() for k, v in _unwrap(m).state_dict().items()
+                    },
+                    "optimizer": opt.state_dict(),
+                    "scheduler": sched.state_dict(),
+                    "best_val": best_val,
+                    "best_state": best_state,
+                    "bad_epochs": bad_epochs,
+                },
+            )
+
+        if bad_epochs >= patience:
+            if verbose:
+                print0(
+                    f"[autotrainer] fit: early stop at epoch {epoch + 1} "
+                    f"(no improvement for {patience} epochs)"
+                )
+            break
 
     final = _unwrap(m)
     if best_state is not None:

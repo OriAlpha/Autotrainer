@@ -140,6 +140,96 @@ class TestFit:
         assert best_params["batch_size"] == 4
 
 
+class TestCheckpoint:
+    def test_saves_every_epoch_and_resumes_without_retuning(self, tmp_path, monkeypatch):
+        train, val = _loaders(n=16, batch_size=8)
+        model = nn.Linear(3, 1)
+        ckpt = str(tmp_path / "fit.ckpt")
+
+        # First run: 2 of 4 epochs, then "preempted" (we just stop at epochs=2).
+        _, params_first, study_first = fit(
+            model,
+            train,
+            val,
+            trials=1,
+            epochs=2,
+            epochs_per_trial=1,
+            space=_SMALL_SPACE,
+            checkpoint=ckpt,
+            verbose=False,
+        )
+        assert (tmp_path / "fit.ckpt").exists()
+        assert study_first is not None
+
+        # Resume with a larger budget: tuning must be skipped (study None,
+        # tune() never called) and training must continue at epoch 3.
+        def boom(*a, **k):
+            raise AssertionError("tune() must not run on resume")
+
+        monkeypatch.setattr(fit_mod, "tune", boom)
+        epochs_run = []
+        real_evaluate = fit_mod._evaluate
+
+        def counting_evaluate(model, val_loader, loss_fn, device):
+            epochs_run.append(1)
+            return real_evaluate(model, val_loader, loss_fn, device)
+
+        monkeypatch.setattr(fit_mod, "_evaluate", counting_evaluate)
+        _, params_resumed, study_resumed = fit(
+            model,
+            train,
+            val,
+            trials=1,
+            epochs=4,
+            epochs_per_trial=1,
+            space=_SMALL_SPACE,
+            checkpoint=ckpt,
+            verbose=False,
+        )
+        assert study_resumed is None
+        assert params_resumed == params_first
+        assert len(epochs_run) == 2  # epochs 3 and 4 only
+
+    def test_resume_of_early_stopped_run_trains_no_further(self, tmp_path, monkeypatch):
+        train, val = _loaders(n=16, batch_size=8)
+        model = nn.Linear(3, 1)
+        ckpt = str(tmp_path / "fit.ckpt")
+
+        # Force val losses that only worsen -> early stop at epoch 3.
+        vals = iter([1.0, 2.0, 3.0])
+        monkeypatch.setattr(fit_mod, "_evaluate", lambda *a, **k: next(vals))
+        fit(
+            model,
+            train,
+            val,
+            trials=1,
+            epochs=10,
+            epochs_per_trial=1,
+            space=_SMALL_SPACE,
+            patience=2,
+            checkpoint=ckpt,
+            verbose=False,
+        )
+
+        # Resuming the stopped run must not train more epochs.
+        monkeypatch.setattr(
+            fit_mod, "_evaluate", lambda *a, **k: pytest.fail("must not train further")
+        )
+        out_model, _, _ = fit(
+            model,
+            train,
+            val,
+            trials=1,
+            epochs=10,
+            epochs_per_trial=1,
+            space=_SMALL_SPACE,
+            patience=2,
+            checkpoint=ckpt,
+            verbose=False,
+        )
+        assert isinstance(out_model, nn.Linear)
+
+
 class TestUnwrap:
     def test_plain_module_passes_through(self):
         model = nn.Linear(2, 1)

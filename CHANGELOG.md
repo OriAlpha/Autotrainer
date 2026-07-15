@@ -4,6 +4,13 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Added
+- `fit(checkpoint=...)`: preemption-safe checkpointing. Rank 0 atomically
+  writes the full training state (current + best weights, optimizer,
+  scheduler, recipe, early-stop counters) after every phase-2 epoch; if
+  the file exists when `fit()` starts, the tuning phase is skipped and
+  training resumes where it died - a requeued SLURM job rerunning the same
+  script just continues.
 
 ## [0.9.0] - 2026-07-15
 ### Added
