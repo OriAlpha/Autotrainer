@@ -113,6 +113,10 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=3
    every GPU/node - with warmup+cosine, mixed precision, and early stopping
    on the val loss. The best epoch's weights are returned.
 
+Pass `checkpoint="fit.ckpt"` to make it preemption-safe: the full training
+state is saved every epoch, and rerunning the same script resumes where it
+died (skipping the search) - ideal for requeued SLURM jobs.
+
 For long searches under multi-process launches, raise the collective
 timeout with `AUTOTRAINER_TIMEOUT` (seconds) - see `.env.example`.
 
