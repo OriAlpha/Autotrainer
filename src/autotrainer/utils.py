@@ -38,6 +38,22 @@ def save0(obj, path: str) -> None:
         torch.save(obj, path)
 
 
+def set_epoch(dataloader, epoch: int) -> None:
+    """Tell a DistributedSampler which epoch this is - call at every epoch start.
+
+    Without it, a DistributedSampler yields the SAME shuffle order every
+    epoch. No-op for non-distributed loaders, so it is always safe:
+
+        for epoch in range(epochs):
+            autotrainer.set_epoch(loader, epoch)
+            for xb, yb in loader:
+                ...
+    """
+    sampler = getattr(dataloader, "sampler", None)
+    if sampler is not None and hasattr(sampler, "set_epoch"):
+        sampler.set_epoch(epoch)
+
+
 def barrier() -> None:
     """Wait for all workers (no-op when not distributed).
 

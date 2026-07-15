@@ -9,6 +9,7 @@ import torch.nn as nn  # noqa: E402
 from torch.utils.data import DataLoader, Dataset  # noqa: E402
 
 from autotrainer.auto_optim import (  # noqa: E402
+    _find_lr_synced,
     _infer_loss,
     _make_loss,
     _make_optimizer,
@@ -62,6 +63,27 @@ class TestInferLoss:
         loss_fn, name, _ = _infer_loss(model, yb, xb)
         assert name == "cross_entropy"
         assert isinstance(loss_fn, nn.CrossEntropyLoss)
+
+    def test_inferred_bce_loss_works_on_raw_batches(self):
+        """Regression: plain BCEWithLogitsLoss raises on the exact batches
+        that made _infer_loss pick it (integer (N,) targets vs (N, 1) logits).
+        The inferred loss must be directly usable in the user's loop."""
+        model = nn.Linear(4, 1)
+        yb = torch.tensor([0, 1, 1, 0])
+        xb = torch.randn(4, 4)
+        loss_fn, name, _ = _infer_loss(model, yb, xb)
+        assert name == "bce"
+        out = model(xb)  # shape (4, 1)
+        loss = loss_fn(out, yb)  # int (4,) targets - must not raise
+        assert torch.isfinite(loss)
+        # Float targets already shaped like the logits keep working too.
+        assert torch.isfinite(loss_fn(out, yb.float().unsqueeze(1)))
+
+    def test_bce_override_gets_the_same_adapter(self):
+        loss_fn = _make_loss("bce")
+        out = torch.randn(4, 1)
+        yb = torch.tensor([0, 1, 1, 0])
+        assert torch.isfinite(loss_fn(out, yb))
 
     def test_clean_float_targets_pick_mse(self):
         model = nn.Linear(3, 1)
@@ -129,6 +151,20 @@ class TestParamGroups:
         assert all(p.ndim > 1 for p in decay)
         assert groups[0]["weight_decay"] == 0.01
         assert groups[1]["weight_decay"] == 0.0
+
+
+class TestFindLrSynced:
+    def test_single_process_runs_locally_without_process_group(self):
+        import torch.distributed as dist
+
+        # clean_env fixture: WORLD_SIZE unset -> plain local sweep.
+        model = nn.Linear(3, 1)
+        x = torch.randn(32, 3)
+        y = x.sum(dim=1, keepdim=True)
+        loader = DataLoader(_ToyDataset(x, y), batch_size=8)
+        lr = _find_lr_synced(model, loader, nn.MSELoss(), "adamw")
+        assert lr > 0
+        assert not dist.is_initialized()
 
 
 class TestAuto:

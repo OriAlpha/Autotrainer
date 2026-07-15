@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 from .utils import (  # noqa: E402,F401
     GradScaler,
@@ -25,6 +25,7 @@ from .utils import (  # noqa: E402,F401
     print0,
     rank,
     save0,
+    set_epoch,
 )
 
 
@@ -104,6 +105,13 @@ def tune(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple
     from .tuning import tune as _t
 
     return _t(model, train_loader, val_loader, **kwargs)
+
+
+def fit(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple[Any, ...]:
+    """PyTorch: tune the recipe, then fully train the winner (with early stopping)."""
+    from .fit import fit as _f
+
+    return _f(model, train_loader, val_loader, **kwargs)
 
 
 def _is_torch_module(model: Any) -> bool:

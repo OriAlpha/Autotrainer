@@ -24,6 +24,9 @@ model, loader, opt, loss_fn, sched = autotrainer.auto(model, loader)
 
 # Or search for the best training recipe for YOUR model
 best_model, best_params, study = autotrainer.tune(model, train_loader, val_loader)
+
+# Or fully hands-free: search the recipe, then train the winner to completion
+model, params, study = autotrainer.fit(model, train_loader, val_loader)
 ```
 
 ```bash
@@ -66,12 +69,16 @@ pip install -e ".[dev,torch,sklearn,tf,boosting,tune]"
 
 ## Use
 
-In your training script, add one line:
+In your training script, add one line (plus `set_epoch` at each epoch start,
+so distributed shuffling gives every epoch a fresh order):
 
 ```python
 import autotrainer
 model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
-# ... your normal training loop
+
+for epoch in range(epochs):
+    autotrainer.set_epoch(loader, epoch)  # no-op when not distributed
+    # ... your normal training loop
 ```
 
 Then launch:
@@ -89,6 +96,25 @@ On SLURM, inside your sbatch script:
 #SBATCH --gres=gpu:4
 srun autotrainer run train.py
 ```
+
+## One-call training: fit()
+
+`fit()` is the whole pipeline in one call - give it a model and data, get
+back the best model it can produce on your hardware:
+
+```python
+model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=30)
+```
+
+1. **Tune**: Optuna searches lr / weight decay / optimizer / batch size on
+   short trials (on rank 0 when launched distributed).
+2. **Train**: the winning recipe is retrained from your model's original
+   init through `prepare()` - so `autotrainer run` distributes it across
+   every GPU/node - with warmup+cosine, mixed precision, and early stopping
+   on the val loss. The best epoch's weights are returned.
+
+For long searches under multi-process launches, raise the collective
+timeout with `AUTOTRAINER_TIMEOUT` (seconds) - see `.env.example`.
 
 ## Optional: auto batch size
 

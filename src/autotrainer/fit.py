@@ -1,0 +1,224 @@
+"""One-call training (PyTorch): tune the recipe, then fully train the winner.
+
+    model, params, study = autotrainer.fit(model, train_loader, val_loader)
+
+Composes the two halves of autotrainer:
+
+    1. TUNE  - Optuna search over the training recipe (short trials).
+    2. TRAIN - full retrain of the winning recipe from the model's ORIGINAL
+               initial weights, distributed via prepare(), with a
+               warmup+cosine schedule, mixed precision, and early stopping
+               on the validation loss.
+
+Under `autotrainer run` with multiple processes, rank 0 runs the search
+while the other ranks wait; the winning recipe (and the inferred loss) is
+broadcast so every rank trains the exact same configuration. Long searches
+under DDP may exceed the process-group collective timeout - raise it with
+the AUTOTRAINER_TIMEOUT env var (seconds) if needed.
+"""
+
+from __future__ import annotations
+
+import copy
+from typing import Any
+
+from .tuning import _evaluate, _rebuild_loader, tune
+
+
+def _unwrap(model: Any) -> Any:
+    from torch.nn.parallel import DistributedDataParallel as DDP
+
+    return model.module if isinstance(model, DDP) else model
+
+
+def _sync_from_rank0(payload: list, distributed: bool) -> list:
+    """Broadcast a picklable payload from rank 0 (no-op when not distributed)."""
+    if distributed:
+        import torch.distributed as dist
+
+        dist.broadcast_object_list(payload, src=0)
+    return payload
+
+
+def fit(
+    model: Any,
+    train_loader: Any,
+    val_loader: Any,
+    *,
+    trials: int = 20,
+    epochs: int = 20,
+    epochs_per_trial: int = 3,
+    space: dict | None = None,
+    loss: str | None = None,
+    patience: int = 5,
+    min_delta: float = 0.0,
+    seed: int = 0,
+    verbose: bool = True,
+) -> tuple[Any, dict, Any]:
+    """Search the training recipe, then fully train the winner.
+
+    Phase 1 (tune): Optuna search over lr / weight decay / optimizer /
+    batch size (or a custom ``space``) on short trials. Under DDP this runs
+    on rank 0 only and the winning recipe is broadcast, so every rank
+    trains the same configuration.
+
+    Phase 2 (train): the winning recipe is retrained from the model's
+    ORIGINAL initial weights - not from the best trial's weights, which
+    only saw ``epochs_per_trial`` epochs - through ``prepare()`` (DDP +
+    DistributedSampler when launched distributed), with a warmup+cosine
+    schedule, mixed precision, and early stopping on the val loss. The
+    weights from the best epoch are restored before returning.
+
+    Args:
+        model: a ``torch.nn.Module``; never mutated.
+        train_loader: training DataLoader (batch size may be overridden by
+            the winning recipe if ``batch_size`` is in the search space).
+        val_loader: validation DataLoader; scores trials, drives early
+            stopping, and selects the best epoch. Not sharded - under DDP
+            every rank evaluates the full val set.
+        trials: number of Optuna trials in phase 1.
+        epochs: maximum full-training epochs in phase 2.
+        epochs_per_trial: epochs trained per trial in phase 1.
+        space: custom search space, as in :func:`autotrainer.tune`.
+        loss: override the inferred loss; one of ``"cross_entropy"``,
+            ``"bce"``, ``"mse"``, ``"huber"``. If ``None``, inferred.
+        patience: stop phase 2 after this many epochs without val
+            improvement.
+        min_delta: minimum val-loss decrease that counts as improvement.
+        seed: Optuna sampler seed for reproducibility.
+        verbose: print tuning output and per-epoch val losses.
+
+    Returns:
+        ``(model, best_params, study)``. The model is the plain module
+        (never DDP-wrapped) carrying the best epoch's weights. Under DDP,
+        ``study`` is ``None`` on every rank except rank 0.
+    """
+    import torch
+
+    from .auto_optim import _infer_loss, _make_loss, _make_optimizer
+    from .backends.torch_backend import _ensure_process_group, prepare
+    from .utils import (
+        GradScaler,
+        autocast_context,
+        print0,
+        rank,
+        robust_forward,
+        set_epoch,
+        to_device,
+    )
+
+    distributed = _ensure_process_group()
+    init_state = copy.deepcopy(model.state_dict())
+
+    # ---- Phase 1: search the recipe (rank 0 only when distributed) ----
+    study = None
+    best_params: dict[str, Any] = {}
+    if not distributed or rank() == 0:
+        if loss is None:
+            xb, yb = next(iter(train_loader))
+            _, loss, loss_why = _infer_loss(model, yb, xb)
+            if verbose:
+                print(f"[autotrainer] fit: loss={loss} ({loss_why})")
+        _, best_params, study = tune(
+            model,
+            train_loader,
+            val_loader,
+            trials=trials,
+            epochs_per_trial=epochs_per_trial,
+            space=space,
+            loss=loss,
+            seed=seed,
+            verbose=verbose,
+        )
+    # One sync point: ranks > 0 wait here while rank 0 searches. The loss
+    # name rides along so a shuffled first batch can't flip the inference
+    # on some rank.
+    best_params, loss = _sync_from_rank0([best_params, loss], distributed)
+    loss_fn = _make_loss(loss)
+
+    # ---- Phase 2: full retrain of the winner from the original init ----
+    m = copy.deepcopy(model)
+    m.load_state_dict(init_state)
+    tl = (
+        _rebuild_loader(train_loader, best_params["batch_size"])
+        if "batch_size" in best_params
+        else train_loader
+    )
+    m, tl = prepare(m, tl)
+    device = next(m.parameters()).device
+    opt, opt_name, _ = _make_optimizer(
+        m,
+        best_params.get("optimizer"),
+        best_params.get("lr", 1e-3),
+        best_params.get("weight_decay", 0.0),
+    )
+
+    steps = max(len(tl) * epochs, 1)
+    warmup = max(int(0.05 * steps), 1)
+    sched = torch.optim.lr_scheduler.SequentialLR(
+        opt,
+        [
+            torch.optim.lr_scheduler.LinearLR(opt, 0.01, 1.0, warmup),
+            torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps - warmup),
+        ],
+        milestones=[warmup],
+    )
+    if verbose:
+        print0(
+            f"[autotrainer] fit: retraining winner from original init "
+            f"(optimizer={opt_name}, up to {epochs} epochs, patience={patience})"
+        )
+
+    scaler = GradScaler()
+    best_val, best_state, bad_epochs = float("inf"), None, 0
+    for epoch in range(epochs):
+        set_epoch(tl, epoch)
+        m.train()
+        for xb, yb in tl:
+            xb_dev = to_device(xb, device)
+            yb_dev = to_device(yb, device)
+            opt.zero_grad()
+            with autocast_context():
+                out = robust_forward(m, xb_dev)
+                loss_val = loss_fn(out, yb_dev)
+            scaler.scale(loss_val).backward()
+            scaler.step(opt)
+            scaler.update()
+            sched.step()
+
+        val = _evaluate(m, val_loader, loss_fn, device)
+        if distributed:
+            # Every rank computes the same val loss up to float rounding,
+            # but the early-stop decision must be bit-identical everywhere
+            # or the ranks desynchronize - so rank 0's number wins.
+            import torch.distributed as dist
+
+            t = torch.tensor([val], dtype=torch.float64, device=device)
+            dist.broadcast(t, src=0)
+            val = float(t.item())
+
+        improved = val < best_val - min_delta
+        if verbose:
+            print0(
+                f"[autotrainer] fit: epoch {epoch + 1}/{epochs} "
+                f"val_loss={val:.4f}{' *' if improved else ''}"
+            )
+        if improved:
+            best_val, bad_epochs = val, 0
+            best_state = {k: v.detach().cpu().clone() for k, v in _unwrap(m).state_dict().items()}
+        else:
+            bad_epochs += 1
+            if bad_epochs >= patience:
+                if verbose:
+                    print0(
+                        f"[autotrainer] fit: early stop at epoch {epoch + 1} "
+                        f"(no improvement for {patience} epochs)"
+                    )
+                break
+
+    final = _unwrap(m)
+    if best_state is not None:
+        final.load_state_dict(best_state)
+    if verbose:
+        print0(f"[autotrainer] fit: done - best val_loss={best_val:.4f} with {best_params}")
+    return final, best_params, study
