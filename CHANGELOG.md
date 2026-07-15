@@ -5,6 +5,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-15
+### Added
+- `autotrainer.fit(model, train_loader, val_loader)`: one-call orchestrator
+  that composes tuning and distribution. Phase 1 runs the Optuna recipe
+  search (on rank 0 only under DDP, with the winning recipe and inferred
+  loss broadcast to all ranks); phase 2 retrains the winner from the
+  model's original initial weights through `prepare()` (DDP +
+  DistributedSampler when launched distributed) with a warmup+cosine
+  schedule, mixed precision, and early stopping on the validation loss,
+  restoring the best epoch's weights before returning
+  `(model, best_params, study)`.
+- `AUTOTRAINER_TIMEOUT` env var (seconds): overrides the
+  `torch.distributed` collective timeout, for when a long rank-0 tuning
+  phase in `fit()` would exceed torch's ~30-minute default while the other
+  ranks wait.
+- `autotrainer.set_epoch(loader, epoch)`: call at every epoch start so the
+  `DistributedSampler` installed by `prepare()` reshuffles each epoch
+  (without it, every epoch sees the same order). No-op for non-distributed
+  loaders; `prepare()` now prints a reminder when it installs the sampler.
+### Fixed
+- `prepare()` and `tune()` no longer discard user DataLoader settings when
+  rebuilding loaders: `pin_memory` (was forced on CUDA), `timeout`,
+  `worker_init_fn`, `generator`, `persistent_workers`, and `prefetch_factor`
+  are now carried over. `prepare()` also honors `shuffle=False`
+  (SequentialSampler) instead of always shuffling, passes through loaders
+  that already have a `DistributedSampler`, and raises a clear `TypeError`
+  for `batch_sampler=`/`IterableDataset` loaders (previously a crash or
+  silent data duplication across ranks) - and it validates the loader
+  before joining the process group, so a bad loader fails fast instead of
+  hanging the other ranks.
+- The inferred BCE loss is now directly usable on the user's batches: it
+  accepts the integer `(N,)` targets that triggered its selection (plain
+  `BCEWithLogitsLoss` requires float targets shaped like the `(N, 1)`
+  logits and raised on the very next batch). Applies to `loss="bce"`
+  overrides too.
+- `auto()` under DDP now runs the LR range test on rank 0 only and
+  broadcasts the result. Previously every rank swept independently -
+  wasted work, and differently-shuffled loaders could land each rank on a
+  different LR, silently desynchronizing the DDP replicas.
+
 ## [0.8.0] - 2026-07-14
 ### Added
 - Open-source community files: `SECURITY.md` (vulnerability reporting policy),

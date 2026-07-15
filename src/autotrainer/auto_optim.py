@@ -25,6 +25,28 @@ def _peek_batch(dataloader: Any) -> tuple[Any, Any]:
     return xb, yb
 
 
+def _bce_loss() -> nn.Module:
+    """BCEWithLogitsLoss that also accepts integer class targets shaped (N,).
+
+    Plain BCEWithLogitsLoss requires FLOAT targets shaped like the (N, 1)
+    logits, but binary-classification datasets almost always yield integer
+    (N,) labels - the exact shape _infer_loss saw when it picked BCE. Without
+    this adapter the inferred loss would raise on the user's very next batch.
+    """
+    import torch
+    import torch.nn as nn
+
+    class _BCEWithLogitsAdapter(nn.BCEWithLogitsLoss):
+        def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+            if not torch.is_floating_point(target):
+                target = target.float()
+            if target.shape != input.shape:
+                target = target.reshape(input.shape)
+            return super().forward(input, target)
+
+    return _BCEWithLogitsAdapter()
+
+
 def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
     """Pick a loss from target dtype/shape, sanity-checked against model output."""
     import torch
@@ -48,7 +70,7 @@ def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
         # the n_classes check becomes dead code (any 1-output model -> BCE).
         if n_classes == 2 and out_dim == 1:
             reason = f"integer targets, binary ({n_classes} classes), 1 output"
-            return nn.BCEWithLogitsLoss(), "bce", reason
+            return _bce_loss(), "bce", reason
         reason = f"integer targets with {n_classes} classes, model outputs {out_dim}"
         if out_dim < n_classes:
             reason += f" [WARNING: output dim {out_dim} < {n_classes} classes!]"
@@ -71,9 +93,10 @@ def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
 def _make_loss(name: str) -> nn.Module:
     import torch.nn as nn
 
+    if name == "bce":
+        return _bce_loss()
     return {
         "cross_entropy": nn.CrossEntropyLoss,
-        "bce": nn.BCEWithLogitsLoss,
         "mse": nn.MSELoss,
         "huber": nn.HuberLoss,
     }[name]()
@@ -136,6 +159,12 @@ def find_lr(
     seen). The returned LR is the steepest-descent point backed off 10x for
     stability; if the sweep fails (too few samples), a safe ``3e-4`` default
     is returned.
+
+    Note: this runs locally in the calling process. Under DDP, ``auto()``
+    wraps it so the sweep happens on rank 0 only and the result is broadcast
+    - if you call ``find_lr`` directly in a distributed script, do the same
+    (differently-shuffled loaders can otherwise land each rank on a
+    different LR).
 
     Args:
         model: a ``torch.nn.Module``.
@@ -207,6 +236,34 @@ def find_lr(
     return max(lrs[steepest] / 10, min_lr)
 
 
+def _find_lr_synced(model: Any, dataloader: Any, loss_fn: Any, optimizer_name: str) -> float:
+    """find_lr on rank 0 only; the other ranks receive the result by broadcast.
+
+    Under DDP every rank runs auto(), and letting each rank sweep
+    independently wastes work and - worse - differently-shuffled loaders can
+    land each rank on a different LR. Gradients are synced but every
+    optimizer steps with its own local LR, so the replicas silently drift.
+    """
+    from .backends.torch_backend import _ensure_process_group
+
+    if not _ensure_process_group():
+        return find_lr(model, dataloader, loss_fn, optimizer_name)
+
+    import os
+
+    import torch
+    import torch.distributed as dist
+
+    rank = int(os.environ.get("RANK", "0"))
+    lr = find_lr(model, dataloader, loss_fn, optimizer_name) if rank == 0 else 0.0
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    # NCCL broadcasts need a CUDA tensor; gloo needs CPU.
+    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    t = torch.tensor([lr], dtype=torch.float64, device=device)
+    dist.broadcast(t, src=0)
+    return float(t.item())
+
+
 def auto(
     model: Any,
     dataloader: Any,
@@ -254,8 +311,8 @@ def auto(
     if lr is not None:
         lr_val, lr_why = lr, "user override"
     else:
-        lr_val = find_lr(model, dataloader, loss_fn, optimizer or "adamw")
-        lr_why = "LR range test (steepest descent / 10)"
+        lr_val = _find_lr_synced(model, dataloader, loss_fn, optimizer or "adamw")
+        lr_why = "LR range test (steepest descent / 10, rank 0)"
 
     opt, opt_name, opt_why = _make_optimizer(model, optimizer, lr_val, weight_decay)
 

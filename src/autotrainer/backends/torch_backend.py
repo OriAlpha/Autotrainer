@@ -18,6 +18,93 @@ def _dist_info() -> tuple[int, int, int]:
     return rank, local_rank, world_size
 
 
+def _ensure_process_group() -> bool:
+    """Init the process group once if WORLD_SIZE > 1; True when distributed."""
+    import torch
+    import torch.distributed as dist
+
+    rank, local_rank, world_size = _dist_info()
+    if world_size <= 1:
+        return False
+    if not dist.is_initialized():
+        use_cuda = torch.cuda.is_available()
+        if use_cuda:
+            # Bind before NCCL init so ranks don't all land on GPU 0.
+            torch.cuda.set_device(local_rank)
+        kwargs: dict[str, Any] = {}
+        timeout_s = os.environ.get("AUTOTRAINER_TIMEOUT")
+        if timeout_s:
+            # Long rank-0 phases (e.g. fit()'s tuning) can outlive the
+            # default collective timeout while the other ranks wait.
+            from datetime import timedelta
+
+            kwargs["timeout"] = timedelta(seconds=int(timeout_s))
+        dist.init_process_group(
+            backend="nccl" if use_cuda else "gloo",
+            rank=rank,
+            world_size=world_size,
+            **kwargs,
+        )
+    return True
+
+
+def _loader_kwargs(dataloader: Any) -> dict[str, Any]:
+    """Carry the user's DataLoader settings over to a rebuilt loader."""
+    kwargs: dict[str, Any] = {
+        "num_workers": dataloader.num_workers,
+        "collate_fn": dataloader.collate_fn,
+        "pin_memory": dataloader.pin_memory,
+        "drop_last": dataloader.drop_last,
+        "timeout": dataloader.timeout,
+        "worker_init_fn": dataloader.worker_init_fn,
+        "generator": dataloader.generator,
+        "persistent_workers": dataloader.persistent_workers,
+    }
+    if dataloader.num_workers > 0:
+        # DataLoader rejects prefetch_factor when there are no workers.
+        kwargs["prefetch_factor"] = dataloader.prefetch_factor
+    return kwargs
+
+
+def _shard_loader(dataloader: Any, rank: int, world_size: int) -> Any:
+    """Swap the loader's sampler for a DistributedSampler, keeping its settings."""
+    import torch
+    from torch.utils.data import DataLoader, SequentialSampler
+    from torch.utils.data.distributed import DistributedSampler
+
+    if isinstance(dataloader.dataset, torch.utils.data.IterableDataset):
+        raise TypeError(
+            "autotrainer cannot shard a DataLoader over an IterableDataset; "
+            "shard inside the dataset (e.g. by RANK/WORLD_SIZE env vars) and "
+            "it will be passed through unchanged."
+        )
+    if isinstance(dataloader.sampler, DistributedSampler):
+        return dataloader  # the user already sharded it
+    if dataloader.batch_size is None:
+        raise TypeError(
+            "autotrainer cannot shard a DataLoader built with batch_sampler=; "
+            "construct it with batch_size= and let autotrainer install the "
+            "DistributedSampler, or pass sampler=DistributedSampler(...) yourself."
+        )
+    # Honor the user's shuffle choice: SequentialSampler means shuffle=False.
+    shuffle = not isinstance(dataloader.sampler, SequentialSampler)
+    sampler = DistributedSampler(
+        dataloader.dataset, num_replicas=world_size, rank=rank, shuffle=shuffle
+    )
+    if rank == 0:
+        print(
+            "[autotrainer] DistributedSampler installed (shuffle="
+            f"{shuffle}) - call autotrainer.set_epoch(loader, epoch) at the "
+            "start of every epoch so each epoch reshuffles"
+        )
+    return DataLoader(
+        dataloader.dataset,
+        batch_size=dataloader.batch_size,
+        sampler=sampler,
+        **_loader_kwargs(dataloader),
+    )
+
+
 def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
@@ -25,10 +112,7 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
     Multi device:  init process group, DDP-wrap model, distributed sampler.
     """
     import torch
-    import torch.distributed as dist
     from torch.nn.parallel import DistributedDataParallel as DDP
-    from torch.utils.data import DataLoader
-    from torch.utils.data.distributed import DistributedSampler
 
     rank, local_rank, world_size = _dist_info()
     use_cuda = torch.cuda.is_available()
@@ -38,25 +122,12 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
     model = model.to(device)
 
     if world_size > 1:
-        if not dist.is_initialized():
-            dist.init_process_group(
-                backend="nccl" if use_cuda else "gloo",
-                rank=rank,
-                world_size=world_size,
-            )
-        model = DDP(model, device_ids=[local_rank] if use_cuda else None)
-
         if dataloader is not None:
-            sampler = DistributedSampler(dataloader.dataset, num_replicas=world_size, rank=rank)
-            dataloader = DataLoader(
-                dataloader.dataset,
-                batch_size=dataloader.batch_size,
-                sampler=sampler,
-                num_workers=dataloader.num_workers,
-                pin_memory=use_cuda,
-                drop_last=dataloader.drop_last,
-                collate_fn=dataloader.collate_fn,
-            )
+            # Shard (and validate) BEFORE any collective op: if this rank
+            # raised after init, the others would hang in the process group.
+            dataloader = _shard_loader(dataloader, rank, world_size)
+        _ensure_process_group()
+        model = DDP(model, device_ids=[local_rank] if use_cuda else None)
 
     out = [model]
     if dataloader is not None:

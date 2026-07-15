@@ -12,6 +12,7 @@ from autotrainer.utils import (  # noqa: E402
     get_batch_size,
     get_model_device,
     save0,
+    set_epoch,
 )
 
 
@@ -54,6 +55,45 @@ class TestGetBatchSize:
 
     def test_returns_zero_for_scalars(self):
         assert get_batch_size(42) == 0
+
+
+class TestSetEpoch:
+    def test_forwards_to_distributed_sampler(self):
+        from torch.utils.data import DataLoader, TensorDataset
+        from torch.utils.data.distributed import DistributedSampler
+
+        ds = TensorDataset(torch.randn(8, 3))
+        sampler = DistributedSampler(ds, num_replicas=2, rank=0)
+        loader = DataLoader(ds, batch_size=2, sampler=sampler)
+        set_epoch(loader, 5)
+        assert sampler.epoch == 5
+
+    def test_reshuffles_between_epochs(self):
+        # The whole point: without set_epoch the order repeats every epoch.
+        from torch.utils.data import TensorDataset
+        from torch.utils.data.distributed import DistributedSampler
+
+        ds = TensorDataset(torch.arange(64))
+        sampler = DistributedSampler(ds, num_replicas=2, rank=0, shuffle=True)
+
+        class _Loader:
+            pass
+
+        loader = _Loader()
+        loader.sampler = sampler
+        set_epoch(loader, 0)
+        order0 = list(sampler)
+        set_epoch(loader, 1)
+        assert list(sampler) != order0
+
+    def test_noop_for_plain_loader(self):
+        from torch.utils.data import DataLoader, TensorDataset
+
+        loader = DataLoader(TensorDataset(torch.randn(4, 3)), batch_size=2)
+        set_epoch(loader, 3)  # SequentialSampler has no set_epoch; must not raise
+
+    def test_noop_for_object_without_sampler(self):
+        set_epoch(object(), 1)  # must not raise
 
 
 class TestGetModelDevice:

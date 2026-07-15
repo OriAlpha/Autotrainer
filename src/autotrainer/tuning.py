@@ -45,13 +45,13 @@ def _suggest(trial: Any, space: dict) -> dict:
 def _rebuild_loader(loader: Any, batch_size: int) -> Any:
     from torch.utils.data import DataLoader
 
+    from .backends.torch_backend import _loader_kwargs
+
     return DataLoader(
         loader.dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=loader.num_workers,
-        drop_last=loader.drop_last,
-        collate_fn=loader.collate_fn,
+        **_loader_kwargs(loader),
     )
 
 
