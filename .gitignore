@@ -21,3 +21,6 @@ docs/build/
 
 # Local agent/session artifacts
 .zcode/
+
+# Code-analysis tool output (generated, not part of the package)
+graphify-out/
