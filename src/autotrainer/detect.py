@@ -32,23 +32,36 @@ class Environment:
 
 def _gpu_count() -> int:
     """Count GPUs without importing torch (works pre-install too)."""
-    # Respect CUDA_VISIBLE_DEVICES if set
+    # CUDA_VISIBLE_DEVICES can only RESTRICT the visible GPUs, never invent
+    # them - "0" on a GPU-less box must not report a phantom GPU. Parse it
+    # as an upper bound and cap it by the physically detected count.
+    visible = None
     cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
     if cvd is not None:
-        return 0 if cvd.strip() in ("", "-1") else len(cvd.split(","))
+        if cvd.strip() in ("", "-1"):
+            return 0
+        visible = len(cvd.split(","))
+
+    detected = None
     try:
         import torch  # noqa: PLC0415
 
+        # torch already honors CUDA_VISIBLE_DEVICES, so its count is final.
         return torch.cuda.device_count()
     except Exception:
         pass
     if shutil.which("nvidia-smi"):
         try:
             out = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=10)
-            return len([ln for ln in out.stdout.splitlines() if ln.startswith("GPU")])
+            detected = len([ln for ln in out.stdout.splitlines() if ln.startswith("GPU")])
         except Exception:
-            return 0
-    return 0
+            detected = 0
+
+    if visible is not None:
+        # nvidia-smi ignores CUDA_VISIBLE_DEVICES, so apply the restriction;
+        # with no way to count hardware at all, trust the env var.
+        return min(visible, detected) if detected is not None else visible
+    return detected or 0
 
 
 def _slurm_master_addr() -> str:
