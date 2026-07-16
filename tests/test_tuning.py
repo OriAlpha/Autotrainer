@@ -20,6 +20,50 @@ from autotrainer.tuning import (  # noqa: E402
 )
 
 
+class TestSharedStorage:
+    def test_sequential_tunes_accumulate_in_one_study(self, tmp_path):
+        """Two tune() calls on the same journal storage share one study -
+        the mechanism fit() uses to run one trial per rank."""
+        from autotrainer.fit import _journal_storage
+
+        torch.manual_seed(0)
+        x = torch.randn(32, 3)
+        y = x.sum(dim=1, keepdim=True)
+        train = DataLoader(TensorDataset(x, y), batch_size=8, shuffle=True)
+        val = DataLoader(TensorDataset(x, y), batch_size=8)
+        model = nn.Linear(3, 1)
+        space = {"lr": ("loguniform", 1e-3, 1e-1)}
+        path = str(tmp_path / "study.log")
+
+        kwargs = {
+            "epochs_per_trial": 1,
+            "space": space,
+            "loss": "mse",
+            "verbose": False,
+            "study_name": "shared",
+        }
+        _, _, study1 = tune(
+            model, train, val, trials=2, seed=0, storage=_journal_storage(path), **kwargs
+        )
+        _, params2, study2 = tune(
+            model, train, val, trials=1, seed=1, storage=_journal_storage(path), **kwargs
+        )
+        assert len(study2.trials) == 3  # 2 + 1 in the SAME study
+        assert params2  # best over all three trials
+        assert study1.study_name == study2.study_name == "shared"
+
+    def test_zero_trials_returns_empty_params_without_raising(self):
+        """A zero-trial share (more ranks than trials) must not crash."""
+        torch.manual_seed(0)
+        x = torch.randn(16, 3)
+        y = x.sum(dim=1, keepdim=True)
+        train = DataLoader(TensorDataset(x, y), batch_size=8)
+        val = DataLoader(TensorDataset(x, y), batch_size=8)
+        _, params, study = tune(nn.Linear(3, 1), train, val, trials=0, loss="mse", verbose=False)
+        assert params == {}
+        assert len(study.trials) == 0
+
+
 class TestSuggest:
     def test_all_space_kinds_produce_in_range_values(self):
         space = {

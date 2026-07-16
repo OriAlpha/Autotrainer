@@ -10,11 +10,13 @@ Composes the two halves of autotrainer:
                warmup+cosine schedule, mixed precision, and early stopping
                on the validation loss.
 
-Under `autotrainer run` with multiple processes, rank 0 runs the search
-while the other ranks wait; the winning recipe (and the inferred loss) is
-broadcast so every rank trains the exact same configuration. Long searches
-under DDP may exceed the process-group collective timeout - raise it with
-the AUTOTRAINER_TIMEOUT env var (seconds) if needed.
+Under `autotrainer run` with multiple processes, the search itself is
+parallel: trials are split across the ranks and pulled from a shared
+Optuna journal-file study, one trial per process on its own device. The
+winning recipe (and the inferred loss) is broadcast so every rank trains
+the exact same configuration. If phase 1 is much longer than phase 2 on
+some ranks, raise the collective timeout with the AUTOTRAINER_TIMEOUT env
+var (seconds).
 """
 
 from __future__ import annotations
@@ -38,6 +40,76 @@ def _sync_from_rank0(payload: list, distributed: bool) -> list:
 
         dist.broadcast_object_list(payload, src=0)
     return payload
+
+
+def _journal_storage(path: str) -> Any:
+    """File-based Optuna storage that is safe on shared/NFS filesystems.
+
+    The open()-based lock replaces the default symlink lock, which does not
+    work on Windows and is unreliable on some NFS mounts.
+    """
+    from optuna.storages import JournalStorage
+
+    try:  # optuna >= 4
+        from optuna.storages.journal import JournalFileBackend, JournalFileOpenLock
+
+        return JournalStorage(JournalFileBackend(path, lock_obj=JournalFileOpenLock(path)))
+    except ImportError:  # optuna 3.x
+        from optuna.storages import JournalFileOpenLock, JournalFileStorage
+
+        return JournalStorage(JournalFileStorage(path, lock_obj=JournalFileOpenLock(path)))
+
+
+def _parallel_search(
+    model: Any,
+    train_loader: Any,
+    val_loader: Any,
+    *,
+    trials: int,
+    epochs_per_trial: int,
+    space: dict | None,
+    loss: str,
+    seed: int,
+    verbose: bool,
+    storage_path: str,
+) -> tuple[dict, Any]:
+    """One search, every rank working: trials are split across the ranks and
+    pulled from a shared journal-file study, so the whole allocation is busy
+    during phase 1 instead of idling behind rank 0. Each rank trains its
+    trials on its own device (LOCAL_RANK); samplers are seeded per rank so
+    the ranks propose different candidates."""
+    import contextlib
+    import os
+
+    from .utils import barrier
+
+    r = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+
+    if r == 0:  # a stale study from a previous run must not pollute this one
+        for stale in (storage_path, storage_path + ".lock"):
+            with contextlib.suppress(OSError):
+                os.unlink(stale)
+    barrier()
+
+    share = trials // world_size + (1 if r < trials % world_size else 0)
+    _, _, study = tune(
+        model,
+        train_loader,
+        val_loader,
+        trials=share,
+        epochs_per_trial=epochs_per_trial,
+        space=space,
+        loss=loss,
+        seed=seed + r,
+        verbose=verbose and r == 0,
+        storage=_journal_storage(storage_path),
+        study_name="autotrainer-fit",
+    )
+    barrier()  # every rank's trials must be in the study before reading the winner
+    if r != 0:
+        return {}, None
+    return study.best_params, study
 
 
 def _save_checkpoint(path: str, payload: dict) -> None:
@@ -79,15 +151,18 @@ def fit(
     patience: int = 5,
     min_delta: float = 0.0,
     checkpoint: str | None = None,
+    study_storage: str | None = None,
     seed: int = 0,
     verbose: bool = True,
 ) -> tuple[Any, dict, Any]:
     """Search the training recipe, then fully train the winner.
 
     Phase 1 (tune): Optuna search over lr / weight decay / optimizer /
-    batch size (or a custom ``space``) on short trials. Under DDP this runs
-    on rank 0 only and the winning recipe is broadcast, so every rank
-    trains the same configuration.
+    batch size (or a custom ``space``) on short trials. Under DDP the
+    trials are split across all ranks through a shared journal-file study
+    (see ``study_storage``), one trial per process on its own device; the
+    winning recipe is then broadcast so every rank trains the same
+    configuration.
 
     Phase 2 (train): the winning recipe is retrained from the model's
     ORIGINAL initial weights - not from the best trial's weights, which
@@ -119,6 +194,11 @@ def fit(
             skipped and training RESUMES from it - so a requeued SLURM job
             rerunning the same script picks up where it died. Delete the
             file to start fresh.
+        study_storage: path of the shared Optuna journal file used for the
+            parallel search when launched distributed. Defaults to
+            ``.autotrainer_study_<jobid>.log`` in the working directory;
+            on multi-node runs it must live on a filesystem all nodes
+            share (SLURM working directories normally are).
         seed: Optuna sampler seed for reproducibility.
         verbose: print tuning output and per-epoch val losses.
 
@@ -154,33 +234,54 @@ def fit(
             f"(epoch {ckpt['epoch'] + 1} done, best val_loss={ckpt['best_val']:.4f})"
         )
 
-    # ---- Phase 1: search the recipe (rank 0 only when distributed) ----
+    # ---- Phase 1: search the recipe ----
     study = None
     best_params: dict[str, Any] = {}
     if ckpt is not None:
+        # A resumed run already agrees on the recipe - all ranks read the file.
         best_params, loss = ckpt["params"], ckpt["loss"]
-    elif not distributed or rank() == 0:
-        if loss is None:
+    else:
+        if loss is None and (not distributed or rank() == 0):
             xb, yb = next(iter(train_loader))
             _, loss, loss_why = _infer_loss(model, yb, xb)
             if verbose:
                 print(f"[autotrainer] fit: loss={loss} ({loss_why})")
-        _, best_params, study = tune(
-            model,
-            train_loader,
-            val_loader,
-            trials=trials,
-            epochs_per_trial=epochs_per_trial,
-            space=space,
-            loss=loss,
-            seed=seed,
-            verbose=verbose,
-        )
-    # One sync point: ranks > 0 wait here while rank 0 searches. The loss
-    # name rides along so a shuffled first batch can't flip the inference
-    # on some rank. (A resumed run already agrees - all ranks read the file.)
-    if ckpt is None:
-        best_params, loss = _sync_from_rank0([best_params, loss], distributed)
+        if distributed:
+            # Everyone must search with the SAME loss - a shuffled first
+            # batch could otherwise flip the inference on some rank.
+            [loss] = _sync_from_rank0([loss], True)
+        assert loss is not None  # inferred above or user-provided
+
+        if not distributed:
+            _, best_params, study = tune(
+                model,
+                train_loader,
+                val_loader,
+                trials=trials,
+                epochs_per_trial=epochs_per_trial,
+                space=space,
+                loss=loss,
+                seed=seed,
+                verbose=verbose,
+            )
+        else:
+            import os
+
+            key = os.environ.get("SLURM_JOB_ID") or os.environ.get("MASTER_PORT", "29500")
+            best_params, study = _parallel_search(
+                model,
+                train_loader,
+                val_loader,
+                trials=trials,
+                epochs_per_trial=epochs_per_trial,
+                space=space,
+                loss=loss,
+                seed=seed,
+                verbose=verbose,
+                storage_path=study_storage or f".autotrainer_study_{key}.log",
+            )
+            # Ranks > 0 hold an empty dict; rank 0 read the winner.
+            [best_params] = _sync_from_rank0([best_params], True)
     loss_fn = _make_loss(loss)
 
     # ---- Phase 2: full retrain of the winner from the original init ----

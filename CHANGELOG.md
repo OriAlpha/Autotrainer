@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- Parallel hyperparameter search in `fit()`: when launched distributed,
+  trials are split across ALL ranks through a shared Optuna journal-file
+  study (`study_storage=`, default `.autotrainer_study_<jobid>.log`), one
+  trial per process on its own GPU - previously ranks 1+ idled while rank
+  0 searched. Samplers are seeded per rank; the winner is broadcast as
+  before. `tune()` gained `storage=`/`study_name=` to join a shared study.
 - `fit(checkpoint=...)`: preemption-safe checkpointing. Rank 0 atomically
   writes the full training state (current + best weights, optimizer,
   scheduler, recipe, early-stop counters) after every phase-2 epoch; if

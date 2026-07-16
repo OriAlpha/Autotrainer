@@ -107,7 +107,9 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=3
 ```
 
 1. **Tune**: Optuna searches lr / weight decay / optimizer / batch size on
-   short trials (on rank 0 when launched distributed).
+   short trials. Launched distributed, the trials are split across all
+   ranks via a shared journal-file study - one trial per process, every
+   GPU busy during the search.
 2. **Train**: the winning recipe is retrained from your model's original
    init through `prepare()` - so `autotrainer run` distributes it across
    every GPU/node - with warmup+cosine, mixed precision, and early stopping
