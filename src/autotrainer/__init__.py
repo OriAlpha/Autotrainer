@@ -101,15 +101,31 @@ def find_lr(model: Any, dataloader: Any, loss_fn: Any, **kwargs: Any) -> float:
 
 
 def tune(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple[Any, ...]:
-    """PyTorch: search training hyperparameters (lr, wd, optimizer, batch size)."""
-    from .tuning import tune as _t
+    """Search hyperparameters for a model (dispatches by framework).
 
-    return _t(model, train_loader, val_loader, **kwargs)
+    PyTorch modules: pass DataLoaders; searches the training recipe
+    (lr, weight decay, optimizer, batch size).
+    sklearn-API estimators (scikit-learn, XGBoost, LightGBM): pass
+    ``(X, y)`` tuples; searches the model's hyperparameters, with curated
+    default spaces for the common families.
+    """
+    mod = type(model).__module__ or ""
+    if mod.startswith("torch") or _is_torch_module(model):
+        from .tuning import tune as _t
+
+        return _t(model, train_loader, val_loader, **kwargs)
+    if mod.startswith(("xgboost", "lightgbm", "sklearn")) or _is_sklearn_estimator(model):
+        from .tuning_estimator import tune_estimator as _te
+
+        return _te(model, train_loader, val_loader, **kwargs)
+    raise TypeError(
+        f"tune() supports PyTorch modules and sklearn-API estimators, got {type(model)!r}."
+    )
 
 
 def fit(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple[Any, ...]:
     """PyTorch: tune the recipe, then fully train the winner (with early stopping)."""
-    from .fit import fit as _f
+    from .fitting import fit as _f
 
     return _f(model, train_loader, val_loader, **kwargs)
 

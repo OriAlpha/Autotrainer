@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Fixed
+- The `fit` orchestrator module was renamed `fitting.py`: the module name
+  `autotrainer/fit.py` shadowed the package-level `fit()` function, so
+  `import autotrainer.fit` replaced the callable with the module object
+  for the rest of the process.
 - Local multi-GPU launches now rendezvous on a free OS-assigned port
   instead of always 29500, so two `autotrainer run` jobs on one machine no
   longer collide. An explicit `AUTOTRAINER_PORT` still pins the port, and
@@ -14,6 +18,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   a GPU-less machine no longer reports a phantom GPU (which sent the
   launcher into single-GPU CUDA mode on CPU boxes).
 ### Added
+- `tune()` now supports sklearn-API estimators (scikit-learn,
+  XGBoost/LightGBM sklearn wrappers): pass `(X, y)` tuples instead of
+  DataLoaders. Curated default search spaces ship for XGBoost, LightGBM,
+  random forests/extra trees, gradient boosting, logistic regression,
+  ridge/lasso/elastic-net, and SVM; other estimators take a custom
+  `space=`. Scoring defaults to the estimator's own `.score()` (override
+  with `scoring=`), thread counts follow the SLURM allocation, and the
+  user's estimator object is never fitted or mutated. `fit()` raises a
+  helpful TypeError pointing to `tune()` for non-PyTorch models.
 - Parallel hyperparameter search in `fit()`: when launched distributed,
   trials are split across ALL ranks through a shared Optuna journal-file
   study (`study_storage=`, default `.autotrainer_study_<jobid>.log`), one
