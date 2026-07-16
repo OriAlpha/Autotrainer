@@ -146,8 +146,8 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **Stabilization toward 1.0**: expand real distributed test coverage, tighten
-  the type-check to strict mode, and freeze the public API.
+- **Stabilization toward 1.0**: freeze the public API (mypy strict mode and
+  real 2-rank distributed tests already gate CI).
 - **More schedulers and search spaces** beyond warmup+cosine and the default
   Optuna recipe.
 

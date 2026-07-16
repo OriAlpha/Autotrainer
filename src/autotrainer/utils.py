@@ -9,7 +9,7 @@ one-liner.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import torch
@@ -24,13 +24,13 @@ def is_main() -> bool:
     return rank() == 0
 
 
-def print0(*args, **kwargs) -> None:
+def print0(*args: Any, **kwargs: Any) -> None:
     """Print only on rank 0 - use for logging inside training loops."""
     if is_main():
         print(*args, **kwargs)
 
 
-def save0(obj, path: str) -> None:
+def save0(obj: Any, path: str) -> None:
     """torch.save, but only on rank 0, so workers don't clobber the file."""
     if is_main():
         import torch
@@ -38,7 +38,7 @@ def save0(obj, path: str) -> None:
         torch.save(obj, path)
 
 
-def set_epoch(dataloader, epoch: int) -> None:
+def set_epoch(dataloader: Any, epoch: int) -> None:
     """Tell a DistributedSampler which epoch this is - call at every epoch start.
 
     Without it, a DistributedSampler yields the SAME shuffle order every
@@ -69,7 +69,7 @@ def barrier() -> None:
         pass
 
 
-def autocast_context():
+def autocast_context() -> Any:
     """Mixed-precision context: bf16 on modern GPUs, fp16 otherwise, no-op on CPU.
 
     Usage:
@@ -86,7 +86,7 @@ def autocast_context():
     return torch.autocast(device_type="cuda", dtype=dtype)
 
 
-def get_model_device(model) -> torch.device:
+def get_model_device(model: Any) -> torch.device:
     """Get the device of the model's first parameter, defaulting to CPU."""
     import torch
 
@@ -96,7 +96,7 @@ def get_model_device(model) -> torch.device:
         return torch.device("cpu")
 
 
-def to_device(data, device):
+def to_device(data: Any, device: Any) -> Any:
     """Recursively move tensors in dictionaries, lists, tuples, or raw tensors to device."""
     import torch
 
@@ -111,7 +111,7 @@ def to_device(data, device):
     return data
 
 
-def slice_batch(data, n: int = 2):
+def slice_batch(data: Any, n: int = 2) -> Any:
     """Recursively slice batch data structures to the first n samples."""
     import torch
 
@@ -126,7 +126,7 @@ def slice_batch(data, n: int = 2):
     return data
 
 
-def robust_forward(model, xb):
+def robust_forward(model: Any, xb: Any) -> Any:
     """Call a model robustly with dict unpacking, list/tuple unpacking, or direct args."""
     if isinstance(xb, dict):
         try:
@@ -141,12 +141,12 @@ def robust_forward(model, xb):
     return model(xb)
 
 
-def get_batch_size(data) -> int:
+def get_batch_size(data: Any) -> int:
     """Recursively find the batch size of the target or input data structure."""
     import torch
 
     if isinstance(data, torch.Tensor):
-        return data.shape[0]
+        return int(data.shape[0])
     elif isinstance(data, dict):
         for v in data.values():
             sz = get_batch_size(v)
@@ -160,7 +160,7 @@ def get_batch_size(data) -> int:
     return 0
 
 
-def GradScaler(*args, **kwargs):
+def GradScaler(*args: Any, **kwargs: Any) -> Any:
     """Return a GradScaler enabled only if fp16 is active.
 
     If CUDA is not available or if the GPU supports bf16, this returns a disabled

@@ -41,7 +41,7 @@ def prepare(model: Any, n_jobs: int | None = None) -> Any:
     return model
 
 
-def boost_params(params: dict | None = None, lib: str = "xgboost") -> dict:
+def boost_params(params: dict[str, Any] | None = None, lib: str = "xgboost") -> dict[str, Any]:
     """Return a params dict with the right thread key set, for native APIs.
 
     Example:

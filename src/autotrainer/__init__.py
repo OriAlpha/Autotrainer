@@ -43,7 +43,7 @@ def scale_batch_size(per_replica_batch: int) -> int:
     return _s(per_replica_batch)
 
 
-def boost_params(params: dict | None = None, lib: str = "xgboost") -> dict:
+def boost_params(params: dict[str, Any] | None = None, lib: str = "xgboost") -> dict[str, Any]:
     """XGBoost/LightGBM native API: params dict with auto thread count."""
     from .backends.boosting_backend import boost_params as _b
 
