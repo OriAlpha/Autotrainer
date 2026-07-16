@@ -140,6 +140,47 @@ class TestLaunchLocalMultiGpu:
         )
         assert launch("dummy_script.py", []) == 0
 
+    def test_picks_free_port_not_the_fixed_default(self, monkeypatch):
+        """Two local jobs on one machine must not collide on 29500."""
+        seen_ports = []
+
+        def fake_popen(cmd, env=None, **kw):
+            seen_ports.append(env["MASTER_PORT"])
+            p = MagicMock()
+            p.poll.return_value = 0
+            p.pid = 1
+            return p
+
+        monkeypatch.setattr("autotrainer.launcher.subprocess.Popen", fake_popen)
+        monkeypatch.setattr("autotrainer.launcher.time.sleep", lambda *_: None)
+        monkeypatch.setattr(
+            "autotrainer.launcher.detect",
+            lambda: Environment(mode="local_multi_gpu", nproc_per_node=2, gpus=2),
+        )
+        assert launch("dummy_script.py", []) == 0
+        assert len(set(seen_ports)) == 1  # all workers share one rendezvous
+        assert seen_ports[0] != "29500"  # OS-assigned, not the collision-prone default
+
+    def test_explicit_autotrainer_port_is_pinned(self, monkeypatch):
+        seen_ports = []
+
+        def fake_popen(cmd, env=None, **kw):
+            seen_ports.append(env["MASTER_PORT"])
+            p = MagicMock()
+            p.poll.return_value = 0
+            p.pid = 1
+            return p
+
+        monkeypatch.setenv("AUTOTRAINER_PORT", "40123")
+        monkeypatch.setattr("autotrainer.launcher.subprocess.Popen", fake_popen)
+        monkeypatch.setattr("autotrainer.launcher.time.sleep", lambda *_: None)
+        monkeypatch.setattr(
+            "autotrainer.launcher.detect",
+            lambda: Environment(mode="local_multi_gpu", nproc_per_node=1, gpus=2),
+        )
+        assert launch("dummy_script.py", []) == 0
+        assert seen_ports == ["40123"]
+
     def test_keyboard_interrupt_returns_130(self, monkeypatch):
         p = MagicMock()
         p.poll.side_effect = [None, KeyboardInterrupt()]

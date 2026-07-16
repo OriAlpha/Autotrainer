@@ -20,6 +20,16 @@ import time
 from .detect import Environment, detect
 
 
+def _free_port() -> int:
+    """Ask the OS for a free port so two local jobs on one machine never
+    collide on the fixed default (29500)."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 def _rendezvous_env(env: Environment, rank: int, local_rank: int) -> dict[str, str]:
     e = os.environ.copy()
     e.update(
@@ -58,6 +68,13 @@ def launch(script: str, script_args: list[str]) -> int:
         return 0
 
     if env.mode == "local_multi_gpu":
+        # All workers are on this machine, so any free port works as the
+        # rendezvous - only an explicit AUTOTRAINER_PORT pins it. (SLURM
+        # keeps the fixed default: every node must agree on the port
+        # without being able to ask node 0 which one it picked.)
+        port_override = os.environ.get("AUTOTRAINER_PORT")
+        env.master_port = int(port_override) if port_override else _free_port()
+
         # We are the parent: spawn one child per GPU. If any worker dies,
         # kill the rest immediately - a half-dead DDP job hangs forever
         # on the next collective op otherwise.

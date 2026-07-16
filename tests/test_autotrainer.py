@@ -35,6 +35,38 @@ class TestDetect:
         assert env.nproc_per_node == 4
 
 
+class TestGpuCount:
+    def test_cvd_hidden_means_zero(self, monkeypatch):
+        from autotrainer.detect import _gpu_count
+
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
+        assert _gpu_count() == 0
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+        assert _gpu_count() == 0
+
+    def test_cvd_cannot_invent_gpus(self, monkeypatch):
+        """Regression: CUDA_VISIBLE_DEVICES=0 on a GPU-less box used to
+        report one phantom GPU. The env var only restricts, never creates."""
+        torch = pytest.importorskip("torch")
+        if torch.cuda.is_available():
+            pytest.skip("needs a machine without CUDA GPUs")
+        from autotrainer.detect import _gpu_count
+
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        assert _gpu_count() == 0
+
+    def test_cvd_trusted_when_nothing_can_count_hardware(self, monkeypatch):
+        """With torch unimportable and no nvidia-smi, the env var is the
+        only signal available, so it is trusted as-is."""
+        from autotrainer import detect as detect_mod
+        from autotrainer.detect import _gpu_count
+
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        monkeypatch.setitem(sys.modules, "torch", None)  # import torch -> ImportError
+        monkeypatch.setattr(detect_mod.shutil, "which", lambda _: None)
+        assert _gpu_count() == 2
+
+
 class TestDispatcher:
     def test_sklearn_routing(self):
         pytest.importorskip("sklearn")

@@ -4,6 +4,15 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Fixed
+- Local multi-GPU launches now rendezvous on a free OS-assigned port
+  instead of always 29500, so two `autotrainer run` jobs on one machine no
+  longer collide. An explicit `AUTOTRAINER_PORT` still pins the port, and
+  SLURM keeps the fixed default (all nodes must agree up front).
+- `_gpu_count()`: `CUDA_VISIBLE_DEVICES` now only restricts the detected
+  GPU count instead of being trusted blindly - `CUDA_VISIBLE_DEVICES=0` on
+  a GPU-less machine no longer reports a phantom GPU (which sent the
+  launcher into single-GPU CUDA mode on CPU boxes).
 ### Added
 - Parallel hyperparameter search in `fit()`: when launched distributed,
   trials are split across ALL ranks through a shared Optuna journal-file
