@@ -36,7 +36,7 @@ def _bce_loss() -> nn.Module:
     import torch
     import torch.nn as nn
 
-    class _BCEWithLogitsAdapter(nn.BCEWithLogitsLoss):
+    class _BCEWithLogitsAdapter(nn.BCEWithLogitsLoss):  # type: ignore[misc]
         def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
             if not torch.is_floating_point(target):
                 target = target.float()

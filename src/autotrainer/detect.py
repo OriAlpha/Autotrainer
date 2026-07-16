@@ -47,7 +47,7 @@ def _gpu_count() -> int:
         import torch  # noqa: PLC0415
 
         # torch already honors CUDA_VISIBLE_DEVICES, so its count is final.
-        return torch.cuda.device_count()
+        return int(torch.cuda.device_count())
     except Exception:
         pass
     if shutil.which("nvidia-smi"):

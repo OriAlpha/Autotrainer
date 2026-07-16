@@ -42,7 +42,7 @@ def _slurm_hostnames() -> list[str]:
     return [h for h in nodelist.split(",") if h]
 
 
-def build_tf_config(port: int = 29500) -> dict:
+def build_tf_config(port: int = 29500) -> dict[str, Any]:
     """Build the TF_CONFIG dict for MultiWorkerMirroredStrategy from SLURM vars.
 
     One TF worker per node (each worker drives all local GPUs via NCCL).
@@ -86,5 +86,5 @@ def scale_batch_size(per_replica_batch: int) -> int:
     import tensorflow as tf
 
     strategy = tf.distribute.get_strategy()
-    n = max(strategy.num_replicas_in_sync, 1)
+    n = max(int(strategy.num_replicas_in_sync), 1)
     return per_replica_batch * n

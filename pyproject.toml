@@ -90,8 +90,10 @@ python_version = "3.11"
 # bundled stubs so an unrelated stub syntax error can't block our check.
 ignore_missing_imports = true
 follow_imports = "skip"
-warn_unused_ignores = true
-check_untyped_defs = true
+# Strict mode (roadmap item for 1.0). With follow_imports = "skip" the
+# optional-framework objects are Any, so strictness mostly polices OUR
+# signatures and generics rather than torch/optuna internals.
+strict = true
 
 [tool.coverage.run]
 source = ["src/autotrainer"]

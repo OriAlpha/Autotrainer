@@ -17,6 +17,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   GPU count instead of being trusted blindly - `CUDA_VISIBLE_DEVICES=0` on
   a GPU-less machine no longer reports a phantom GPU (which sent the
   launcher into single-GPU CUDA mode on CPU boxes).
+### Changed
+- mypy now runs in `strict` mode (a 1.0 roadmap item): all public and
+  internal signatures are fully annotated; optional-framework objects stay
+  `Any` via `follow_imports = "skip"`.
 ### Added
 - `tune()` now supports sklearn-API estimators (scikit-learn,
   XGBoost/LightGBM sklearn wrappers): pass `(X, y)` tuples instead of

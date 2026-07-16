@@ -33,7 +33,7 @@ def _unwrap(model: Any) -> Any:
     return model.module if isinstance(model, DDP) else model
 
 
-def _sync_from_rank0(payload: list, distributed: bool) -> list:
+def _sync_from_rank0(payload: list[Any], distributed: bool) -> list[Any]:
     """Broadcast a picklable payload from rank 0 (no-op when not distributed)."""
     if distributed:
         import torch.distributed as dist
@@ -67,12 +67,12 @@ def _parallel_search(
     *,
     trials: int,
     epochs_per_trial: int,
-    space: dict | None,
+    space: dict[str, Any] | None,
     loss: str,
     seed: int,
     verbose: bool,
     storage_path: str,
-) -> tuple[dict, Any]:
+) -> tuple[dict[str, Any], Any]:
     """One search, every rank working: trials are split across the ranks and
     pulled from a shared journal-file study, so the whole allocation is busy
     during phase 1 instead of idling behind rank 0. Each rank trains its
@@ -112,7 +112,7 @@ def _parallel_search(
     return study.best_params, study
 
 
-def _save_checkpoint(path: str, payload: dict) -> None:
+def _save_checkpoint(path: str, payload: dict[str, Any]) -> None:
     """Atomically write the checkpoint on rank 0 (a preemption mid-write must
     never corrupt the previous good checkpoint)."""
     from .utils import is_main
@@ -128,14 +128,15 @@ def _save_checkpoint(path: str, payload: dict) -> None:
     os.replace(tmp, path)
 
 
-def _load_checkpoint(path: str | None) -> dict | None:
+def _load_checkpoint(path: str | None) -> dict[str, Any] | None:
     import os
 
     if path is None or not os.path.exists(path):
         return None
     import torch
 
-    return torch.load(path, map_location="cpu", weights_only=True)
+    ckpt: dict[str, Any] = torch.load(path, map_location="cpu", weights_only=True)
+    return ckpt
 
 
 def fit(
@@ -146,7 +147,7 @@ def fit(
     trials: int = 20,
     epochs: int = 20,
     epochs_per_trial: int = 3,
-    space: dict | None = None,
+    space: dict[str, Any] | None = None,
     loss: str | None = None,
     patience: int = 5,
     min_delta: float = 0.0,
@@ -154,7 +155,7 @@ def fit(
     study_storage: str | None = None,
     seed: int = 0,
     verbose: bool = True,
-) -> tuple[Any, dict, Any]:
+) -> tuple[Any, dict[str, Any], Any]:
     """Search the training recipe, then fully train the winner.
 
     Phase 1 (tune): Optuna search over lr / weight decay / optimizer /

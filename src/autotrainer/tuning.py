@@ -25,7 +25,7 @@ DEFAULT_SPACE = {
 }
 
 
-def _suggest(trial: Any, space: dict) -> dict:
+def _suggest(trial: Any, space: dict[str, Any]) -> dict[str, Any]:
     params = {}
     for name, spec in space.items():
         kind = spec[0]
@@ -80,13 +80,13 @@ def tune(
     *,
     trials: int = 20,
     epochs_per_trial: int = 3,
-    space: dict | None = None,
+    space: dict[str, Any] | None = None,
     loss: str | None = None,
     seed: int = 0,
     verbose: bool = True,
     storage: Any = None,
     study_name: str | None = None,
-) -> tuple[Any, dict, Any]:
+) -> tuple[Any, dict[str, Any], Any]:
     """Search training hyperparameters for the user's model.
 
     Searches over the training *recipe* only (lr, weight decay, optimizer,
@@ -140,7 +140,7 @@ def tune(
 
     best: dict[str, Any] = {"loss": float("inf"), "state": None}
 
-    def objective(trial):
+    def objective(trial: Any) -> float:
         params = _suggest(trial, space)
         m = copy.deepcopy(model).to(device)
         m.load_state_dict(init_state)  # every trial starts identically

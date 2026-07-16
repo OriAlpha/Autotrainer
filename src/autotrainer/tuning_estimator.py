@@ -62,7 +62,7 @@ _SVM_SPACE = {
 }
 
 
-def _default_space(model: Any) -> dict | None:
+def _default_space(model: Any) -> dict[str, Any] | None:
     """Curated search space for known model families, else None."""
     mod = type(model).__module__ or ""
     name = type(model).__name__
@@ -111,14 +111,14 @@ def tune_estimator(
     val: Any,
     *,
     trials: int = 20,
-    space: dict | None = None,
+    space: dict[str, Any] | None = None,
     scoring: Callable[[Any, Any, Any], float] | None = None,
     n_jobs: int | None = None,
     seed: int = 0,
     verbose: bool = True,
     storage: Any = None,
     study_name: str | None = None,
-) -> tuple[Any, dict, Any]:
+) -> tuple[Any, dict[str, Any], Any]:
     """Search hyperparameters of a sklearn-API estimator.
 
     Every trial clones the (unfitted) input estimator, so the user's object
@@ -163,7 +163,7 @@ def tune_estimator(
         )
     jobs = n_jobs if n_jobs is not None else _available_cpus()
 
-    def _configure(params: dict) -> Any:
+    def _configure(params: dict[str, Any]) -> Any:
         est = clone(model)
         est.set_params(**params)
         if _wants_n_jobs(est) and "n_jobs" in est.get_params():
