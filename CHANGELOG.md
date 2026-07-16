@@ -4,6 +4,8 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.10.0] - 2026-07-16
 ### Changed (breaking - final API adjustments before 1.0)
 - `auto()` now ALWAYS returns a 5-tuple
   `(model, dataloader, optimizer, loss_fn, scheduler)`; with
