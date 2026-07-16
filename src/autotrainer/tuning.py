@@ -84,6 +84,8 @@ def tune(
     loss: str | None = None,
     seed: int = 0,
     verbose: bool = True,
+    storage: Any = None,
+    study_name: str | None = None,
 ) -> tuple[Any, dict, Any]:
     """Search training hyperparameters for the user's model.
 
@@ -107,6 +109,12 @@ def tune(
             the first training batch.
         seed: Optuna TPESampler seed for reproducibility.
         verbose: print the inferred loss and a final summary.
+        storage: an Optuna storage (e.g. ``JournalStorage``) shared by
+            several processes so they pull trials from one study - this is
+            how ``fit()`` runs one trial per rank. With a storage, the
+            study is created with ``load_if_exists=True``.
+        study_name: name of the (shared) study; required to rejoin an
+            existing study in ``storage``.
 
     Returns:
         ``(best_model, best_params, study)`` where ``best_model`` carries the
@@ -179,6 +187,9 @@ def tune(
             direction="minimize",
             sampler=optuna.samplers.TPESampler(seed=seed),
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=1),
+            storage=storage,
+            study_name=study_name,
+            load_if_exists=storage is not None,
         )
         study.optimize(objective, n_trials=trials)
     finally:
@@ -188,10 +199,17 @@ def tune(
     if best["state"] is not None:
         best_model.load_state_dict(best["state"])
 
+    # A zero-trial share (parallel search with more ranks than trials) or a
+    # racing shared study may have no completed trial visible yet.
+    try:
+        best_params, best_value = study.best_params, study.best_value
+    except ValueError:
+        best_params, best_value = {}, float("nan")
+
     if verbose:
         pruned = sum(t.state.name == "PRUNED" for t in study.trials)
         print(
-            f"[autotrainer] tune: best val loss {study.best_value:.4f} "
-            f"with {study.best_params} ({pruned}/{trials} trials pruned early)"
+            f"[autotrainer] tune: best val loss {best_value:.4f} "
+            f"with {best_params} ({pruned}/{trials} trials pruned early)"
         )
-    return best_model, study.best_params, study
+    return best_model, best_params, study
