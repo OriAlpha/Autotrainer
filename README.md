@@ -134,8 +134,10 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 ## Documentation
 
 - [CHANGELOG](CHANGELOG.md) - version history.
-- [API reference](docs/README.md) - generated with pdoc; build locally with
-  `pdoc -o docs/build src/autotrainer`.
+- [API reference](https://orialpha.github.io/Autotrainer/) - published from
+  CI on every push to main; build locally with `pdoc -o docs/build src/autotrainer`.
+- [Public API & deprecation policy](CONTRIBUTING.md#public-api-and-deprecation-policy) -
+  what `autotrainer.__all__` exports is stable; the rest is internal.
 - [Examples](examples/) - runnable scripts for each framework and SLURM
   `.sbatch` templates.
 - [Environment variables](.env.example) - every knob autotrainer reads.

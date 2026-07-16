@@ -296,8 +296,9 @@ def auto(
         epochs: assumed epoch count, used to size the schedule.
 
     Returns:
-        ``(model, dataloader, optimizer, loss_fn)`` when ``schedule=False``,
-        otherwise ``(model, dataloader, optimizer, loss_fn, scheduler)``.
+        ``(model, dataloader, optimizer, loss_fn, scheduler)``. The
+        scheduler is ``None`` when ``schedule=False``, so the shape of the
+        return value never changes.
     """
     from .backends.torch_backend import prepare
 
@@ -325,6 +326,7 @@ def auto(
 
     model, dataloader, opt = prepare(model, dataloader, opt)
 
+    sched = None
     if schedule:
         import torch
 
@@ -342,6 +344,5 @@ def auto(
             f"[autotrainer] auto: schedule=warmup({warmup} steps)+cosine "
             f"(assumes {epochs} epochs; pass epochs=N to change)"
         )
-        return model, dataloader, opt, loss_fn, sched
 
-    return model, dataloader, opt, loss_fn
+    return model, dataloader, opt, loss_fn, sched

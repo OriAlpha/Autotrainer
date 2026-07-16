@@ -4,6 +4,26 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Changed (breaking - final API adjustments before 1.0)
+- `auto()` now ALWAYS returns a 5-tuple
+  `(model, dataloader, optimizer, loss_fn, scheduler)`; with
+  `schedule=False` the scheduler is `None` instead of the tuple shrinking
+  to 4 items. Unpack the fifth value (it was easy to forget which shape
+  you were getting).
+- `tune()`'s data parameters are now `train`/`val` (they take DataLoaders
+  for PyTorch models and `(X, y)` tuples for estimators, so `_loader`
+  names were misleading). `train_loader=`/`val_loader=` keyword calls
+  still work but emit a `DeprecationWarning`; removal in 1.0. Positional
+  calls are unaffected.
+- The public API is now explicit: `autotrainer.__all__` lists it, and a
+  deprecation policy in CONTRIBUTING.md covers everything in it from 1.0
+  onward. Submodules and `_`-prefixed helpers are internal.
+### Added
+- `fit()` checkpoints now carry a `format_version`; incompatible or
+  pre-0.10 checkpoints are rejected with a clear error instead of being
+  silently misread.
+- The pdoc API reference is published to GitHub Pages
+  (https://orialpha.github.io/Autotrainer/) on every push to main.
 
 ## [0.9.0] - 2026-07-16
 ### Added

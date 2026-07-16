@@ -76,6 +76,28 @@ jobs:
         with:
           name: api-docs
           path: docs/build/
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: docs/build/
+
+  # Publish the pdoc API reference to GitHub Pages on every push to main.
+  deploy-docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: docs
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true # first run enables Pages with the Actions source
+      - uses: actions/deploy-pages@v4
+        id: deployment
 
   publish:
     if: github.event_name == 'release'

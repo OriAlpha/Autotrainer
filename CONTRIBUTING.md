@@ -59,6 +59,22 @@ pre-commit install
   framework installed.
 - **Update `CHANGELOG.md`** under an `[Unreleased]` heading.
 
+## Public API and deprecation policy
+
+The public API is exactly what `autotrainer.__all__` exports. Submodules
+(`autotrainer.tuning`, `autotrainer.fitting`, ...) and `_`-prefixed helpers
+are internal and may change without notice.
+
+From 1.0 onward:
+
+- Removing or changing public behavior requires a **deprecation cycle**: the
+  old form keeps working and emits a `DeprecationWarning` for at least one
+  minor release before removal, with the replacement named in the warning.
+- Breaking changes land only in **major** versions; new features in minor
+  versions; fixes in patches ([SemVer](https://semver.org/)).
+- On-disk formats (the `fit()` checkpoint) carry a `format_version` and are
+  rejected loudly - never silently misread - when incompatible.
+
 ## Commit messages
 
 Use the [Conventional Commits](https://www.conventionalcommits.org/) format:

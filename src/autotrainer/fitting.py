@@ -128,6 +128,11 @@ def _save_checkpoint(path: str, payload: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+# Bump when the checkpoint payload layout changes; _load_checkpoint rejects
+# unknown versions instead of silently misreading them.
+_CHECKPOINT_FORMAT = 1
+
+
 def _load_checkpoint(path: str | None) -> dict[str, Any] | None:
     import os
 
@@ -136,6 +141,14 @@ def _load_checkpoint(path: str | None) -> dict[str, Any] | None:
     import torch
 
     ckpt: dict[str, Any] = torch.load(path, map_location="cpu", weights_only=True)
+    found = ckpt.get("format_version")
+    if found != _CHECKPOINT_FORMAT:
+        raise ValueError(
+            f"Checkpoint {path} has format_version={found!r}, but this "
+            f"autotrainer expects {_CHECKPOINT_FORMAT}. It was written by an "
+            "incompatible version - delete the file to start fresh, or load "
+            "it with the autotrainer version that wrote it."
+        )
     return ckpt
 
 
@@ -379,6 +392,7 @@ def fit(
             _save_checkpoint(
                 checkpoint,
                 {
+                    "format_version": _CHECKPOINT_FORMAT,
                     "params": best_params,
                     "loss": loss,
                     "epoch": epoch,
