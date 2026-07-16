@@ -24,3 +24,6 @@ docs/build/
 
 # Code-analysis tool output (generated, not part of the package)
 graphify-out/
+
+# Internal maintainer notes (kept out of the published repo)
+docs/internal/
