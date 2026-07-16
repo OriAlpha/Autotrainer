@@ -24,7 +24,7 @@ class TestSharedStorage:
     def test_sequential_tunes_accumulate_in_one_study(self, tmp_path):
         """Two tune() calls on the same journal storage share one study -
         the mechanism fit() uses to run one trial per rank."""
-        from autotrainer.fit import _journal_storage
+        from autotrainer.fitting import _journal_storage
 
         torch.manual_seed(0)
         x = torch.randn(32, 3)

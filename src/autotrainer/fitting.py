@@ -221,6 +221,12 @@ def fit(
         to_device,
     )
 
+    if not hasattr(model, "state_dict"):
+        raise TypeError(
+            f"fit() currently supports PyTorch models, got {type(model)!r}. "
+            "For sklearn/XGBoost/LightGBM estimators use autotrainer.tune()."
+        )
+
     distributed = _ensure_process_group()
     init_state = copy.deepcopy(model.state_dict())
 

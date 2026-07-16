@@ -9,8 +9,8 @@ pytest.importorskip("optuna")
 import torch.nn as nn  # noqa: E402
 from torch.utils.data import DataLoader, TensorDataset  # noqa: E402
 
-import autotrainer.fit as fit_mod  # noqa: E402
-from autotrainer.fit import _unwrap, fit  # noqa: E402
+import autotrainer.fitting as fit_mod  # noqa: E402
+from autotrainer.fitting import _unwrap, fit  # noqa: E402
 
 
 def _loaders(n=64, batch_size=8):

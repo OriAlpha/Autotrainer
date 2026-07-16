@@ -25,6 +25,9 @@ model, loader, opt, loss_fn, sched = autotrainer.auto(model, loader)
 # Or search for the best training recipe for YOUR model
 best_model, best_params, study = autotrainer.tune(model, train_loader, val_loader)
 
+# tune() also handles sklearn / XGBoost / LightGBM (curated default spaces)
+best_est, params, study = autotrainer.tune(XGBClassifier(), (X, y), (X_val, y_val))
+
 # Or fully hands-free: search the recipe, then train the winner to completion
 model, params, study = autotrainer.fit(model, train_loader, val_loader)
 ```
