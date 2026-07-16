@@ -230,6 +230,45 @@ class TestCheckpoint:
         assert isinstance(out_model, nn.Linear)
 
 
+class TestCheckpointFormat:
+    def test_unknown_format_version_is_rejected(self, tmp_path):
+        from autotrainer.fitting import _load_checkpoint
+
+        path = tmp_path / "old.ckpt"
+        torch.save({"format_version": 999, "params": {}}, str(path))
+        with pytest.raises(ValueError, match="format_version=999"):
+            _load_checkpoint(str(path))
+
+    def test_versionless_checkpoint_is_rejected(self, tmp_path):
+        """Pre-0.10 checkpoints have no format_version - reject, don't guess."""
+        from autotrainer.fitting import _load_checkpoint
+
+        path = tmp_path / "ancient.ckpt"
+        torch.save({"params": {}}, str(path))
+        with pytest.raises(ValueError, match="format_version=None"):
+            _load_checkpoint(str(path))
+
+    def test_written_checkpoints_carry_the_current_version(self, tmp_path):
+        from autotrainer.fitting import _CHECKPOINT_FORMAT, _load_checkpoint
+
+        train, val = _loaders(n=16, batch_size=8)
+        ckpt = str(tmp_path / "fit.ckpt")
+        fit(
+            nn.Linear(3, 1),
+            train,
+            val,
+            trials=1,
+            epochs=1,
+            epochs_per_trial=1,
+            space=_SMALL_SPACE,
+            checkpoint=ckpt,
+            verbose=False,
+        )
+        loaded = _load_checkpoint(ckpt)
+        assert loaded is not None
+        assert loaded["format_version"] == _CHECKPOINT_FORMAT
+
+
 class TestUnwrap:
     def test_plain_module_passes_through(self):
         model = nn.Linear(2, 1)

@@ -106,3 +106,32 @@ class TestTuneEstimator:
         train, val = _classification_arrays()
         with pytest.raises(TypeError, match="autotrainer.tune"):
             autotrainer.fit(LogisticRegression(), train, val)
+
+
+class TestDeprecatedLoaderKwargs:
+    def test_old_kwarg_names_warn_but_work(self):
+        from sklearn.linear_model import LogisticRegression
+
+        train, val = _classification_arrays()
+        with pytest.warns(DeprecationWarning, match="train_loader"):
+            _, params, _ = autotrainer.tune(
+                LogisticRegression(max_iter=200),
+                train_loader=train,
+                val_loader=val,
+                trials=1,
+                verbose=False,
+            )
+        assert "C" in params
+
+    def test_mixing_old_and_new_names_raises(self):
+        from sklearn.linear_model import LogisticRegression
+
+        train, val = _classification_arrays()
+        with pytest.raises(TypeError, match="both 'train' and deprecated 'train_loader'"):
+            autotrainer.tune(LogisticRegression(), train, val, train_loader=train)
+
+    def test_missing_data_raises(self):
+        from sklearn.linear_model import LogisticRegression
+
+        with pytest.raises(TypeError, match="requires train and val"):
+            autotrainer.tune(LogisticRegression())

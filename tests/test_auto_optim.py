@@ -173,13 +173,16 @@ class TestAuto:
         y = torch.randint(0, 2, (16,))  # binary int targets
         return DataLoader(_ToyDataset(x, y), batch_size=4)
 
-    def test_returns_4tuple_without_schedule(self):
+    def test_returns_5tuple_with_none_scheduler_when_disabled(self):
+        """The return shape never varies: schedule=False gives scheduler=None
+        instead of a shorter tuple (0.10 API freeze)."""
         model = nn.Linear(3, 2)
         out = auto(model, self._tiny_loader(), schedule=False)
-        assert len(out) == 4
-        model_out, loader, opt, loss_fn = out
+        assert len(out) == 5
+        model_out, loader, opt, loss_fn, sched = out
         assert isinstance(opt, torch.optim.Optimizer)
         assert isinstance(loss_fn, nn.Module)
+        assert sched is None
 
     def test_returns_5tuple_with_scheduler(self):
         model = nn.Linear(3, 2)
@@ -203,4 +206,4 @@ class TestAuto:
         assert "user override" in captured
         # The overridden LR should appear verbatim (not a range-test result).
         assert "1.00e-03" in captured
-        assert len(out) == 4
+        assert len(out) == 5

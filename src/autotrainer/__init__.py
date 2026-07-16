@@ -17,6 +17,29 @@ from typing import Any
 
 __version__ = "0.9.0"
 
+# The public API. Everything not listed here (submodules, _-prefixed
+# helpers) is internal and may change without a deprecation cycle.
+__all__ = [
+    "GradScaler",
+    "__version__",
+    "auto",
+    "autocast_context",
+    "barrier",
+    "boost_params",
+    "find_batch_size",
+    "find_lr",
+    "fit",
+    "is_main",
+    "prepare",
+    "print0",
+    "rank",
+    "save0",
+    "scale_batch_size",
+    "scope",
+    "set_epoch",
+    "tune",
+]
+
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,
@@ -100,7 +123,7 @@ def find_lr(model: Any, dataloader: Any, loss_fn: Any, **kwargs: Any) -> float:
     return _f(model, dataloader, loss_fn, **kwargs)
 
 
-def tune(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple[Any, ...]:
+def tune(model: Any, train: Any = None, val: Any = None, **kwargs: Any) -> tuple[Any, ...]:
     """Search hyperparameters for a model (dispatches by framework).
 
     PyTorch modules: pass DataLoaders; searches the training recipe
@@ -108,16 +131,38 @@ def tune(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple
     sklearn-API estimators (scikit-learn, XGBoost, LightGBM): pass
     ``(X, y)`` tuples; searches the model's hyperparameters, with curated
     default spaces for the common families.
+
+    The keyword names ``train_loader=``/``val_loader=`` are deprecated
+    aliases for ``train=``/``val=`` and will be removed in 1.0.
     """
+    # Deprecated aliases (pre-0.10 names; misleading for estimator inputs).
+    for old, new, value in (("train_loader", "train", train), ("val_loader", "val", val)):
+        if old in kwargs:
+            if value is not None:
+                raise TypeError(f"tune() got both '{new}' and deprecated '{old}'")
+            import warnings
+
+            warnings.warn(
+                f"tune(..., {old}=) is deprecated; use {new}= (removal in 1.0)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if old == "train_loader":
+                train = kwargs.pop(old)
+            else:
+                val = kwargs.pop(old)
+    if train is None or val is None:
+        raise TypeError("tune() requires train and val data")
+
     mod = type(model).__module__ or ""
     if mod.startswith("torch") or _is_torch_module(model):
         from .tuning import tune as _t
 
-        return _t(model, train_loader, val_loader, **kwargs)
+        return _t(model, train, val, **kwargs)
     if mod.startswith(("xgboost", "lightgbm", "sklearn")) or _is_sklearn_estimator(model):
         from .tuning_estimator import tune_estimator as _te
 
-        return _te(model, train_loader, val_loader, **kwargs)
+        return _te(model, train, val, **kwargs)
     raise TypeError(
         f"tune() supports PyTorch modules and sklearn-API estimators, got {type(model)!r}."
     )
