@@ -146,10 +146,40 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 
 ## Roadmap
 
+Toward 1.0:
+
+- **Stabilization**: the public API is frozen as of 0.10; 1.0 removes the
+  deprecated `train_loader=`/`val_loader=` aliases after a soak period and
+  real multi-node SLURM validation.
+
+Understanding your training run (the theme after 1.0 - autotrainer should
+explain runs, not just launch them):
+
+- **Preflight estimation** (`doctor --profile`): dry-run a few batches,
+  then report projected training time, memory headroom, and cost per GPU
+  count - answer "how many GPUs do I actually need?" before burning an
+  allocation.
+- **Training triage**: watch the loop and diagnose failures in plain
+  language - NaN loss traced to a too-high LR, GPU idle time traced to a
+  dataloader bottleneck, fp16 overflow with a bf16 suggestion.
+- **Data sanity checks in `auto()`**: the same one-batch peek that infers
+  the loss can flag class imbalance (suggest weighted loss), unnormalized
+  inputs, and train/val overlap.
+- **Training cards**: every `fit()` emits a reproducibility card
+  (recipe, seeds, environment, val curve) and `replay` reruns it.
+
+Deeper SLURM ergonomics:
+
+- **`autotrainer sbatch train.py --nodes 2 --time 4h`**: generate and
+  submit a correct sbatch script (no more `--ntasks-per-node` != GPUs
+  footguns).
+- **Preemption handling**: catch SLURM's requeue signal, checkpoint via
+  `fit()`'s resume support, and continue after requeue automatically.
+
+More breadth:
+
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **Stabilization toward 1.0**: freeze the public API (mypy strict mode and
-  real 2-rank distributed tests already gate CI).
 - **More schedulers and search spaces** beyond warmup+cosine and the default
   Optuna recipe.
 
