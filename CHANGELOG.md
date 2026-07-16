@@ -4,24 +4,29 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
-### Fixed
-- The `fit` orchestrator module was renamed `fitting.py`: the module name
-  `autotrainer/fit.py` shadowed the package-level `fit()` function, so
-  `import autotrainer.fit` replaced the callable with the module object
-  for the rest of the process.
-- Local multi-GPU launches now rendezvous on a free OS-assigned port
-  instead of always 29500, so two `autotrainer run` jobs on one machine no
-  longer collide. An explicit `AUTOTRAINER_PORT` still pins the port, and
-  SLURM keeps the fixed default (all nodes must agree up front).
-- `_gpu_count()`: `CUDA_VISIBLE_DEVICES` now only restricts the detected
-  GPU count instead of being trusted blindly - `CUDA_VISIBLE_DEVICES=0` on
-  a GPU-less machine no longer reports a phantom GPU (which sent the
-  launcher into single-GPU CUDA mode on CPU boxes).
-### Changed
-- mypy now runs in `strict` mode (a 1.0 roadmap item): all public and
-  internal signatures are fully annotated; optional-framework objects stay
-  `Any` via `follow_imports = "skip"`.
+
+## [0.9.0] - 2026-07-16
 ### Added
+- `autotrainer.fit(model, train_loader, val_loader)`: one-call orchestrator
+  that composes tuning and distribution. Phase 1 runs the Optuna recipe
+  search; phase 2 retrains the winner from the model's original initial
+  weights through `prepare()` (DDP + DistributedSampler when launched
+  distributed) with a warmup+cosine schedule, mixed precision, and early
+  stopping on the validation loss, restoring the best epoch's weights
+  before returning `(model, best_params, study)`.
+- Parallel hyperparameter search in `fit()`: when launched distributed,
+  phase-1 trials are split across ALL ranks through a shared Optuna
+  journal-file study (`study_storage=`, default
+  `.autotrainer_study_<jobid>.log`), one trial per process on its own GPU.
+  Samplers are seeded per rank; the winning recipe and inferred loss are
+  broadcast so every rank trains the same configuration. `tune()` gained
+  `storage=`/`study_name=` to join a shared study.
+- `fit(checkpoint=...)`: preemption-safe checkpointing. Rank 0 atomically
+  writes the full training state (current + best weights, optimizer,
+  scheduler, recipe, early-stop counters) after every phase-2 epoch; if
+  the file exists when `fit()` starts, the tuning phase is skipped and
+  training resumes where it died - a requeued SLURM job rerunning the same
+  script just continues.
 - `tune()` now supports sklearn-API estimators (scikit-learn,
   XGBoost/LightGBM sklearn wrappers): pass `(X, y)` tuples instead of
   DataLoaders. Curated default search spaces ship for XGBoost, LightGBM,
@@ -31,39 +36,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   with `scoring=`), thread counts follow the SLURM allocation, and the
   user's estimator object is never fitted or mutated. `fit()` raises a
   helpful TypeError pointing to `tune()` for non-PyTorch models.
-- Parallel hyperparameter search in `fit()`: when launched distributed,
-  trials are split across ALL ranks through a shared Optuna journal-file
-  study (`study_storage=`, default `.autotrainer_study_<jobid>.log`), one
-  trial per process on its own GPU - previously ranks 1+ idled while rank
-  0 searched. Samplers are seeded per rank; the winner is broadcast as
-  before. `tune()` gained `storage=`/`study_name=` to join a shared study.
-- `fit(checkpoint=...)`: preemption-safe checkpointing. Rank 0 atomically
-  writes the full training state (current + best weights, optimizer,
-  scheduler, recipe, early-stop counters) after every phase-2 epoch; if
-  the file exists when `fit()` starts, the tuning phase is skipped and
-  training resumes where it died - a requeued SLURM job rerunning the same
-  script just continues.
-
-## [0.9.0] - 2026-07-15
-### Added
-- `autotrainer.fit(model, train_loader, val_loader)`: one-call orchestrator
-  that composes tuning and distribution. Phase 1 runs the Optuna recipe
-  search (on rank 0 only under DDP, with the winning recipe and inferred
-  loss broadcast to all ranks); phase 2 retrains the winner from the
-  model's original initial weights through `prepare()` (DDP +
-  DistributedSampler when launched distributed) with a warmup+cosine
-  schedule, mixed precision, and early stopping on the validation loss,
-  restoring the best epoch's weights before returning
-  `(model, best_params, study)`.
-- `AUTOTRAINER_TIMEOUT` env var (seconds): overrides the
-  `torch.distributed` collective timeout, for when a long rank-0 tuning
-  phase in `fit()` would exceed torch's ~30-minute default while the other
-  ranks wait.
 - `autotrainer.set_epoch(loader, epoch)`: call at every epoch start so the
   `DistributedSampler` installed by `prepare()` reshuffles each epoch
   (without it, every epoch sees the same order). No-op for non-distributed
   loaders; `prepare()` now prints a reminder when it installs the sampler.
+- `AUTOTRAINER_TIMEOUT` env var (seconds): overrides the
+  `torch.distributed` collective timeout, for when one rank's phase runs
+  much longer than the others' (e.g. an uneven trial split in `fit()`).
+- Real 2-rank distributed tests (gloo on CPU) in the regular suite and CI:
+  sampler sharding, LR-broadcast parity, and bit-identical `fit()` weights
+  across ranks.
+### Changed
+- mypy now runs in `strict` mode (a 1.0 roadmap item): all public and
+  internal signatures are fully annotated; optional-framework objects stay
+  `Any` via `follow_imports = "skip"`.
 ### Fixed
+- Local multi-GPU launches now rendezvous on a free OS-assigned port
+  instead of always 29500, so two `autotrainer run` jobs on one machine no
+  longer collide. An explicit `AUTOTRAINER_PORT` still pins the port, and
+  SLURM keeps the fixed default (all nodes must agree up front).
+- `_gpu_count()`: `CUDA_VISIBLE_DEVICES` now only restricts the detected
+  GPU count instead of being trusted blindly - `CUDA_VISIBLE_DEVICES=0` on
+  a GPU-less machine no longer reports a phantom GPU (which sent the
+  launcher into single-GPU CUDA mode on CPU boxes).
 - `prepare()` and `tune()` no longer discard user DataLoader settings when
   rebuilding loaders: `pin_memory` (was forced on CUDA), `timeout`,
   `worker_init_fn`, `generator`, `persistent_workers`, and `prefetch_factor`
