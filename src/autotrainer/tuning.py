@@ -58,12 +58,13 @@ def _rebuild_loader(loader: Any, batch_size: int) -> Any:
 def _evaluate(model: Any, val_loader: Any, loss_fn: Any, device: Any) -> float:
     import torch
 
-    from .utils import get_batch_size, robust_forward, to_device
+    from .utils import get_batch_size, robust_forward, split_xy, to_device
 
     model.eval()
     total, n = 0.0, 0
     with torch.no_grad():
-        for xb, yb in val_loader:
+        for batch in val_loader:
+            xb, yb = split_xy(batch)
             xb_dev = to_device(xb, device)
             yb_dev = to_device(yb, device)
             out = robust_forward(model, xb_dev)
@@ -130,9 +131,17 @@ def tune(
     init_state = copy.deepcopy(model.state_dict())
 
     # Infer the loss once, on the untouched model (or take the override).
-    xb, yb = next(iter(train_loader))
+    from .utils import split_xy
+
+    xb, yb = split_xy(next(iter(train_loader)))
     if loss is not None:
         loss_fn = _make_loss(loss)
+    elif yb is None:
+        raise ValueError(
+            "autotrainer.tune could not find targets in your batches to infer "
+            "the loss. Pass loss=... explicitly, e.g. "
+            "tune(model, train_loader, val_loader, loss='mse')."
+        )
     else:
         loss_fn, loss_name, why = _infer_loss(model, yb, xb)
         if verbose:
@@ -156,11 +165,12 @@ def tune(
             else train_loader
         )
 
-        from .utils import robust_forward, to_device
+        from .utils import robust_forward, split_xy, to_device
 
         for epoch in range(epochs_per_trial):
             m.train()
-            for bx, by in tl:
+            for batch in tl:
+                bx, by = split_xy(batch)
                 bx_dev = to_device(bx, device)
                 by_dev = to_device(by, device)
                 opt.zero_grad()

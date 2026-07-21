@@ -126,6 +126,40 @@ def slice_batch(data: Any, n: int = 2) -> Any:
     return data
 
 
+def split_xy(batch: Any) -> tuple[Any, Any]:
+    """Split one dataloader batch into ``(inputs, targets)``.
+
+    Handles the batch shapes real datasets yield, not just the ``(xb, yb)``
+    2-tuple the examples use - so ``auto``/``fit``/``tune`` don't die on an
+    opaque unpack error the first time someone brings their own loader:
+
+      * ``(xb, yb)`` or ``(xb, yb, ...)`` - first is input, second is target;
+        extra elements (e.g. sample weights) are ignored for inference.
+      * ``(xb,)`` or a bare tensor - input only; target is ``None``.
+      * a ``dict`` (HuggingFace-style) - the value under the first matching
+        label key (``labels``/``label``/``targets``/``target``/``y``) is the
+        target and the remaining keys are the input; no label key -> target
+        ``None`` and the whole dict is the input.
+
+    A ``None`` target means the loss can't be inferred - callers should ask the
+    user to pass ``loss=`` explicitly rather than fail cryptically downstream.
+    """
+    if isinstance(batch, dict):
+        for key in ("labels", "label", "targets", "target", "y"):
+            if key in batch:
+                xb = {k: v for k, v in batch.items() if k != key}
+                return (xb or batch), batch[key]
+        return batch, None
+    if isinstance(batch, (list, tuple)):
+        if len(batch) >= 2:
+            return batch[0], batch[1]
+        if len(batch) == 1:
+            return batch[0], None
+        raise ValueError("dataloader yielded an empty batch")
+    # A bare tensor / array: inputs only, no targets to infer a loss from.
+    return batch, None
+
+
 def robust_forward(model: Any, xb: Any) -> Any:
     """Call a model robustly with dict unpacking, list/tuple unpacking, or direct args."""
     if isinstance(xb, dict):
