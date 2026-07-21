@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- `prepare(..., compile=True, compile_mode=)`: wrap the model with
+  `torch.compile()` before any DDP wrap. Order matters - compiling the
+  unwrapped module then DDP-wrapping is the documented-supported path;
+  the reverse causes graph breaks on the `.module` indirection. No-op on
+  CPU and torch < 2.0. On compile failure (dynamic shapes the backend
+  can't handle, missing Triton on Windows, etc.) falls back to the
+  uncompiled model with a warning rather than crashing the run.
+  `compile_mode`: `default` | `reduce-overhead` (CUDA graphs) |
+  `max-autotune` (kernel search). Does not touch lr/loss/schedule.
+- `prepare(..., fsdp=True)`: wrap with `FullyShardedDataParallel` instead
+  of `DDP` when distributed. FSDP shards params/grads/optimizer state
+  across ranks - the path for models too large to fit on one GPU (DDP
+  replicates and OOMs). Uses `use_orig_params=True` so the user's
+  optimizer keeps working unchanged. On single-process (world_size==1)
+  or torch < 2.0, `fsdp=True` is a no-op with a warning. Does not touch
+  lr/loss/schedule/optimizer.
+- CUDA CI: new `cuda` pytest marker selects GPU-required tests; CPU jobs
+  run `-m "not cuda"` to skip them cleanly. A `test-cuda` job is wired
+  for a self-hosted GPU runner (`runs-on: [self-hosted, gpu]`), disabled
+  by default until the runner is registered - see the inline instructions
+  in `.github/workflows/ci.yml`. This is the durable fix for the class of
+  CUDA-path bug that CPU CI cannot catch (the `device_count()` crash and
+  the `_pretend_cuda` stub defect were both found this way).
+### Added (prior)
 - `prepare(model, loader, opt, optimize=True)`: the GPU optimization layer
   the original thesis promised - detect the hardware, set it up for
   throughput, **leave the user's hyperparameters alone**. When `optimize=True`

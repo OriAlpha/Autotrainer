@@ -110,3 +110,10 @@ skip_covered = false
 # Coverage is computed on every run; the XML is uploaded as a CI artifact.
 addopts = "--cov=autotrainer --cov-report=term-missing --cov-report=xml"
 testpaths = ["tests"]
+# Markers:
+#   cuda  - tests that need a real CUDA GPU (skip in CPU-only CI; run on the
+#           self-hosted GPU runner). Added so the default `pytest tests/` on a
+#           CPU box skips them cleanly instead of failing or running accidentally.
+markers = [
+    "cuda: needs a real CUDA GPU (forward/backward actually execute on device)",
+]

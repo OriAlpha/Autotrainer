@@ -255,6 +255,38 @@ On SLURM, inside your sbatch script:
 srun autotrainer run train.py
 ```
 
+### `torch.compile` and FSDP
+
+Two more opt-ins on `prepare()`, both preserving the "don't touch
+hyperparameters" contract:
+
+```python
+# torch.compile: 1.5-2x on modern torch+GPU for many models. Compiled
+# BEFORE the DDP wrap (the documented-supported order; the reverse causes
+# graph breaks). On compile failure (dynamic shapes, missing Triton on
+# Windows) falls back to the uncompiled model with a warning.
+model, loader, opt = autotrainer.prepare(
+    model, loader, opt, optimize=True, compile=True
+)
+
+# FSDP instead of DDP when the model is too large to replicate on every GPU.
+# Shards params/grads/optimizer state across ranks. use_orig_params=True so
+# your existing optimizer keeps working unchanged.
+model, loader, opt = autotrainer.prepare(
+    model, loader, opt, optimize=True, fsdp=True
+)
+```
+
+What it prints:
+
+```
+[autotrainer] optimize: TF32, torch.compile(mode=default), FSDP (hyperparameters untouched)
+```
+
+`compile_mode`: `default` | `reduce-overhead` (CUDA graphs, fastest for
+small models with static shapes) | `max-autotune` (kernel search, slow
+first compile). None of these flags touch lr / loss / schedule / optimizer.
+
 ## One-call training: fit()
 
 `fit()` is the whole pipeline in one call - give it a model and data, get

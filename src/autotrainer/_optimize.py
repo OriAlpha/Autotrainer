@@ -104,12 +104,24 @@ def build_loader_defaults(dataloader: Any, world_size: int) -> dict[str, Any]:
     return kwargs
 
 
-def summarize(optimize: bool, amp: bool, applied: dict[str, Any]) -> None:
+def summarize(
+    optimize: bool,
+    amp: bool,
+    applied: dict[str, Any],
+    *,
+    compile: bool = False,
+    fsdp: bool = False,
+) -> None:
     """Print what was applied, so the user can see it - a silent optimization
-    that changes wall-clock 2x is worse than no optimization at all."""
+    that changes wall-clock 2x is worse than no optimization at all.
+
+    Runs when ``optimize=True`` OR when any explicit opt-in (``compile``,
+    ``fsdp``) fired - those are user requests that deserve a confirmation
+    line even without the broader optimize bundle.
+    """
     from .utils import print0
 
-    if not optimize:
+    if not optimize and not compile and not fsdp:
         return
     parts = []
     if applied.get("tf32"):
@@ -124,5 +136,9 @@ def summarize(optimize: bool, amp: bool, applied: dict[str, Any]) -> None:
         parts.append("persistent_workers")
     if amp:
         parts.append("AMP")
+    if applied.get("compile"):
+        parts.append(f"torch.compile(mode={applied['compile']})")
+    if applied.get("wrap") == "fsdp":
+        parts.append("FSDP")
     if parts:
         print0(f"[autotrainer] optimize: {', '.join(parts)} (hyperparameters untouched)")

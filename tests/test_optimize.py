@@ -240,7 +240,8 @@ class TestPrepareOptimizeIntegration:
 
 
 # auto_bs runs real forward+backward passes to probe memory, so it needs an
-# actual GPU. Skip on CPU-only environments (CI).
+# actual GPU. The `cuda` marker lets the GPU CI job select these; the skipif
+# protects a CPU box that runs `-m cuda` anyway.
 def _has_cuda() -> bool:
     try:
         import torch
@@ -250,6 +251,7 @@ def _has_cuda() -> bool:
         return False
 
 
+@pytest.mark.cuda
 @pytest.mark.skipif(not _has_cuda(), reason="auto_bs needs a real GPU")
 class TestAutoBs:
     """Verify prepare(auto_bs=True) grows the batch size and rebuilds the loader.

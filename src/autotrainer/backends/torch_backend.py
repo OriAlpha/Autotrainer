@@ -120,6 +120,9 @@ def prepare(
     auto_bs: bool = False,
     loss_fn: Any = None,
     max_bs: int = 4096,
+    compile: bool = False,
+    compile_mode: str = "default",
+    fsdp: bool = False,
 ) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
@@ -149,6 +152,25 @@ def prepare(
         loss_fn: the loss for the ``auto_bs`` forward+backward sweep. Not
             used for anything else; nothing is inferred or overridden.
         max_bs: ceiling for the ``auto_bs`` sweep (default 4096).
+        compile: wrap the model with ``torch.compile()`` before any DDP wrap.
+            Order matters: compiling the *unwrapped* module then DDP-wrapping
+            is the documented-supported path; the reverse causes graph
+            breaks on the ``.module`` indirection. No-op on CPU and on
+            torch < 2.0 (which lacks ``torch.compile``). If compilation
+            fails (e.g. dynamic shapes the backend can't handle), the
+            uncompiled model is returned with a warning rather than crashing
+            the run - check the log if you don't see the speedup.
+        compile_mode: ``torch.compile`` mode (``default``, ``reduce-overhead``,
+            ``max-autotune``). ``reduce-overhead`` uses CUDA graphs (fastest
+            for small models with static shapes); ``max-autotune`` also
+            searches kernel selections (slow first compile, best throughput).
+        fsdp: wrap with ``FullyShardedDataParallel`` instead of ``DDP`` when
+            distributed. FSDP shards parameters/grads/optimizer state across
+            ranks, so a model too large to fit on one GPU still trains -
+            DDP replicates and would OOM. Mutually exclusive with the plain
+            DDP path. On single-device (world_size == 1) or torch < 2.0,
+            ``fsdp=True`` is a no-op with a warning (FSDP only makes sense
+            with >1 rank). Does NOT touch lr / loss / schedule / optimizer.
     """
     import torch
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -166,10 +188,31 @@ def prepare(
         torch.cuda.set_device(device)
     model = model.to(device)
 
+    # torch.compile: MUST happen before the DDP wrap. Compiling a
+    # DDP-wrapped module is a documented footgun (graph breaks on the
+    # .module indirection); the supported order is compile-then-wrap. On a
+    # compile failure (dynamic shapes, unsupported op, ...) fall back to
+    # the uncompiled model with a warning rather than killing the run.
+    applied: dict[str, Any] = {}
+    if compile and use_cuda and hasattr(torch, "compile"):
+        from ..utils import print0
+
+        try:
+            model = torch.compile(model, mode=compile_mode)
+            applied["compile"] = compile_mode
+        except Exception as e:  # noqa: BLE001 - compile failures are varied
+            print0(
+                f"[autotrainer] compile: torch.compile failed ({type(e).__name__}: {e}); "
+                "continuing with the uncompiled model"
+            )
+    elif compile and not hasattr(torch, "compile"):
+        from ..utils import print0
+
+        print0("[autotrainer] compile: torch.compile unavailable (torch < 2.0); skipping")
+
     # Optimize half: set the free-win flags before any work, so even the
     # DDP-wrap below benefits from TF32 etc. Track what we actually changed
     # so the summary is honest (apply_gpu_flags is a black box otherwise).
-    applied: dict[str, Any] = {}
     if optimize and use_cuda:
         from .._optimize import _looks_like_cnn
 
@@ -193,7 +236,38 @@ def prepare(
             # raised after init, the others would hang in the process group.
             dataloader = _shard_loader(dataloader, rank, world_size)
         _ensure_process_group()
-        model = DDP(model, device_ids=[local_rank] if use_cuda else None)
+        if fsdp:
+            # FSDP shards params/grads/optim state across ranks - the path
+            # to take when the model is too large to replicate on every GPU
+            # (where DDP OOMs). Falls back with a warning if FSDP isn't
+            # available (torch < 2.0) - DDP is strictly better than crashing.
+            from ..utils import print0
+
+            try:
+                from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+                model = FSDP(
+                    model,
+                    device_id=local_rank if use_cuda else None,
+                    use_orig_params=True,  # so the user's optimizer still works
+                )
+                applied["wrap"] = "fsdp"
+            except (ImportError, AttributeError):
+                print0(
+                    "[autotrainer] fsdp: FullyShardedDataParallel unavailable "
+                    "(torch < 2.0); falling back to DDP"
+                )
+                model = DDP(model, device_ids=[local_rank] if use_cuda else None)
+                applied["wrap"] = "ddp"
+        else:
+            model = DDP(model, device_ids=[local_rank] if use_cuda else None)
+            applied.setdefault("wrap", "ddp")
+    elif fsdp:
+        # Single-process: FSDP buys nothing (no ranks to shard across) but
+        # the user asked for it, so tell them rather than silently using DDP.
+        from ..utils import print0
+
+        print0("[autotrainer] fsdp: world_size == 1, FSDP is a no-op; model left unwrapped")
 
     # Loader optimizations run AFTER sharding so they see the final loader.
     # Only adds keys the user didn't set; merges with whatever _shard_loader
@@ -259,8 +333,17 @@ def prepare(
                 f"(lr and schedule unchanged; use accumulate() to scale the step)"
             )
 
-    if optimize:
-        summarize(optimize=optimize, amp=bool(amp and use_cuda), applied=applied)
+    # Summarize whenever the user opted into anything: optimize, compile, or
+    # fsdp. The summarize() helper also gates internally, but checking here
+    # keeps the call site readable and the intent explicit.
+    if optimize or compile or fsdp:
+        summarize(
+            optimize=optimize,
+            amp=bool(amp and use_cuda),
+            applied=applied,
+            compile=compile,
+            fsdp=fsdp,
+        )
 
     out = [model]
     if dataloader is not None:
