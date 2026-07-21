@@ -26,7 +26,13 @@ def _free_port() -> int:
 
 
 def _run_two_ranks(script: str, timeout: int = 240, extra_env: dict | None = None) -> list[str]:
-    """Run `script` in 2 worker processes; return each rank's RESULT line."""
+    """Run `script` in 2 worker processes; return each rank's RESULT line.
+
+    These tests validate the sharding / broadcast *logic* on CPU-gloo. They
+    force CUDA off in the worker env so a 1-GPU dev box doesn't get tangled
+    in CUDA init (two ranks can't both bind the same single GPU). Add a
+    dedicated NCCL job for true multi-GPU validation.
+    """
     port = _free_port()
     procs = []
     for rank in range(2):
@@ -38,6 +44,7 @@ def _run_two_ranks(script: str, timeout: int = 240, extra_env: dict | None = Non
             MASTER_ADDR="127.0.0.1",
             MASTER_PORT=str(port),
             USE_LIBUV="0",  # Windows gloo needs the non-libuv TCP store
+            CUDA_VISIBLE_DEVICES="",  # CPU-gloo: don't touch the GPU
         )
         env.update(extra_env or {})
         procs.append(
@@ -57,7 +64,19 @@ def _run_two_ranks(script: str, timeout: int = 240, extra_env: dict | None = Non
         except subprocess.TimeoutExpired:
             for q in procs:
                 q.kill()
-            pytest.fail(f"rank {rank} timed out after {timeout}s - likely a hang/desync")
+                # Drain whatever the workers printed before we fail, so the
+                # failure message shows *why* they hung, not just that they did.
+            traces = []
+            for r, q in enumerate(procs):
+                try:
+                    qo, qe = q.communicate(timeout=5)
+                    traces.append(f"--- rank {r} stdout ---\n{qo}\n--- rank {r} stderr ---\n{qe}")
+                except Exception:
+                    traces.append(f"--- rank {r}: no output ---")
+            pytest.fail(
+                f"rank {rank} timed out after {timeout}s - likely a hang/desync\n"
+                + "\n".join(traces)
+            )
         assert p.returncode == 0, f"rank {rank} failed:\nstdout:\n{out}\nstderr:\n{err}"
         lines = [ln for ln in out.splitlines() if ln.startswith("RESULT ")]
         assert lines, f"rank {rank} printed no RESULT line:\n{out}"

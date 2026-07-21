@@ -4,6 +4,51 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Added
+- `prepare(model, loader, opt, optimize=True)`: the GPU optimization layer
+  the original thesis promised - detect the hardware, set it up for
+  throughput, **leave the user's hyperparameters alone**. When `optimize=True`
+  and CUDA is available, `prepare()` applies:
+    * `cudnn.benchmark = True` for CNNs (free win on fixed input shape).
+    * TF32 on Ampere+ (`cuda.matmul.allow_tf32`, `cudnn.allow_tf32`) - a
+      ~2-3x matmul speedup that ships disabled for legacy reproducibility
+      reasons.
+    * Loader defaults on bare `DataLoader(...)` calls: `num_workers`
+      (capped at 8, sharded by world size), `pin_memory=True`,
+      `persistent_workers=True`. User-set values are never overridden.
+    * AMP implied (use `autotrainer.autocast_context()` + `GradScaler()` as
+      before); pass `amp=False` to opt out.
+  Every decision is printed; nothing in this path touches lr, loss,
+  schedule, or optimizer choice. No-op on CPU and when `optimize=False`,
+  so existing callers see no change.
+- `prepare(..., auto_bs=True, loss_fn=...)`: grow the loader's batch size
+  until OOM then back off one step. Uses the user's `loss_fn` for an
+  accurate forward+backward measurement; without it the sweep is
+  forward-only (conservative). The discovered size rebuilds the loader;
+  lr and schedule are NOT changed - pair with `accumulate()` to scale the
+  step to the new effective batch.
+- `prepare(..., max_bs=N)`: ceiling for the `auto_bs` sweep (default 4096).
+- Training-loop helpers (`autotrainer.zero_grad`, `eval_mode`, `train_mode`,
+  `accumulate`): the small things users forget inside the loop.
+  `zero_grad` uses `set_to_none=True`; `eval_mode`/`train_mode` are
+  context managers that restore the prior mode (kills the classic
+  "forgot to flip back to train() after eval" bug); `accumulate(opt, steps=N)`
+  handles gradient accumulation with optional `GradScaler` integration.
+  None touch lr / loss / schedule / optimizer choice.
+- `autotrainer.BottleneckMonitor`: the cheapest piece of the roadmap's
+  training-triage theme. Sample per-step data-load vs compute time and
+  print a plain-language warning when the dataloader dominates the GPU
+  ("raise num_workers / pin_memory / prefetch"). Opt-in; zero overhead
+  when not constructed.
+### Fixed
+- CUDA device selection now gates on `torch.cuda.device_count() > 0`, not
+  just `is_available()`, centralized in a new `autotrainer.cuda_device()`
+  helper. The previous check was True whenever the driver was present,
+  even when `CUDA_VISIBLE_DEVICES=""` hid every GPU - so `set_device(local_rank)`
+  crashed with "invalid device ordinal" on driver-present, GPU-hidden
+  boxes (e.g. the CPU-gloo distributed tests on a 1-GPU dev machine). All
+  four device-pick sites (`prepare`, `_ensure_process_group`, `find_lr`,
+  `_find_lr_synced`, `tune`) now share the one helper.
 
 ## [0.10.0] - 2026-07-16
 ### Changed (breaking - final API adjustments before 1.0)

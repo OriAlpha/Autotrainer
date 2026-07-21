@@ -21,8 +21,44 @@ LOSSES = ("cross_entropy", "bce", "mse", "huber")
 
 
 def _peek_batch(dataloader: Any) -> tuple[Any, Any]:
-    xb, yb = next(iter(dataloader))
-    return xb, yb
+    from .utils import split_xy
+
+    return split_xy(next(iter(dataloader)))
+
+
+def _gather_targets(dataloader: Any, max_batches: int = 8) -> Any:
+    """Concatenate targets across up to ``max_batches`` batches.
+
+    Loss inference reads target dtype/shape and (for classification) the class
+    count. Deciding that from a single batch is fragile: a shuffled or
+    class-imbalanced first batch can miss the highest label and under-count
+    classes - a 10-class problem seen as 3-class, or a multiclass one misread
+    as binary. Peeking a few batches makes the class count far more reliable.
+
+    Returns the combined target tensor, the first non-tensor target unchanged
+    (dicts/nested targets aren't concatenated), or ``None`` when any sampled
+    batch has no targets.
+    """
+    import torch
+
+    from .utils import split_xy
+
+    collected: list[Any] = []
+    for i, batch in enumerate(dataloader):
+        if i >= max_batches:
+            break
+        _, yb = split_xy(batch)
+        if yb is None:
+            return None
+        if not isinstance(yb, torch.Tensor):
+            return yb  # non-tensor targets: use the first as-is
+        collected.append(yb.detach())
+    if not collected:
+        return None
+    try:
+        return torch.cat(collected, dim=0)
+    except (RuntimeError, ValueError):
+        return collected[0]  # ragged trailing shapes: fall back to one batch
 
 
 def _bce_loss() -> nn.Module:
@@ -75,6 +111,16 @@ def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
         if out_dim < n_classes:
             reason += f" [WARNING: output dim {out_dim} < {n_classes} classes!]"
         return nn.CrossEntropyLoss(), "cross_entropy", reason
+
+    # Multi-label classification: float targets shaped like a multi-output
+    # model, every value in {0, 1} -> independent per-class BCE, not
+    # regression. (Binary single-label already returned above via the integer
+    # path; this is the (N, C) float multi-hot case, which MSE would ruin.)
+    if out_dim > 1 and yb.ndim >= 2 and yb.shape[-1] == out_dim:
+        vals = yb.unique()
+        if bool(((vals == 0) | (vals == 1)).all()):
+            reason = f"float {{0,1}} targets shaped (N, {out_dim}) matching outputs -> multi-label"
+            return _bce_loss(), "bce", reason
 
     # float targets -> regression; Huber if outlier-heavy.
     # Use median/MAD, not mean/std: outliers inflate the std and hide themselves.
@@ -185,8 +231,9 @@ def find_lr(
     import torch
 
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
-    from .utils import robust_forward, to_device
+    from .utils import cuda_device, robust_forward, to_device
+
+    device = cuda_device(local_rank)
 
     m = copy.deepcopy(model).to(device)
     if hasattr(loss_fn, "to"):
@@ -195,11 +242,14 @@ def find_lr(
     opt, _, _ = _make_optimizer(m, optimizer_name, lr=min_lr, weight_decay=0.0)
     gamma = (max_lr / min_lr) ** (1 / max(num_iters - 1, 1))
 
+    from .utils import split_xy
+
     lrs, losses, lr, it = [], [], min_lr, 0
     smoothed, best = None, float("inf")
     try:
         while it < num_iters:
-            for xb, yb in dataloader:
+            for batch in dataloader:
+                xb, yb = split_xy(batch)
                 if it >= num_iters:
                     break
                 for g in opt.param_groups:
@@ -258,7 +308,9 @@ def _find_lr_synced(model: Any, dataloader: Any, loss_fn: Any, optimizer_name: s
     lr = find_lr(model, dataloader, loss_fn, optimizer_name) if rank == 0 else 0.0
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     # NCCL broadcasts need a CUDA tensor; gloo needs CPU.
-    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    from .utils import cuda_device
+
+    device = cuda_device(local_rank)
     t = torch.tensor([lr], dtype=torch.float64, device=device)
     dist.broadcast(t, src=0)
     return float(t.item())
@@ -301,13 +353,26 @@ def auto(
         return value never changes.
     """
     from .backends.torch_backend import prepare
+    from .utils import print0
 
     xb, yb = _peek_batch(dataloader)
 
     if loss is not None:
         loss_fn, loss_name, loss_why = _make_loss(loss), loss, "user override"
+    elif yb is None:
+        raise ValueError(
+            "autotrainer.auto could not find targets in your batches to infer "
+            "the loss (the loader yielded inputs only, or an unrecognized batch "
+            "structure). Pass loss=... explicitly, e.g. "
+            "auto(model, loader, loss='mse')."
+        )
     else:
-        loss_fn, loss_name, loss_why = _infer_loss(model, yb, xb)
+        # Infer from targets gathered across several batches, not just the
+        # first, so an unrepresentative first batch can't misroute the loss.
+        targets = _gather_targets(dataloader)
+        if targets is None:
+            targets = yb
+        loss_fn, loss_name, loss_why = _infer_loss(model, targets, xb)
 
     if lr is not None:
         lr_val, lr_why = lr, "user override"
@@ -317,12 +382,12 @@ def auto(
 
     opt, opt_name, opt_why = _make_optimizer(model, optimizer, lr_val, weight_decay)
 
-    print(f"[autotrainer] auto: loss={loss_name} ({loss_why})")
-    print(
+    print0(f"[autotrainer] auto: loss={loss_name} ({loss_why})")
+    print0(
         f"[autotrainer] auto: optimizer={opt_name} ({opt_why}), "
         f"weight_decay={weight_decay} (excluded from biases/norms)"
     )
-    print(f"[autotrainer] auto: lr={lr_val:.2e} ({lr_why})")
+    print0(f"[autotrainer] auto: lr={lr_val:.2e} ({lr_why})")
 
     model, dataloader, opt = prepare(model, dataloader, opt)
 
@@ -340,7 +405,7 @@ def auto(
             ],
             milestones=[warmup],
         )
-        print(
+        print0(
             f"[autotrainer] auto: schedule=warmup({warmup} steps)+cosine "
             f"(assumes {epochs} epochs; pass epochs=N to change)"
         )

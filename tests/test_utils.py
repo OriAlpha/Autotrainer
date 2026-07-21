@@ -13,7 +13,48 @@ from autotrainer.utils import (  # noqa: E402
     get_model_device,
     save0,
     set_epoch,
+    split_xy,
 )
+
+
+class TestSplitXy:
+    def test_two_tuple(self):
+        xb, yb = split_xy((torch.zeros(2), torch.ones(2)))
+        assert torch.equal(xb, torch.zeros(2))
+        assert torch.equal(yb, torch.ones(2))
+
+    def test_extra_tuple_elements_ignored(self):
+        # (input, target, sample_weight) -> first two are input/target.
+        xb, yb = split_xy((torch.zeros(2), torch.ones(2), torch.full((2,), 0.5)))
+        assert torch.equal(xb, torch.zeros(2))
+        assert torch.equal(yb, torch.ones(2))
+
+    def test_single_element_tuple_has_no_target(self):
+        xb, yb = split_xy((torch.zeros(2),))
+        assert torch.equal(xb, torch.zeros(2))
+        assert yb is None
+
+    def test_bare_tensor_has_no_target(self):
+        xb, yb = split_xy(torch.zeros(2))
+        assert torch.equal(xb, torch.zeros(2))
+        assert yb is None
+
+    def test_dict_label_key_split_out(self):
+        batch = {"input_ids": torch.zeros(2), "labels": torch.ones(2)}
+        xb, yb = split_xy(batch)
+        assert set(xb) == {"input_ids"}  # target pulled out of the inputs
+        assert "labels" not in xb
+        assert torch.equal(yb, torch.ones(2))
+
+    def test_dict_without_label_key_has_no_target(self):
+        batch = {"input_ids": torch.zeros(2), "mask": torch.ones(2)}
+        xb, yb = split_xy(batch)
+        assert xb is batch
+        assert yb is None
+
+    def test_empty_batch_raises(self):
+        with pytest.raises(ValueError, match="empty batch"):
+            split_xy(())
 
 
 class TestSave0:

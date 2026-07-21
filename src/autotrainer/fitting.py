@@ -232,6 +232,7 @@ def fit(
         rank,
         robust_forward,
         set_epoch,
+        split_xy,
         to_device,
     )
 
@@ -262,7 +263,13 @@ def fit(
         best_params, loss = ckpt["params"], ckpt["loss"]
     else:
         if loss is None and (not distributed or rank() == 0):
-            xb, yb = next(iter(train_loader))
+            xb, yb = split_xy(next(iter(train_loader)))
+            if yb is None:
+                raise ValueError(
+                    "autotrainer.fit could not find targets in your batches to "
+                    "infer the loss. Pass loss=... explicitly, e.g. "
+                    "fit(model, train_loader, val_loader, loss='mse')."
+                )
             _, loss, loss_why = _infer_loss(model, yb, xb)
             if verbose:
                 print(f"[autotrainer] fit: loss={loss} ({loss_why})")
@@ -353,7 +360,8 @@ def fit(
     for epoch in range(start_epoch, epochs):
         set_epoch(tl, epoch)
         m.train()
-        for xb, yb in tl:
+        for batch in tl:
+            xb, yb = split_xy(batch)
             xb_dev = to_device(xb, device)
             yb_dev = to_device(yb, device)
             opt.zero_grad()

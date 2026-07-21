@@ -52,16 +52,21 @@ class TestFit:
         assert set(best_params) == {"lr", "optimizer"}
         assert isinstance(study, optuna.study.Study)
         # The input model must be untouched; the returned one must have trained.
+        # Both comparisons need to be device-agnostic: fit() may move the
+        # output to CUDA, so compare via .cpu() snapshots.
         assert all(torch.equal(model.state_dict()[k], init[k]) for k in init)
-        assert any(not torch.equal(out_model.state_dict()[k], init[k]) for k in init)
+        out_cpu = {k: v.detach().cpu() for k, v in out_model.state_dict().items()}
+        assert any(not torch.equal(out_cpu[k], init[k]) for k in init)
 
     def test_improves_over_untrained_model(self):
         from autotrainer.tuning import _evaluate
 
         train, val = _loaders()
         model = nn.Linear(3, 1)
-        device = torch.device("cpu")
-        before = _evaluate(model, val, nn.MSELoss(), device)
+        # Evaluate on the same device fit() will train on, so the before/after
+        # comparison doesn't trip on a CPU-vs-CUDA tensor mismatch.
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        before = _evaluate(model.to(device), val, nn.MSELoss(), device)
 
         out_model, _, _ = fit(
             model,

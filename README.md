@@ -84,6 +84,161 @@ for epoch in range(epochs):
     # ... your normal training loop
 ```
 
+### Want throughput, not magic? `prepare(..., optimize=True)`
+
+`prepare()` by itself makes your model/loader distribution-ready and leaves
+everything else alone. Pass `optimize=True` to also flip on the GPU wins
+users forget — TF32, `cudnn.benchmark` for CNNs, sane `num_workers` /
+`pin_memory` / `persistent_workers` defaults on bare loaders, and AMP —
+**without touching your lr, loss, schedule, or optimizer choice**. No-op on
+CPU and when the flag is off, so existing scripts see no change.
+
+#### Before: the boilerplate you write today to "use your GPUs well"
+
+None of this touches your recipe (lr, loss, schedule), yet you have to
+remember all of it every time — and forgetting any one of them silently
+leaves 2–3× on the table.
+
+```python
+import torch
+
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)   # your hyperparameter
+loss_fn = nn.CrossEntropyLoss()                             # your hyperparameter
+
+# Manual GPU optimization — ~10 lines of boilerplate:
+torch.backends.cuda.matmul.allow_tf32 = True               # ships off by default
+torch.backends.cudnn.allow_tf32 = True
+torch.backends.cudnn.benchmark = True                       # free win for CNNs
+loader = DataLoader(ds, batch_size=64, shuffle=True,
+                    num_workers=8, pin_memory=True,         # avoid GPU starvation
+                    persistent_workers=True)
+amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+scaler = torch.cuda.amp.GradScaler(enabled=amp_dtype == torch.float16)
+
+for epoch in range(epochs):
+    for xb, yb in loader:
+        with torch.cuda.amp.autocast(dtype=amp_dtype):
+            loss = loss_fn(model(xb), yb)
+        scaler.scale(loss).backward()
+        scaler.step(optimizer); scaler.update()
+```
+
+#### After: one line
+
+```python
+import autotrainer
+
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)   # your hyperparameter
+loss_fn = nn.CrossEntropyLoss()                             # your hyperparameter
+
+# ONE line detects hardware and sets TF32 / cudnn.benchmark / num_workers /
+# pin_memory / persistent_workers / AMP. lr, loss, schedule, optimizer untouched.
+model, loader, optimizer = autotrainer.prepare(model, loader, optimizer, optimize=True)
+
+scaler = autotrainer.GradScaler()   # no-op when bf16 is available
+for epoch in range(epochs):
+    autotrainer.set_epoch(loader, epoch)                    # reshuffles in DDP
+    for xb, yb in loader:
+        with autotrainer.autocast_context():                # bf16 if supported, else fp16
+            loss = loss_fn(model(xb), yb)
+        scaler.scale(loss).backward()
+        scaler.step(optimizer); scaler.update()
+```
+
+What changed: **one `prepare(..., optimize=True)` call + two no-op-on-CPU
+helpers.** What didn't: your lr, your loss, your schedule, your optimizer.
+Same script runs unchanged on a laptop (everything degrades to no-ops) and
+on an A100.
+
+#### What it prints when it runs
+
+Nothing is silent — every speedup is named, and the user is explicitly told
+their hyperparameters weren't touched:
+
+```
+[autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
+[autotrainer] DistributedSampler installed (shuffle=True) - call autotrainer.set_epoch(loader, epoch) ...
+[autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
+```
+
+| | Manual | `prepare(optimize=True)` |
+|---|---|---|
+| Lines of "optimize my GPUs" boilerplate | ~10, hand-written, easy to forget | **1** |
+| Hyperparameters touched | none (correct) | none (correct) |
+| Works on CPU | guard every line yourself | automatic (all no-ops) |
+| Works on SLURM | you'd never write this path | same script, `srun autotrainer run` |
+| Knows what it did | silent | prints it |
+
+### Training-loop helpers (`zero_grad`, `eval_mode`, `accumulate`)
+
+The small things users forget *inside* the loop. None touch lr / loss /
+schedule / optimizer choice.
+
+```python
+import autotrainer
+
+for epoch in range(epochs):
+    autotrainer.set_epoch(loader, epoch)
+    model.train()
+    for xb, yb in loader:
+        with autotrainer.autocast_context():
+            loss = loss_fn(model(xb), yb)
+        scaler.scale(loss).backward()
+        scaler.step(opt)
+        scaler.update()
+        autotrainer.zero_grad(opt)            # set_to_none=True, saves memory
+
+    # eval_mode restores the prior train/eval state - kills the classic
+    # "forgot to flip back to train() after validation" silent bug.
+    with autotrainer.eval_mode(model):
+        val_loss = evaluate(model, val_loader)
+```
+
+**Gradient accumulation** when the effective batch is larger than the
+physical one — scales the step count, **not** the lr:
+
+```python
+# Effective batch = 4 micro-batches; opt steps once per 4 backwards.
+with autotrainer.accumulate(opt, steps=4, scaler=scaler) as acc:
+    for micro_xb, micro_yb in micro_batches:
+        with autotrainer.autocast_context():
+            loss = loss_fn(model(micro_xb), micro_yb) / 4
+        acc.backward(loss)
+```
+
+### Auto batch size
+
+```python
+# Grow batch size until OOM, back off one step. Pass loss_fn for an
+# accurate fwd+bwd measurement; without it the sweep is forward-only
+# (conservative). lr and schedule are NOT changed - pair with accumulate()
+# to scale the step to the new effective batch.
+model, loader, opt = autotrainer.prepare(
+    model, loader, opt, optimize=True, auto_bs=True, loss_fn=loss_fn
+)
+```
+
+### Dataloader bottleneck monitor
+
+The cheapest piece of the roadmap's training-triage theme. Sample per-step
+data-load vs compute time and get a plain-language warning when the loader
+is starving the GPU:
+
+```python
+mon = autotrainer.BottleneckMonitor(warmup=10)
+for xb, yb in loader:
+    with mon.data_time():
+        pass  # the wait for the next batch
+    with mon.step_time():
+        loss = loss_fn(model(xb), yb); loss.backward(); opt.step()
+    mon.tick()
+    if mon.should_report():
+        mon.report()   # -> "[autotrainer] bottleneck: dataloader is 78% of
+                       #     step time ... - raise num_workers / pin_memory / prefetch"
+```
+
+Opt-in; zero overhead when not constructed.
+
 Then launch:
 
 ```bash
