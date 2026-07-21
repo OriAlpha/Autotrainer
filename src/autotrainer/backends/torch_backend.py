@@ -110,14 +110,50 @@ def _shard_loader(dataloader: Any, rank: int, world_size: int) -> Any:
     )
 
 
-def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
+def prepare(
+    model: Any,
+    dataloader: Any = None,
+    optimizer: Any = None,
+    *,
+    optimize: bool = False,
+    amp: bool | None = None,
+    auto_bs: bool = False,
+    loss_fn: Any = None,
+    max_bs: int = 4096,
+) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
     Single device: returns inputs unchanged (moved to GPU if available).
     Multi device:  init process group, DDP-wrap model, distributed sampler.
+
+    Args:
+        model: a ``torch.nn.Module``.
+        dataloader: optional ``DataLoader``.
+        optimizer: optional optimizer; passed through untouched.
+        optimize: turn on the GPU wins users forget (TF32, cudnn.benchmark
+            for CNNs, ``num_workers``/``pin_memory``/``persistent_workers``
+            defaults on bare loaders). Never touches lr, loss, schedule, or
+            optimizer choice. No-op on CPU.
+        amp: enable mixed precision (bf16-preferred, fp16 fallback). When
+            ``optimize=True`` this defaults to True; otherwise False. The
+            caller uses ``autotrainer.autocast_context()`` around the
+            forward and ``autotrainer.GradScaler()`` for the backward; both
+            already exist as no-ops on CPU / when bf16 is supported.
+        auto_bs: grow the loader's batch size until OOM, then back off one
+            step. Requires ``loss_fn`` for an accurate forward+backward
+            measurement; without it the sweep is forward-only (conservative
+            - it underestimates, since real training also needs memory for
+            grads + optimizer state). The discovered batch size replaces
+            the loader's; lr and schedule are NOT changed - raise your
+            effective batch with :func:`autotrainer.accumulate` instead.
+        loss_fn: the loss for the ``auto_bs`` forward+backward sweep. Not
+            used for anything else; nothing is inferred or overridden.
+        max_bs: ceiling for the ``auto_bs`` sweep (default 4096).
     """
     import torch
     from torch.nn.parallel import DistributedDataParallel as DDP
+
+    from .._optimize import apply_gpu_flags, build_loader_defaults, summarize
 
     rank, local_rank, world_size = _dist_info()
     # cuda_device() gates on device_count() > 0 so a driver-present but
@@ -130,6 +166,27 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
         torch.cuda.set_device(device)
     model = model.to(device)
 
+    # Optimize half: set the free-win flags before any work, so even the
+    # DDP-wrap below benefits from TF32 etc. Track what we actually changed
+    # so the summary is honest (apply_gpu_flags is a black box otherwise).
+    applied: dict[str, Any] = {}
+    if optimize and use_cuda:
+        from .._optimize import _looks_like_cnn
+
+        cnn = _looks_like_cnn(model)
+        before = (
+            torch.backends.cuda.matmul.allow_tf32,
+            torch.backends.cudnn.benchmark,
+        )
+        apply_gpu_flags(model, cnn=cnn)
+        if torch.backends.cuda.matmul.allow_tf32 != before[0]:
+            applied["tf32"] = True
+        if cnn and torch.backends.cudnn.benchmark != before[1]:
+            applied["cudnn_benchmark"] = True
+
+    if amp is None:
+        amp = optimize  # default: optimize= implies AMP, but stays overridable
+
     if world_size > 1:
         if dataloader is not None:
             # Shard (and validate) BEFORE any collective op: if this rank
@@ -137,6 +194,73 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
             dataloader = _shard_loader(dataloader, rank, world_size)
         _ensure_process_group()
         model = DDP(model, device_ids=[local_rank] if use_cuda else None)
+
+    # Loader optimizations run AFTER sharding so they see the final loader.
+    # Only adds keys the user didn't set; merges with whatever _shard_loader
+    # already preserved.
+    if optimize and dataloader is not None and use_cuda:
+        extra = build_loader_defaults(dataloader, world_size)
+        if extra:
+            from torch.utils.data import DataLoader
+
+            merged = _loader_kwargs(dataloader)
+            merged.update(extra)
+            dataloader = DataLoader(
+                dataloader.dataset,
+                batch_size=dataloader.batch_size,
+                sampler=dataloader.sampler,
+                **merged,
+            )
+            applied.update(extra)
+
+    # Auto batch size: sweep after sharding + loader-kwargs so the test
+    # runs against the same loader the user will train with. The sweep
+    # rebuilds the loader once with the discovered size.
+    if auto_bs and dataloader is not None and use_cuda:
+        from ..utils import print0, robust_forward, split_xy, to_device
+
+        def sample_batch_fn(bs: int) -> None:
+            from torch.utils.data import DataLoader as _DL
+
+            tmp = _DL(dataloader.dataset, batch_size=bs, **_loader_kwargs(dataloader))
+            xb, yb = split_xy(next(iter(tmp)))
+            xb_dev = to_device(xb, device)
+            opt_zero = torch.optim.SGD(model.parameters(), lr=1e-6)  # throwaway
+            opt_zero.zero_grad(set_to_none=True)
+            out = robust_forward(model, xb_dev)
+            if loss_fn is not None:
+                yb_dev = to_device(yb, device)
+                loss_fn(out, yb_dev).backward()
+                opt_zero.step()
+            else:
+                # Forward-only sweep: sum outputs to keep the graph, backprop
+                # a scalar. Underestimates the safe batch (no real grads +
+                # optimizer state) but never overestimates it.
+                out.sum().backward()
+                opt_zero.step()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        old_bs = dataloader.batch_size
+        new_bs = find_batch_size(model, sample_batch_fn, start=max(2, old_bs), max_bs=max_bs)
+        if new_bs != old_bs:
+            from torch.utils.data import DataLoader
+
+            merged = _loader_kwargs(dataloader)
+            dataloader = DataLoader(
+                dataloader.dataset,
+                batch_size=new_bs,
+                sampler=dataloader.sampler,
+                **merged,
+            )
+            applied["batch_size"] = (old_bs, new_bs)
+            print0(
+                f"[autotrainer] optimize: batch_size {old_bs} -> {new_bs} "
+                f"(lr and schedule unchanged; use accumulate() to scale the step)"
+            )
+
+    if optimize:
+        summarize(optimize=optimize, amp=bool(amp and use_cuda), applied=applied)
 
     out = [model]
     if dataloader is not None:
