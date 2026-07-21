@@ -122,11 +122,11 @@ def tune(
         weights from the best trial.
     """
     import optuna
-    import torch
 
     from .auto_optim import _infer_loss, _make_loss, _make_optimizer
+    from .utils import cuda_device
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = cuda_device()
     space = space or DEFAULT_SPACE
     init_state = copy.deepcopy(model.state_dict())
 

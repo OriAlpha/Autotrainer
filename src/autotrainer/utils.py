@@ -19,6 +19,23 @@ def rank() -> int:
     return int(os.environ.get("RANK", "0"))
 
 
+def cuda_device(local_rank: int = 0) -> torch.device:
+    """The CUDA device for ``local_rank``, or CPU when no GPU is visible.
+
+    ``torch.cuda.is_available()`` is True whenever the driver is present,
+    even when ``CUDA_VISIBLE_DEVICES=""`` hides every device - so callers
+    that built ``cuda:{local_rank}`` from it alone would call
+    ``set_device(N)`` on a phantom GPU and crash ("invalid device
+    ordinal"). ``device_count() > 0`` is the real signal; this helper
+    centralizes the check so every device-pick site stays consistent.
+    """
+    import torch
+
+    if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+        return torch.device(f"cuda:{local_rank}")
+    return torch.device("cpu")
+
+
 def is_main() -> bool:
     """True on exactly one process (global rank 0)."""
     return rank() == 0

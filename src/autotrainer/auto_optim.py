@@ -231,8 +231,9 @@ def find_lr(
     import torch
 
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
-    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
-    from .utils import robust_forward, to_device
+    from .utils import cuda_device, robust_forward, to_device
+
+    device = cuda_device(local_rank)
 
     m = copy.deepcopy(model).to(device)
     if hasattr(loss_fn, "to"):
@@ -307,7 +308,9 @@ def _find_lr_synced(model: Any, dataloader: Any, loss_fn: Any, optimizer_name: s
     lr = find_lr(model, dataloader, loss_fn, optimizer_name) if rank == 0 else 0.0
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     # NCCL broadcasts need a CUDA tensor; gloo needs CPU.
-    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    from .utils import cuda_device
+
+    device = cuda_device(local_rank)
     t = torch.tensor([lr], dtype=torch.float64, device=device)
     dist.broadcast(t, src=0)
     return float(t.item())

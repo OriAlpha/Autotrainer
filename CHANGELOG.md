@@ -4,6 +4,15 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Fixed
+- CUDA device selection now gates on `torch.cuda.device_count() > 0`, not
+  just `is_available()`, centralized in a new `autotrainer.cuda_device()`
+  helper. The previous check was True whenever the driver was present,
+  even when `CUDA_VISIBLE_DEVICES=""` hid every GPU - so `set_device(local_rank)`
+  crashed with "invalid device ordinal" on driver-present, GPU-hidden
+  boxes (e.g. the CPU-gloo distributed tests on a 1-GPU dev machine). All
+  four device-pick sites (`prepare`, `_ensure_process_group`, `find_lr`,
+  `_find_lr_synced`, `tune`) now share the one helper.
 
 ## [0.10.0] - 2026-07-16
 ### Changed (breaking - final API adjustments before 1.0)

@@ -27,7 +27,12 @@ def _ensure_process_group() -> bool:
     if world_size <= 1:
         return False
     if not dist.is_initialized():
-        use_cuda = torch.cuda.is_available()
+        # cuda_device() gates on device_count() > 0, not just is_available(),
+        # so a driver-present but GPU-hidden box (e.g. CUDA_VISIBLE_DEVICES="")
+        # falls through to gloo instead of crashing in set_device(N).
+        from ..utils import cuda_device
+
+        use_cuda = cuda_device(local_rank).type == "cuda"
         if use_cuda:
             # Bind before NCCL init so ranks don't all land on GPU 0.
             torch.cuda.set_device(local_rank)
@@ -115,8 +120,12 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
     from torch.nn.parallel import DistributedDataParallel as DDP
 
     rank, local_rank, world_size = _dist_info()
-    use_cuda = torch.cuda.is_available()
-    device = torch.device(f"cuda:{local_rank}" if use_cuda else "cpu")
+    # cuda_device() gates on device_count() > 0 so a driver-present but
+    # GPU-hidden box doesn't try to bind a phantom device.
+    from ..utils import cuda_device
+
+    device = cuda_device(local_rank)
+    use_cuda = device.type == "cuda"
     if use_cuda:
         torch.cuda.set_device(device)
     model = model.to(device)
