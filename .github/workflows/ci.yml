@@ -29,7 +29,9 @@ jobs:
         with:
           python-version: "${{ matrix.python }}"
       - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
-      - run: pytest tests/ -v
+      # CPU-only runners: exclude the `cuda` marker so the CUDA-required
+      # tests skip cleanly rather than failing on missing GPU.
+      - run: pytest tests/ -v -m "not cuda"
       # Coverage XML is uploaded so coverage trends are inspectable without a
       # third-party account. pytest already produces it via addopts.
       - uses: actions/upload-artifact@v4
@@ -37,6 +39,27 @@ jobs:
           name: coverage-py${{ matrix.python }}
           path: coverage.xml
           if-no-files-found: ignore
+
+  # GPU tests run on a self-hosted runner (your RTX 5070 box, registered with
+  # the `self-hosted` and `gpu` labels). This is what catches the class of
+  # CUDA-path bug that CPU CI cannot - the device_count() crash and the
+  # _pretend_cuda stub defect were both found this way. Disabled by default
+  # until you register the runner; flip `if:` to enable.
+  #
+  # To enable:
+  #   1. https://github.com/OriAlpha/Autotrainer/settings/actions/runners
+  #   2. "New runner" -> "Self-hosted" -> follow the OS-specific setup commands
+  #   3. When prompted for labels, add: self-hosted, gpu
+  #   4. Change `if: false` below to `if: true` (or remove the line).
+  test-cuda:
+    if: false  # enable once a self-hosted GPU runner is registered
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
+      # Run ONLY the cuda-marked tests. The skipif guards still apply, so
+      # this is safe even on a GPU box that happens to have CUDA hidden.
+      - run: pytest tests/ -v -m "cuda"
 
   typecheck:
     runs-on: ubuntu-latest
