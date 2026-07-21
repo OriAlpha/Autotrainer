@@ -162,10 +162,13 @@ class TestPrepareOptimizeIntegration:
         We want to exercise the optimize=True code path without a real GPU.
         ``torch.cuda.set_device`` and ``model.to('cuda')`` both hit C
         extensions that aren't built for CPU torch, so stub them along with
-        ``is_available``. Device placement is orthogonal to what these
-        tests check (flag application + non-mutation of hyperparameters).
+        ``is_available`` AND ``device_count`` (cuda_device() gates on the
+        latter, not just the former). Device placement is orthogonal to
+        what these tests check (flag application + non-mutation of
+        hyperparameters).
         """
         monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
         monkeypatch.setattr(torch.cuda, "set_device", lambda _d: None)
         # Keep tensors where they are; "to(cuda)" becomes a no-op.
         monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
