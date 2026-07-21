@@ -6,10 +6,15 @@ import pytest
 
 torch = pytest.importorskip("torch")
 import torch.nn as nn  # noqa: E402
-from torch.utils.data import DataLoader, Dataset  # noqa: E402
+from torch.utils.data import (  # noqa: E402
+    DataLoader,
+    Dataset,
+    TensorDataset,  # noqa: E402
+)
 
 from autotrainer.auto_optim import (  # noqa: E402
     _find_lr_synced,
+    _gather_targets,
     _infer_loss,
     _make_loss,
     _make_optimizer,
@@ -103,6 +108,46 @@ class TestInferLoss:
         assert name == "huber"
         assert isinstance(loss_fn, nn.HuberLoss)
 
+    def test_multilabel_float_targets_pick_bce_not_mse(self):
+        """Float multi-hot targets shaped (N, C) matching a C-output model are
+        multi-label classification -> BCE, not regression. MSE here trains a
+        model that never calibrates as probabilities."""
+        model = nn.Linear(4, 3)  # 3 independent label outputs
+        yb = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        xb = torch.randn(4, 4)
+        loss_fn, name, reason = _infer_loss(model, yb, xb)
+        assert name == "bce"
+        assert "multi-label" in reason
+        # The returned loss must accept (N, C) float targets against (N, C) logits.
+        assert torch.isfinite(loss_fn(model(xb), yb))
+
+    def test_continuous_multioutput_still_regression(self):
+        """Float (N, C) targets that aren't all {0,1} stay regression, not the
+        multi-label BCE branch (mse/huber both fine; the point is NOT bce)."""
+        model = nn.Linear(4, 3)
+        yb = torch.randn(8, 3) * 5.0  # genuine continuous multi-output targets
+        xb = torch.randn(8, 4)
+        _, name, _ = _infer_loss(model, yb, xb)
+        assert name in ("mse", "huber")
+
+
+class TestGatherTargets:
+    def test_gather_spans_batches_for_reliable_class_count(self):
+        """A class that only appears in a later batch must still be counted -
+        deciding the class count from batch 0 alone would under-count."""
+        x = torch.randn(12, 3)
+        y = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2])  # class 2 last
+        loader = DataLoader(_ToyDataset(x, y), batch_size=4, shuffle=False)
+        # The first batch alone is all zeros; gathering sees every class.
+        assert int(next(iter(loader))[1].max()) == 0
+        targets = _gather_targets(loader)
+        assert int(targets.max()) == 2
+        assert targets.numel() == 12
+
+    def test_gather_returns_none_when_no_targets(self):
+        loader = DataLoader(TensorDataset(torch.randn(8, 3)), batch_size=4)
+        assert _gather_targets(loader) is None
+
 
 class TestMakeLoss:
     @pytest.mark.parametrize(
@@ -190,6 +235,41 @@ class TestAuto:
         assert len(out) == 5
         sched = out[4]
         assert isinstance(sched, torch.optim.lr_scheduler.SequentialLR)
+
+    def test_dict_batch_loader_is_handled(self):
+        """HuggingFace-style dict batches ({'x':..., 'labels':...}) must work,
+        not raise on an opaque 2-tuple unpack."""
+
+        class _DictModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.lin = nn.Linear(3, 2)
+
+            def forward(self, x):
+                return self.lin(x)
+
+        class _DictDataset(Dataset):
+            def __init__(self):
+                self.x = torch.randn(16, 3)
+                self.y = torch.randint(0, 2, (16,))
+
+            def __len__(self):
+                return len(self.x)
+
+            def __getitem__(self, i):
+                return {"x": self.x[i], "labels": self.y[i]}
+
+        loader = DataLoader(_DictDataset(), batch_size=4)
+        out = auto(_DictModel(), loader, schedule=False)
+        assert len(out) == 5
+        assert isinstance(out[3], nn.Module)  # a loss was inferred
+
+    def test_inputs_only_loader_raises_clear_error(self):
+        """A loader with no targets can't infer a loss; the error must name the
+        fix (pass loss=) instead of failing on an unpack deep in the stack."""
+        loader = DataLoader(TensorDataset(torch.randn(8, 3)), batch_size=4)
+        with pytest.raises(ValueError, match="loss="):
+            auto(nn.Linear(3, 2), loader, schedule=False)
 
     def test_user_overrides_skip_inference(self, capsys):
         """When loss/optimizer/lr are all overridden, find_lr must not run."""

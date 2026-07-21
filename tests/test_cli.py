@@ -35,6 +35,22 @@ class TestCLIDoctor:
         assert "detected mode" in capsys.readouterr().out
 
 
+class TestPythonDashM:
+    def test_python_m_autotrainer_works(self):
+        """`python -m autotrainer info` must work even when the console
+        script is not on PATH (user installs / unactivated venvs on HPC)."""
+        import subprocess
+
+        r = subprocess.run(
+            [sys.executable, "-m", "autotrainer", "info"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert r.returncode == 0, r.stderr
+        assert "mode" in r.stdout
+
+
 class TestCLIRun:
     def test_run_dispatches_to_launch(self, monkeypatch):
         """`autotrainer run <script>` must hand off to launcher.launch()."""

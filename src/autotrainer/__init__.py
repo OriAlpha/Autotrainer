@@ -20,12 +20,15 @@ __version__ = "0.10.0"
 # The public API. Everything not listed here (submodules, _-prefixed
 # helpers) is internal and may change without a deprecation cycle.
 __all__ = [
+    "BottleneckMonitor",
     "GradScaler",
     "__version__",
+    "accumulate",
     "auto",
     "autocast_context",
     "barrier",
     "boost_params",
+    "eval_mode",
     "find_batch_size",
     "find_lr",
     "fit",
@@ -37,9 +40,13 @@ __all__ = [
     "scale_batch_size",
     "scope",
     "set_epoch",
+    "train_mode",
     "tune",
+    "zero_grad",
 ]
 
+from .bottleneck import BottleneckMonitor  # noqa: E402,F401
+from .loop import accumulate, eval_mode, train_mode, zero_grad  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

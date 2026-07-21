@@ -36,8 +36,9 @@ class TestTorchPrepareSingleDevice:
         # Single device: no DDP wrap, no process group.
         assert not isinstance(out, torch.nn.parallel.DistributedDataParallel)
         assert not dist.is_initialized()
-        # Model should be on CPU (no CUDA in CI).
-        assert next(out.parameters()).device.type == "cpu"
+        # Model moved to CUDA when available, stays on CPU otherwise.
+        expected = "cuda" if torch.cuda.is_available() else "cpu"
+        assert next(out.parameters()).device.type == expected
 
 
 class TestShardLoader:
