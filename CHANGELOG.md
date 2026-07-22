@@ -4,6 +4,8 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.11.0] - 2026-07-22
 ### Added
 - `prepare(model, loader, opt, optimize=True)`: the GPU optimization layer
   the original thesis promised - detect the hardware, set it up for
