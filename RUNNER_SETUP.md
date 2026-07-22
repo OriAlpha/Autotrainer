@@ -15,11 +15,35 @@ This doc walks through registering your machine as the runner, **one time**.
 
 - NVIDIA GPU and driver: **RTX 5070 Laptop GPU, driver 610.74** (CUDA 13.3 capable).
 - Admin on the box (needed to install the runner as a Windows service).
+- **PowerShell execution policy loosened to `RemoteSigned`** (see below).
 
 You do **not** need a pre-installed Python or torch — the `test-cuda` CI job
 uses `actions/setup-python` to install a known Python into the runner's
 workspace, then installs the cu128 nightly torch itself. The runner's only
 job is to provide the GPU + driver.
+
+### Loosen the PowerShell execution policy (required, one-time)
+
+`actions/setup-python` downloads a Python archive, extracts it, and runs
+`setup.ps1`. The runner service runs as `WindowsPowerShell\v1.0\powershell.exe`
+(Windows PowerShell 5), which on a default Windows client install uses the
+`Restricted` execution policy and blocks the script with
+`PSSecurityException / UnauthorizedAccess`. Every self-hosted Windows runner
+hits this on the first `setup-python` call.
+
+Fix it once, as admin:
+
+```powershell
+# Run from an admin PowerShell.
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
+```
+
+`RemoteSigned` lets locally-created scripts run and downloaded scripts run
+only if they're signed — the standard tradeoff for dev machines. Verify:
+
+```powershell
+Get-ExecutionPolicy -List  # LocalMachine should show RemoteSigned
+```
 
 ## Step 1 — Create the runner in GitHub
 
