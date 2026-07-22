@@ -65,7 +65,7 @@ jobs:
     # Python sidesteps both. To switch Python versions, run
     # `uv python install <ver>` on the runner and update the path below.
     env:
-      PYTHON: C:\Users\suhas\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\python.exe
+      PYTHON: C:\Python313\python.exe
     steps:
       - uses: actions/checkout@v4
       - name: Verify pinned Python is reachable

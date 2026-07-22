@@ -15,36 +15,38 @@ This doc walks through registering your machine as the runner, **one time**.
 
 - NVIDIA GPU and driver: **RTX 5070 Laptop GPU, driver 610.74** (CUDA 13.3 capable).
 - Admin on the box (needed to install the runner as a Windows service).
-- **Python 3.13 installed via uv** at the pinned path:
-  `C:\Users\suhas\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\python.exe`
-  (the CI job's `env.PYTHON` points here — see `.github/workflows/ci.yml`).
+- **Python 3.13 installed system-wide at `C:\Python313\python.exe`** (the
+  CI job's `env.PYTHON` points here — see `.github/workflows/ci.yml`).
 
 You do **not** need a pre-installed torch — the `test-cuda` CI job installs
 the cu128 nightly torch itself. The runner's only job is to provide the
 GPU + driver + Python.
 
-### Install Python via uv (one-time)
+### Install Python system-wide (one-time)
 
-We deliberately do NOT use `actions/setup-python` on this runner: on a
+We deliberately do NOT use `actions/setup-python` on this runner. On a
 self-hosted Windows box it downloads a Python zip and runs `setup.ps1`,
 which (a) needs the PowerShell execution policy loosened to `RemoteSigned`
 system-wide and (b) on this box tripped Windows Defender quarantining the
 downloaded python.exe ("Error happened during Python installation"). A
-pre-installed uv Python sidesteps both.
+pre-installed system-wide Python sidesteps both.
+
+The runner service runs as `NT AUTHORITY\NETWORK SERVICE`, which **cannot
+read `C:\Users\<you>\...`**. So install Python somewhere all accounts can
+read. The fastest path is to copy a uv-managed Python to a system path
+and grant NETWORK SERVICE read access:
 
 ```powershell
-# Once, in any shell (uv manages its own Python builds).
-uv python install 3.13
+# From an admin PowerShell.
+uv python install 3.13   # if not already present
+Copy-Item -Recurse C:\Users\<you>\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none C:\Python313
+icacls C:\Python313 /grant 'NETWORK SERVICE:(OI)(CI)RX' /T
+& "C:\Python313\python.exe" --version   # should print Python 3.13.x
 ```
 
-Verify the path matches what's pinned in `.github/workflows/ci.yml`:
-
-```powershell
-uv python list --only-installed
-```
-
-To change the Python version: `uv python install <ver>`, then update the
-`env.PYTHON` path in `ci.yml` to match.
+To change the Python version later: re-run the copy + icacls to a new
+folder (e.g. `C:\Python314`), then update `env.PYTHON` in
+`.github/workflows/ci.yml` to match.
 
 ## Step 1 — Create the runner in GitHub
 
