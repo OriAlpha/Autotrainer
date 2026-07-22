@@ -14,10 +14,12 @@ This doc walks through registering your machine as the runner, **one time**.
 ## Prerequisites (already met on this box)
 
 - NVIDIA GPU and driver: **RTX 5070 Laptop GPU, driver 610.74** (CUDA 13.3 capable).
-- A CUDA-enabled torch installed in the venv this runner will use:
-  **torch 2.12.0.dev cu128 nightly** (Blackwell / sm_120 needs cu128, not
-  stable wheels). See CHANGELOG entries for PR #1 if reinstalling.
 - Admin on the box (needed to install the runner as a Windows service).
+
+You do **not** need a pre-installed Python or torch — the `test-cuda` CI job
+uses `actions/setup-python` to install a known Python into the runner's
+workspace, then installs the cu128 nightly torch itself. The runner's only
+job is to provide the GPU + driver.
 
 ## Step 1 — Create the runner in GitHub
 

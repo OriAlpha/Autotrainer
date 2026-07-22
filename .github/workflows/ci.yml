@@ -57,13 +57,19 @@ jobs:
     runs-on: [self-hosted, gpu]
     steps:
       - uses: actions/checkout@v4
+      # setup-python gives the runner a known Python with pip on PATH. The
+      # self-hosted Windows service doesn't inherit the dev shell's venv, so
+      # bare `pip`/`python` aren't found without this.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       # Install the base extras WITHOUT torch first (so pip doesn't pull the
       # CPU-only torch wheel from PyPI), then the CUDA-enabled torch wheel
       # from the PyTorch index. The cu128 wheel is what Blackwell (sm_120)
       # needs; older CUDA wheels don't see the GPU. Adjust the index URL if
       # the runner's GPU needs a different CUDA version.
-      - run: pip install -e ".[dev,sklearn,boosting,tune]"
-      - run: pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
+      - run: python -m pip install -e ".[dev,sklearn,boosting,tune]"
+      - run: python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
       # Sanity: confirm the runner actually has a visible CUDA device before
       # running the suite. If this fails, the runner is misconfigured (driver
       # present but no GPU visible, CUDA_VISIBLE_DEVICES hiding it, etc.) and
