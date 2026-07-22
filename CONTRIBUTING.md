@@ -25,17 +25,52 @@ TensorFlow code paths.
 
 ## Before opening a PR
 
-All three gates must pass. Run them locally before pushing:
+All contributions go through pull requests: **branch off `main`, push, open a
+PR, wait for CI, squash-merge.** Don't push directly to `main`.
+
+### The CI gates
+
+Every PR runs these jobs in `.github/workflows/ci.yml`:
+
+| Job | What |
+|---|---|
+| `lint` | `ruff check` + `ruff format --check` |
+| `typecheck` | `mypy src/autotrainer` (strict) |
+| `test (3.9/3.11/3.13)` | `pytest tests/ -m "not cuda"` on Ubuntu, three Python versions |
+| `test-tf` | TensorFlow-specific tests (single version; `tf` is heavy) |
+| `docs` | pdoc API reference build (deployed to Pages on merge to `main`) |
+| `test-cuda` | `pytest -m "cuda"` on a self-hosted GPU runner |
+
+All must pass before merge (except `test-cuda`, which is best-effort — see below).
+
+### Run the gates locally before pushing
 
 ```bash
 ruff check src/ tests/          # lint
 ruff format --check src/ tests/ # formatting
 mypy src/autotrainer            # type checking
-pytest tests/                   # tests + coverage (75% floor)
+pytest tests/ -m "not cuda"     # tests + coverage (75% floor), skipping GPU tests
 ```
 
 `pytest` runs with coverage automatically (configured in `pyproject.toml`).
 If coverage drops below 75%, the run fails - add tests for any new behavior.
+
+### The `cuda` pytest marker and the GPU runner
+
+Tests that need a real CUDA GPU are marked `@pytest.mark.cuda` (see
+`pyproject.toml`). On a CPU-only box they're deselected by `-m "not cuda"`
+(above), so plain `pytest tests/` will show them as skipped/deselected rather
+than failed - that's expected, not a problem.
+
+The `test-cuda` CI job runs only the `cuda`-marked subset on a self-hosted
+GPU runner (`runs-on: [self-hosted, gpu]`). It's **not required** for merge
+(no branch-protection rule includes it), so PRs don't block if the runner is
+offline. See [`RUNNER_SETUP.md`](RUNNER_SETUP.md) for one-time runner
+registration, and [`NEXT_STEPS.md`](NEXT_STEPS.md) for the engineering
+backlog. If you add CUDA-dependent behavior, mark the test `@pytest.mark.cuda`
+and gate it with `skipif(not _has_cuda())` so it skips cleanly on CPU.
+
+### Pre-commit hooks (optional)
 
 You can also install the [pre-commit](https://pre-commit.com/) hooks to run
 ruff automatically on every commit:

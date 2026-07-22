@@ -307,3 +307,66 @@ class TestAutoBs:
             model, loader, auto_bs=True, loss_fn=nn.CrossEntropyLoss(), max_bs=8
         )
         assert out_loader.batch_size <= 8
+
+
+class TestPublicDispatcherForwardsKwargs:
+    """Regression test: the PUBLIC autotrainer.prepare() (in __init__.py) must
+    forward optimize/compile/fsdp/etc. kwargs to the torch backend.
+
+    This caught a real bug: the dispatcher originally called the backend with
+    only 3 positional args, so every README snippet using prepare(optimize=True)
+    raised TypeError. The existing TestPrepareOptimizeIntegration tests imported
+    the backend directly and missed it. These tests import the public package
+    and exercise the actual path users take.
+    """
+
+    def _model_loader(self, torch):
+        import torch.nn as nn
+        from torch.utils.data import DataLoader, TensorDataset
+
+        model = nn.Linear(3, 1)
+        ds = TensorDataset(torch.randn(16, 3), torch.randn(16, 1))
+        loader = DataLoader(ds, batch_size=4)
+        return model, loader
+
+    def test_public_prepare_accepts_optimize_kwarg(self, monkeypatch):
+        """autotrainer.prepare(model, loader, optimize=True) must not raise TypeError."""
+        import torch
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        monkeypatch.setattr(torch.cuda, "set_device", lambda _d: None)
+        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
+
+        import autotrainer  # public package, not the backend
+
+        model, loader = self._model_loader(torch)
+        # This used to raise: TypeError: prepare() got an unexpected keyword
+        # argument 'optimize'. If you see that error again, the dispatcher in
+        # __init__.py lost its **kwargs forwarding.
+        model, loader = autotrainer.prepare(model, loader, optimize=True)
+
+    def test_public_prepare_accepts_compile_kwarg(self, monkeypatch):
+        """compile= must also reach the backend through the dispatcher."""
+        import torch
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        monkeypatch.setattr(torch.cuda, "set_device", lambda _d: None)
+        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
+
+        import autotrainer
+
+        model, loader = self._model_loader(torch)
+        autotrainer.prepare(model, loader, optimize=True, compile=True)
+
+    def test_public_prepare_accepts_fsdp_kwarg(self, monkeypatch):
+        """fsdp= must reach the backend. Single-process path: no-op with warning."""
+        import torch
+
+        monkeypatch.delenv("WORLD_SIZE", raising=False)
+
+        import autotrainer
+
+        model, loader = self._model_loader(torch)
+        autotrainer.prepare(model, loader, fsdp=True)

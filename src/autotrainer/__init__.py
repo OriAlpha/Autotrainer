@@ -84,14 +84,21 @@ def boost_params(params: dict[str, Any] | None = None, lib: str = "xgboost") -> 
     return _b(params, lib=lib)
 
 
-def prepare(model: Any, dataloader: Any = None, optimizer: Any = None) -> Any:
-    """Framework dispatcher: route to the right backend by model type."""
+def prepare(model: Any, dataloader: Any = None, optimizer: Any = None, **kwargs: Any) -> Any:
+    """Framework dispatcher: route to the right backend by model type.
+
+    For PyTorch models, keyword arguments are forwarded to the torch backend
+    (``torch_backend.prepare``), which accepts: ``optimize``, ``amp``,
+    ``auto_bs``, ``loss_fn``, ``max_bs``, ``compile``, ``compile_mode``,
+    ``fsdp``, ``cpu_offload``. The non-torch backends don't take kwargs;
+    passing any to a sklearn/boosting/tf model raises ``TypeError``.
+    """
     mod = type(model).__module__ or ""
 
     if mod.startswith("torch") or _is_torch_module(model):
         from .backends.torch_backend import prepare as torch_prepare
 
-        return torch_prepare(model, dataloader, optimizer)
+        return torch_prepare(model, dataloader, optimizer, **kwargs)
 
     if mod.startswith(("keras", "tensorflow")):
         raise TypeError(
