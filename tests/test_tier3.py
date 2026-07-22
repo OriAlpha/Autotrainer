@@ -60,6 +60,40 @@ def _triton_available() -> bool:
         return False
 
 
+class TestRunnerSmoke:
+    """First-tests-to-run on the GPU runner. If any of these fail, the
+    runner itself is misconfigured and the rest of the cuda-marked suite
+    can't be trusted. Kept separate from TestCompile/TestFsdp so a runner
+    problem shows as a small, named failure rather than 11 mysterious
+    per-test failures.
+    """
+
+    def test_gpu_visible_to_torch(self):
+        """The most basic check: torch sees at least one CUDA device."""
+        import torch
+
+        assert torch.cuda.is_available(), "torch.cuda.is_available() is False"
+        assert torch.cuda.device_count() > 0, "device_count() is 0"
+
+    def test_gpu_forward_backward_executes(self):
+        """Actually run a forward+backward on the GPU - catches driver/CUDA
+        library mismatches that is_available() alone won't (a misconfigured
+        torch can report True then crash on the first kernel)."""
+        import torch
+
+        device = torch.device("cuda:0")
+        model = torch.nn.Linear(16, 8).to(device)
+        x = torch.randn(4, 16, device=device)
+        y = torch.randn(4, 8, device=device)
+        loss = torch.nn.functional.mse_loss(model(x), y)
+        loss.backward()
+        # If we got here without raising, the full stack works.
+        assert loss.item() > 0
+        # And grads actually populated (sanity for the backward pass).
+        assert model.weight.grad is not None
+        assert torch.isfinite(model.weight.grad).all()
+
+
 class TestCompile:
     def test_compile_wraps_model(self):
         """compile=True must hand the model to torch.compile (wiring check).
