@@ -3,6 +3,7 @@
 | File | Shows | Run with |
 |---|---|---|
 | `pytorch_ddp.py` | prepare(): DDP + sampler + device placement | `autotrainer run pytorch_ddp.py` |
+| `pytorch_optimize.py` | **prepare(optimize=True)**: TF32, AMP, loader defaults - throughput, no hyperparameter changes | `autotrainer run pytorch_optimize.py` |
 | `pytorch_auto.py` | auto(): inferred loss/optimizer/LR/schedule, mixed precision, rank-0 helpers | `autotrainer run pytorch_auto.py` |
 | `pytorch_tune.py` | tune(): hyperparameter search with Optuna | `python pytorch_tune.py` |
 | `pytorch_fit.py` | fit(): tune the recipe, then fully train the winner | `autotrainer run pytorch_fit.py` |
