@@ -118,19 +118,28 @@ class TestConfigureScratch:
         configure_scratch(warn=False)
         assert os.environ["TORCHINDUCTOR_CACHE_DIR"] == "/my/custom/cache"
 
-    def test_warns_when_scratch_looks_networked(self, monkeypatch, capsys):
-        # An NFS-looking path should trigger the warning. We construct a path
-        # that stays NFS-looking after Path.resolve() on both POSIX and
-        # Windows (where /home/x resolves to D:\home\x and loses the marker).
+    def test_warns_when_scratch_looks_networked(self, monkeypatch, capsys, tmp_path):
+        # Force the heuristic to True (real path-based detection is covered
+        # by test_looks_networked_pure_logic below). Using a real tmp_path
+        # avoids PermissionError when node_scratch() tries to mkdir at an
+        # unusual path on locked-down CI runners (e.g. /nfs on Ubuntu, where
+        # creating /nfs/... from root requires write perms the runner lacks).
         monkeypatch.delenv("SLURM_JOB_ID", raising=False)
-        monkeypatch.setenv("TMPDIR", "/nfs/scratch/fake")
+        monkeypatch.setenv("TMPDIR", str(tmp_path))
+        import autotrainer.slurm as slurm_mod
+
+        monkeypatch.setattr(slurm_mod, "_looks_networked", lambda _p: True)
         configure_scratch(warn=True)
         out = capsys.readouterr().out
-        # On Windows the marker survives because /nfs stays in the resolved
-        # path string; on POSIX it survives trivially. If the dir couldn't be
-        # created (no /nfs on the test box) node_scratch() raises before the
-        # warning, which we accept as a skip rather than a failure.
-        assert "network filesystem" in out or "autotrainer" not in out
+        assert "network filesystem" in out
+
+    def test_no_warning_when_scratch_is_local(self, monkeypatch, capsys, tmp_path):
+        # Symmetric: when the scratch is local, no network warning fires.
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setenv("TMPDIR", str(tmp_path))
+        configure_scratch(warn=True)
+        out = capsys.readouterr().out
+        assert "network filesystem" not in out
 
     def test_looks_networked_pure_logic(self):
         """The heuristic itself, OS-independent."""
