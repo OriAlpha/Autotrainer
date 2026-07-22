@@ -66,16 +66,8 @@ jobs:
     # `uv python install <ver>` on the runner and update the path below.
     env:
       PYTHON: C:\Python313\python.exe
-      # The venv python (created below) - no spaces in the path so no quoting
-      # needed. Pinning it here keeps every step consistent and avoids the
-      # PowerShell call-operator quoting footguns (the `& "...""` form mangled
-      # the extras spec: '.[dev,sklearn,boosting,tune is not a valid...').
-      VENV_PY: D:\runner-venv\Scripts\python.exe
     steps:
       - uses: actions/checkout@v4
-      - name: Verify pinned Python is reachable
-        shell: pwsh
-        run: '& "$env:PYTHON" --version'
       # Create a venv in the runner's persistent work dir. The system Python
       # at C:\Python313 is uv-managed and carries the PEP 668 EXTERNALLY-
       # MANAGED marker, so installing straight into it fails with
@@ -83,39 +75,42 @@ jobs:
       # - isolates autotrainer + torch from the system Python. The venv is
       # outside _work so it survives across runs (the 2.5GB torch wheel
       # would re-download every run otherwise).
-      - name: Create persistent venv
+      #
+      # All subsequent steps prepend D:\runner-venv\Scripts to PATH so plain
+      # `python` and `pip` resolve there - no call-operator or nested-quote
+      # footguns (cmd's CALL wrapper and pwsh's & operator both mangle
+      # .[extras] specs otherwise).
+      - name: Create persistent venv and add to PATH
         shell: pwsh
         run: |
-          if (-not (Test-Path $env:VENV_PY)) {
+          if (-not (Test-Path D:\runner-venv\Scripts\python.exe)) {
             & "$env:PYTHON" -m venv D:\runner-venv
           }
-          & "$env:VENV_PY" -m pip install --upgrade pip
-      # Install steps use cmd (shell: cmd) to avoid PowerShell's call-operator
-      # quoting issues. The paths have no spaces, so cmd parses them cleanly.
+          & D:\runner-venv\Scripts\python.exe -m pip install --upgrade pip
+          # Prepend the venv's Scripts dir to GITHUB_PATH so every subsequent
+          # step resolves `python` and `pip` to the venv. The default shell
+          # (pwsh on this runner) then needs no call-operator or nested
+          # quoting - plain `python -m pip install -e ".[extras]"` works.
+          Add-Content -Path $env:GITHUB_PATH -Value "D:\runner-venv\Scripts"
       # Install the base extras WITHOUT torch first (so pip doesn't pull the
       # CPU-only torch wheel from PyPI), then the CUDA-enabled torch wheel
       # from the PyTorch index. The cu128 wheel is what Blackwell (sm_120)
       # needs; older CUDA wheels don't see the GPU.
       - name: Install autotrainer (no torch)
-        shell: cmd
-        run: '"%VENV_PY%" -m pip install -e ".[dev,sklearn,boosting,tune"'
+        run: python -m pip install -e ".[dev,sklearn,boosting,tune]"
       - name: Install cu128 nightly torch
-        shell: cmd
-        run: '"%VENV_PY%" -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128'
+        run: python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
       # Sanity: confirm the runner actually has a visible CUDA device before
       # running the suite. If this fails, the runner is misconfigured (driver
       # present but no GPU visible, CUDA_VISIBLE_DEVICES hiding it, etc.) and
       # the failure message points at the cause rather than 11 cryptic
       # per-test skips.
       - name: GPU sanity check
-        shell: pwsh
-        run: |
-          & "$env:VENV_PY" -c "import torch; assert torch.cuda.is_available() and torch.cuda.device_count() > 0, 'No CUDA GPU visible - check CUDA_VISIBLE_DEVICES and driver'; print(f'GPU OK: {torch.cuda.get_device_name(0)} (capability {torch.cuda.get_device_capability(0)})')"
+        run: python -c "import torch; assert torch.cuda.is_available() and torch.cuda.device_count() > 0, 'No CUDA GPU visible - check CUDA_VISIBLE_DEVICES and driver'; print(f'GPU OK: {torch.cuda.get_device_name(0)} (capability {torch.cuda.get_device_capability(0)})')"
       # Run ONLY the cuda-marked tests. The skipif guards still apply, so
       # this is safe even on a GPU box that happens to have CUDA hidden.
       - name: Run cuda-marked tests
-        shell: cmd
-        run: '"%VENV_PY%" -m pytest tests/ -v -m "cuda"'
+        run: python -m pytest tests/ -v -m "cuda"
 
   typecheck:
     runs-on: ubuntu-latest
