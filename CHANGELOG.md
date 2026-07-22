@@ -5,45 +5,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
-- `prepare(..., cpu_offload=True)`: when paired with `fsdp=True`, enables
-  `CPUOffload(offload_params=True)` - moves FSDP-sharded params to CPU and
-  brings them to GPU only for the forward/backward. Trades throughput for
-  the ability to train models that OOM even when sharded across ranks.
-  Ignored with a warning on the DDP path (no built-in CPU param offload)
-  and on single-process (world_size == 1). Does not touch lr/loss/schedule.
-- `autotrainer.node_scratch()` and `autotrainer.configure_scratch()`: SLURM
-  node-local scratch ergonomics. `node_scratch()` returns `$TMPDIR`
-  (per-job, per-node, auto-cleaned under SLURM; system temp elsewhere),
-  suffixed with the SLURM job id so concurrent jobs don't collide.
-  `configure_scratch()` sets `TORCHINDUCTOR_CACHE_DIR` to it (so
-  `torch.compile` kernel cache doesn't hit NFS) and warns when the scratch
-  looks like it's on a network filesystem (NFS/Lustre/GPFS/Panasas). Call
-  once at the top of your training script, before any `torch.compile`.
-### Added (prior)
-- `prepare(..., compile=True, compile_mode=)`: wrap the model with
-  `torch.compile()` before any DDP wrap. Order matters - compiling the
-  unwrapped module then DDP-wrapping is the documented-supported path;
-  the reverse causes graph breaks on the `.module` indirection. No-op on
-  CPU and torch < 2.0. On compile failure (dynamic shapes the backend
-  can't handle, missing Triton on Windows, etc.) falls back to the
-  uncompiled model with a warning rather than crashing the run.
-  `compile_mode`: `default` | `reduce-overhead` (CUDA graphs) |
-  `max-autotune` (kernel search). Does not touch lr/loss/schedule.
-- `prepare(..., fsdp=True)`: wrap with `FullyShardedDataParallel` instead
-  of `DDP` when distributed. FSDP shards params/grads/optimizer state
-  across ranks - the path for models too large to fit on one GPU (DDP
-  replicates and OOMs). Uses `use_orig_params=True` so the user's
-  optimizer keeps working unchanged. On single-process (world_size==1)
-  or torch < 2.0, `fsdp=True` is a no-op with a warning. Does not touch
-  lr/loss/schedule/optimizer.
-- CUDA CI: new `cuda` pytest marker selects GPU-required tests; CPU jobs
-  run `-m "not cuda"` to skip them cleanly. A `test-cuda` job is wired
-  for a self-hosted GPU runner (`runs-on: [self-hosted, gpu]`), disabled
-  by default until the runner is registered - see the inline instructions
-  in `.github/workflows/ci.yml`. This is the durable fix for the class of
-  CUDA-path bug that CPU CI cannot catch (the `device_count()` crash and
-  the `_pretend_cuda` stub defect were both found this way).
-### Added (prior)
 - `prepare(model, loader, opt, optimize=True)`: the GPU optimization layer
   the original thesis promised - detect the hardware, set it up for
   throughput, **leave the user's hyperparameters alone**. When `optimize=True`
@@ -67,6 +28,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   lr and schedule are NOT changed - pair with `accumulate()` to scale the
   step to the new effective batch.
 - `prepare(..., max_bs=N)`: ceiling for the `auto_bs` sweep (default 4096).
+- `prepare(..., compile=True, compile_mode=)`: wrap the model with
+  `torch.compile()` before any DDP wrap. Order matters - compiling the
+  unwrapped module then DDP-wrapping is the documented-supported path;
+  the reverse causes graph breaks on the `.module` indirection. No-op on
+  CPU and torch < 2.0. On compile failure (dynamic shapes the backend
+  can't handle, missing Triton on Windows, etc.) falls back to the
+  uncompiled model with a warning rather than crashing the run.
+  `compile_mode`: `default` | `reduce-overhead` (CUDA graphs) |
+  `max-autotune` (kernel search). Does not touch lr/loss/schedule.
+- `prepare(..., fsdp=True)`: wrap with `FullyShardedDataParallel` instead
+  of `DDP` when distributed. FSDP shards params/grads/optimizer state
+  across ranks - the path for models too large to fit on one GPU (DDP
+  replicates and OOMs). Uses `use_orig_params=True` so the user's
+  optimizer keeps working unchanged. On single-process (world_size==1)
+  or torch < 2.0, `fsdp=True` is a no-op with a warning. Does not touch
+  lr/loss/schedule/optimizer.
+- `prepare(..., cpu_offload=True)`: when paired with `fsdp=True`, enables
+  `CPUOffload(offload_params=True)` - moves FSDP-sharded params to CPU and
+  brings them to GPU only for the forward/backward. Trades throughput for
+  the ability to train models that OOM even when sharded across ranks.
+  Ignored with a warning on the DDP path (no built-in CPU param offload)
+  and on single-process (world_size == 1). Does not touch lr/loss/schedule.
 - Training-loop helpers (`autotrainer.zero_grad`, `eval_mode`, `train_mode`,
   `accumulate`): the small things users forget inside the loop.
   `zero_grad` uses `set_to_none=True`; `eval_mode`/`train_mode` are
@@ -79,9 +62,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   print a plain-language warning when the dataloader dominates the GPU
   ("raise num_workers / pin_memory / prefetch"). Opt-in; zero overhead
   when not constructed.
+- `autotrainer.node_scratch()` and `autotrainer.configure_scratch()`: SLURM
+  node-local scratch ergonomics. `node_scratch()` returns `$TMPDIR`
+  (per-job, per-node, auto-cleaned under SLURM; system temp elsewhere),
+  suffixed with the SLURM job id so concurrent jobs don't collide.
+  `configure_scratch()` sets `TORCHINDUCTOR_CACHE_DIR` to it (so
+  `torch.compile` kernel cache doesn't hit NFS) and warns when the scratch
+  looks like it's on a network filesystem (NFS/Lustre/GPFS/Panasas). Call
+  once at the top of your training script, before any `torch.compile`.
+- CUDA CI: new `cuda` pytest marker selects GPU-required tests; CPU jobs
+  run `-m "not cuda"` to skip them cleanly. A `test-cuda` CI job runs the
+  `cuda`-marked subset on a self-hosted GPU runner (`runs-on: [self-hosted,
+  gpu]`), catching the class of CUDA-path bug that CPU-only CI cannot
+  (the `device_count()` crash, the `_pretend_cuda` stub defect, and the
+  `/nfs` PermissionError were all found by running on a real GPU). See
+  `RUNNER_SETUP.md` for one-time runner registration, and `NEXT_STEPS.md`
+  for the engineering backlog that came out of this work.
+- `autotrainer.cuda_device()`: canonical helper for picking the CUDA
+  device-or-CPU based on `device_count() > 0`. Centralizes the check
+  previously duplicated (inconsistently) across `prepare`,
+  `_ensure_process_group`, `find_lr`, `_find_lr_synced`, and `tune`.
 ### Fixed
 - CUDA device selection now gates on `torch.cuda.device_count() > 0`, not
-  just `is_available()`, centralized in a new `autotrainer.cuda_device()`
+  just `is_available()`, centralized in the new `autotrainer.cuda_device()`
   helper. The previous check was True whenever the driver was present,
   even when `CUDA_VISIBLE_DEVICES=""` hid every GPU - so `set_device(local_rank)`
   crashed with "invalid device ordinal" on driver-present, GPU-hidden
