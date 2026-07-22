@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- `prepare(..., cpu_offload=True)`: when paired with `fsdp=True`, enables
+  `CPUOffload(offload_params=True)` - moves FSDP-sharded params to CPU and
+  brings them to GPU only for the forward/backward. Trades throughput for
+  the ability to train models that OOM even when sharded across ranks.
+  Ignored with a warning on the DDP path (no built-in CPU param offload)
+  and on single-process (world_size == 1). Does not touch lr/loss/schedule.
+- `autotrainer.node_scratch()` and `autotrainer.configure_scratch()`: SLURM
+  node-local scratch ergonomics. `node_scratch()` returns `$TMPDIR`
+  (per-job, per-node, auto-cleaned under SLURM; system temp elsewhere),
+  suffixed with the SLURM job id so concurrent jobs don't collide.
+  `configure_scratch()` sets `TORCHINDUCTOR_CACHE_DIR` to it (so
+  `torch.compile` kernel cache doesn't hit NFS) and warns when the scratch
+  looks like it's on a network filesystem (NFS/Lustre/GPFS/Panasas). Call
+  once at the top of your training script, before any `torch.compile`.
+### Added (prior)
 - `prepare(..., compile=True, compile_mode=)`: wrap the model with
   `torch.compile()` before any DDP wrap. Order matters - compiling the
   unwrapped module then DDP-wrapping is the documented-supported path;

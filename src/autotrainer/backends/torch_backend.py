@@ -123,6 +123,7 @@ def prepare(
     compile: bool = False,
     compile_mode: str = "default",
     fsdp: bool = False,
+    cpu_offload: bool = False,
 ) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
@@ -171,6 +172,12 @@ def prepare(
             DDP path. On single-device (world_size == 1) or torch < 2.0,
             ``fsdp=True`` is a no-op with a warning (FSDP only makes sense
             with >1 rank). Does NOT touch lr / loss / schedule / optimizer.
+        cpu_offload: move FSDP parameters to CPU and bring them to GPU only
+            for the forward/backward pass (``CPUOffload(offload_params=True)``).
+            Trades compute throughput for the ability to train models that
+            don't fit in GPU memory even when sharded across ranks. Only
+            effective with ``fsdp=True``; ignored (with a warning) on the DDP
+            path or single-process. Does NOT touch lr / loss / schedule.
     """
     import torch
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -246,12 +253,21 @@ def prepare(
             try:
                 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-                model = FSDP(
-                    model,
-                    device_id=local_rank if use_cuda else None,
-                    use_orig_params=True,  # so the user's optimizer still works
-                )
+                fsdp_kwargs: dict[str, Any] = {
+                    "device_id": local_rank if use_cuda else None,
+                    "use_orig_params": True,  # so the user's optimizer still works
+                }
+                if cpu_offload:
+                    # offload_params=True moves the sharded params to CPU and
+                    # brings them to GPU only for fwd/bwd - the path when the
+                    # model still OOMs even after sharding across ranks.
+                    from torch.distributed.fsdp import CPUOffload
+
+                    fsdp_kwargs["cpu_offload"] = CPUOffload(offload_params=True)
+                model = FSDP(model, **fsdp_kwargs)
                 applied["wrap"] = "fsdp"
+                if cpu_offload:
+                    applied["cpu_offload"] = True
             except (ImportError, AttributeError):
                 print0(
                     "[autotrainer] fsdp: FullyShardedDataParallel unavailable "
@@ -259,15 +275,37 @@ def prepare(
                 )
                 model = DDP(model, device_ids=[local_rank] if use_cuda else None)
                 applied["wrap"] = "ddp"
+                if cpu_offload:
+                    print0(
+                        "[autotrainer] cpu_offload: ignored (FSDP unavailable; "
+                        "DDP has no built-in CPU param offload)"
+                    )
         else:
             model = DDP(model, device_ids=[local_rank] if use_cuda else None)
             applied.setdefault("wrap", "ddp")
+            if cpu_offload:
+                from ..utils import print0
+
+                print0(
+                    "[autotrainer] cpu_offload: ignored without fsdp=True "
+                    "(DDP has no built-in CPU param offload; pair with fsdp=True)"
+                )
     elif fsdp:
         # Single-process: FSDP buys nothing (no ranks to shard across) but
         # the user asked for it, so tell them rather than silently using DDP.
         from ..utils import print0
 
         print0("[autotrainer] fsdp: world_size == 1, FSDP is a no-op; model left unwrapped")
+        if cpu_offload:
+            print0("[autotrainer] cpu_offload: ignored (world_size == 1)")
+    elif cpu_offload:
+        # Single-process, no FSDP: cpu_offload is meaningless here too.
+        from ..utils import print0
+
+        print0(
+            "[autotrainer] cpu_offload: ignored (world_size == 1 and fsdp=False; "
+            "CPU param offload only applies to the FSDP path)"
+        )
 
     # Loader optimizations run AFTER sharding so they see the final loader.
     # Only adds keys the user didn't set; merges with whatever _shard_loader

@@ -28,11 +28,13 @@ __all__ = [
     "autocast_context",
     "barrier",
     "boost_params",
+    "configure_scratch",
     "eval_mode",
     "find_batch_size",
     "find_lr",
     "fit",
     "is_main",
+    "node_scratch",
     "prepare",
     "print0",
     "rank",
@@ -47,6 +49,8 @@ __all__ = [
 
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, zero_grad  # noqa: E402,F401
+from .slurm import apply as configure_scratch  # noqa: E402,F401
+from .slurm import node_scratch
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

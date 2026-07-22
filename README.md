@@ -287,6 +287,36 @@ What it prints:
 small models with static shapes) | `max-autotune` (kernel search, slow
 first compile). None of these flags touch lr / loss / schedule / optimizer.
 
+### CPU offload and SLURM scratch
+
+**CPU offload** pairs with FSDP for the case where the model OOMs *even
+when sharded across ranks* — move params to CPU, bring them to GPU only for
+the forward/backward:
+
+```python
+model, loader, opt = autotrainer.prepare(
+    model, loader, opt, optimize=True, fsdp=True, cpu_offload=True
+)
+```
+
+Trades throughput for memory headroom. Ignored with a warning on the DDP
+path or single-process (no FSDP = nothing to offload).
+
+**SLURM node-local scratch** — the classic HPC footgun is every rank
+writing to `$HOME` (NFS, slow, shared) instead of `$TMPDIR` (node-local,
+fast, auto-cleaned). One call at the top of your script wires the obvious
+env vars and warns when the scratch looks networked:
+
+```python
+import autotrainer
+autotrainer.configure_scratch()  # sets TORCHINDUCTOR_CACHE_DIR to $TMPDIR
+# ... your training script ...
+```
+
+Under SLURM this uses `$TMPDIR/autotrainer-<jobid>`; outside SLURM, the
+system temp dir. `node_scratch()` returns the path if you want to write
+your own checkpoints there too.
+
 ## One-call training: fit()
 
 `fit()` is the whole pipeline in one call - give it a model and data, get
