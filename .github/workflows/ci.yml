@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: pip install ruff
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
+      - run: uv pip install --system ruff
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/
 
   test:
     runs-on: ubuntu-latest
@@ -25,13 +25,11 @@ jobs:
         python: ["3.9", "3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "${{ matrix.python }}"
-      - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
-      # CPU-only runners: exclude the `cuda` marker so the CUDA-required
-      # tests skip cleanly rather than failing on missing GPU.
-      - run: pytest tests/ -v -m "not cuda"
+      - run: uv pip install --system -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: uv run pytest tests/ -v -m "not cuda"
       # Coverage XML is uploaded so coverage trends are inspectable without a
       # third-party account. pytest already produces it via addopts.
       - uses: actions/upload-artifact@v4
@@ -55,65 +53,28 @@ jobs:
   # Runner setup (one-time): see RUNNER_SETUP.md.
   test-cuda:
     runs-on: [self-hosted, gpu]
-    # The Python interpreter is pinned to a path pre-installed on the runner
-    # box (via uv: `uv python install 3.13`). We deliberately do NOT use
-    # actions/setup-python here: on a self-hosted Windows runner it downloads
-    # a Python zip and runs setup.ps1, which (a) needs the PowerShell
-    # execution policy loosened to RemoteSigned system-wide and (b) on this
-    # box tripped Windows Defender quarantining the downloaded python.exe
-    # ("Error happened during Python installation"). A pre-existing uv
-    # Python sidesteps both. To switch Python versions, run
-    # `uv python install <ver>` on the runner and update the path below.
     env:
       PYTHON: C:\Python313\python.exe
     steps:
       - uses: actions/checkout@v4
-      # Create a venv in the runner's persistent work dir. The system Python
-      # at C:\Python313 is uv-managed and carries the PEP 668 EXTERNALLY-
-      # MANAGED marker, so installing straight into it fails with
-      # 'externally-managed-environment'. A venv is the right pattern anyway
-      # - isolates autotrainer + torch from the system Python. The venv is
-      # outside _work so it survives across runs (the 2.5GB torch wheel
-      # would re-download every run otherwise).
-      #
-      # All subsequent steps prepend D:\runner-venv\Scripts to PATH so plain
-      # `python` and `pip` resolve there - no call-operator or nested-quote
-      # footguns (cmd's CALL wrapper and pwsh's & operator both mangle
-      # .[extras] specs otherwise).
-      - name: Create persistent venv and add to PATH
+      # Create a venv in the runner's persistent work dir using uv.
+      - name: Create persistent venv via uv and add to PATH
         shell: pwsh
         run: |
           if (-not (Test-Path D:\runner-venv\Scripts\python.exe)) {
-            & "$env:PYTHON" -m venv D:\runner-venv
+            uv venv D:\runner-venv --python 3.13
           }
-          & D:\runner-venv\Scripts\python.exe -m pip install --upgrade pip
-          # Prepend the venv's Scripts dir to GITHUB_PATH so every subsequent
-          # step resolves `python` and `pip` to the venv. The default shell
-          # (pwsh on this runner) then needs no call-operator or nested
-          # quoting - plain `python -m pip install -e ".[extras]"` works.
           Add-Content -Path $env:GITHUB_PATH -Value "D:\runner-venv\Scripts"
-      # Install the base extras WITHOUT torch first (so pip doesn't pull the
-      # CPU-only torch wheel from PyPI), then the CUDA-enabled torch wheel
-      # from the PyTorch index. The cu128 wheel is what Blackwell (sm_120)
-      # needs; older CUDA wheels don't see the GPU.
-      - name: Install autotrainer (no torch)
-        run: python -m pip install -e ".[dev,sklearn,boosting,tune]"
-      - name: Install cu128 nightly torch
-        run: python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
+      # Install base extras with uv pip install, then CUDA-enabled torch wheel.
+      - name: Install autotrainer (no torch) via uv
+        run: uv pip install -e ".[dev,sklearn,boosting,tune]"
+      - name: Install cu128 nightly torch via uv
+        run: uv pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
       # Sanity: confirm the runner actually has a visible CUDA device before
-      # running the suite. If this fails, the runner is misconfigured (driver
-      # present but no GPU visible, CUDA_VISIBLE_DEVICES hiding it, etc.) and
-      # the failure message points at the cause rather than 11 cryptic
-      # per-test skips.
+      # running the suite.
       - name: GPU sanity check
         run: |
           python -c "import torch; assert torch.cuda.is_available() and torch.cuda.device_count() > 0, 'No CUDA GPU visible - check CUDA_VISIBLE_DEVICES and driver'; print(f'GPU OK: {torch.cuda.get_device_name(0)} (capability {torch.cuda.get_device_capability(0)})')"
-      # Run ONLY the cuda-marked tests. The skipif guards still apply, so
-      # this is safe even on a GPU box that happens to have CUDA hidden.
-      # Coverage is off here (like test-tf): the global addopts enforce a
-      # 75% floor, but this subset (~11 tests) can't reach 75% of the whole
-      # codebase, so the coverage gate would fail the run even if every
-      # test passed.
       - name: Run cuda-marked tests
         run: python -m pytest tests/ -v -m "cuda" --no-cov
 
@@ -121,11 +82,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
-      - run: mypy src/autotrainer
+      - run: uv pip install --system -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: uv run mypy src/autotrainer
 
   # TensorFlow is heavy and its install can break on the newest Python in the
   # matrix, so it gets its own single-version job rather than running in every
@@ -134,23 +95,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: pip install -e ".[dev,tf]"
-      # Coverage is off here: the global addopts enforce a 75% floor, but this
-      # job runs only the TF-specific subset (~1 test) which can't reach it.
-      - run: pytest tests/ -v -k "TFConfig or tf" --no-cov
+      - run: uv pip install --system -e ".[dev,tf]"
+      - run: uv run pytest tests/ -v -k "TFConfig or tf" --no-cov
 
   docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: pip install -e ".[dev,torch,sklearn,boosting,tune]"
-      - run: pdoc -o docs/build src/autotrainer
+      - run: uv pip install --system -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: uv run pdoc -o docs/build src/autotrainer
       - uses: actions/upload-artifact@v4
         with:
           name: api-docs
@@ -187,8 +146,8 @@ jobs:
       id-token: write # trusted publishing, no API token needed
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: pip install build && python -m build
+      - run: uv pip install --system build && uv run python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
