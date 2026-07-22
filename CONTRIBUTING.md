@@ -76,7 +76,7 @@ You can also install the [pre-commit](https://pre-commit.com/) hooks to run
 ruff automatically on every commit:
 
 ```bash
-pip install pre-commit
+uv pip install pre-commit
 pre-commit install
 ```
 

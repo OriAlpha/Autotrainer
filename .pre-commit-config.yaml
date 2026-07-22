@@ -1,4 +1,4 @@
-# Run locally:  pip install pre-commit && pre-commit install
+# Run locally:  uv pip install pre-commit && pre-commit install
 # Bump revs with: pre-commit autoupdate
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit

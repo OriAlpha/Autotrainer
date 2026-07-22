@@ -43,8 +43,11 @@ autotrainer doctor               # diagnose your environment first
 From PyPI:
 
 ```bash
-pip install autotrainer[torch]            # just PyTorch
-pip install autotrainer[torch,boosting]   # PyTorch + XGBoost/LightGBM
+uv pip install autotrainer[torch]            # just PyTorch (recommended)
+uv pip install autotrainer[torch,boosting]   # PyTorch + XGBoost/LightGBM
+
+# Or with standard pip:
+pip install autotrainer[torch]
 ```
 
 Only `psutil` is required by default; each ML framework is an opt-in extra
