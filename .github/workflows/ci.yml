@@ -110,8 +110,12 @@ jobs:
           python -c "import torch; assert torch.cuda.is_available() and torch.cuda.device_count() > 0, 'No CUDA GPU visible - check CUDA_VISIBLE_DEVICES and driver'; print(f'GPU OK: {torch.cuda.get_device_name(0)} (capability {torch.cuda.get_device_capability(0)})')"
       # Run ONLY the cuda-marked tests. The skipif guards still apply, so
       # this is safe even on a GPU box that happens to have CUDA hidden.
+      # Coverage is off here (like test-tf): the global addopts enforce a
+      # 75% floor, but this subset (~11 tests) can't reach 75% of the whole
+      # codebase, so the coverage gate would fail the run even if every
+      # test passed.
       - name: Run cuda-marked tests
-        run: python -m pytest tests/ -v -m "cuda"
+        run: python -m pytest tests/ -v -m "cuda" --no-cov
 
   typecheck:
     runs-on: ubuntu-latest
