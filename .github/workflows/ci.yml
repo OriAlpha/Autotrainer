@@ -14,7 +14,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: uv pip install --system ruff
+      - run: uv pip install ruff
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
 
@@ -28,7 +28,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "${{ matrix.python }}"
-      - run: uv pip install --system -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run pytest tests/ -v -m "not cuda"
       # Coverage XML is uploaded so coverage trends are inspectable without a
       # third-party account. pytest already produces it via addopts.
@@ -57,19 +57,30 @@ jobs:
       PYTHON: C:\Python313\python.exe
     steps:
       - uses: actions/checkout@v4
-      # Create a venv in the runner's persistent work dir using uv.
-      - name: Create persistent venv via uv and add to PATH
+      # Create a venv in the runner's persistent work dir. The system Python
+      # at C:\Python313 is uv-managed and carries the PEP 668 EXTERNALLY-
+      # MANAGED marker, so installing straight into it fails with
+      # 'externally-managed-environment'. A venv is the right pattern anyway
+      # - isolates autotrainer + torch from the system Python. The venv is
+      # outside _work so it survives across runs (the 2.5GB torch wheel
+      # would re-download every run otherwise).
+      #
+      # All subsequent steps prepend D:\runner-venv\Scripts to PATH so plain
+      # `python` and `pip` resolve there.
+      - name: Create persistent venv and add to PATH
         shell: pwsh
         run: |
           if (-not (Test-Path D:\runner-venv\Scripts\python.exe)) {
-            uv venv D:\runner-venv --python 3.13
+            & "$env:PYTHON" -m venv D:\runner-venv
           }
+          & D:\runner-venv\Scripts\python.exe -m pip install --upgrade pip
           Add-Content -Path $env:GITHUB_PATH -Value "D:\runner-venv\Scripts"
-      # Install base extras with uv pip install, then CUDA-enabled torch wheel.
-      - name: Install autotrainer (no torch) via uv
-        run: uv pip install -e ".[dev,sklearn,boosting,tune]"
-      - name: Install cu128 nightly torch via uv
-        run: uv pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
+      # Install the base extras WITHOUT torch first, then the CUDA-enabled torch wheel
+      # from the PyTorch index.
+      - name: Install autotrainer (no torch)
+        run: python -m pip install -e ".[dev,sklearn,boosting,tune]"
+      - name: Install cu128 nightly torch
+        run: python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
       # Sanity: confirm the runner actually has a visible CUDA device before
       # running the suite.
       - name: GPU sanity check
@@ -85,7 +96,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: uv pip install --system -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run mypy src/autotrainer
 
   # TensorFlow is heavy and its install can break on the newest Python in the
@@ -98,7 +109,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: uv pip install --system -e ".[dev,tf]"
+      - run: uv pip install -e ".[dev,tf]"
       - run: uv run pytest tests/ -v -k "TFConfig or tf" --no-cov
 
   docs:
@@ -108,7 +119,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: uv pip install --system -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run pdoc -o docs/build src/autotrainer
       - uses: actions/upload-artifact@v4
         with:
@@ -149,5 +160,5 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - run: uv pip install --system build && uv run python -m build
+      - run: uv pip install build && uv run python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
