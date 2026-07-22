@@ -140,5 +140,7 @@ def summarize(
         parts.append(f"torch.compile(mode={applied['compile']})")
     if applied.get("wrap") == "fsdp":
         parts.append("FSDP")
+    if applied.get("cpu_offload"):
+        parts.append("CPU-offload")
     if parts:
         print0(f"[autotrainer] optimize: {', '.join(parts)} (hyperparameters untouched)")
