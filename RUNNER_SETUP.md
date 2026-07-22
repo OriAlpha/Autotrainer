@@ -15,35 +15,36 @@ This doc walks through registering your machine as the runner, **one time**.
 
 - NVIDIA GPU and driver: **RTX 5070 Laptop GPU, driver 610.74** (CUDA 13.3 capable).
 - Admin on the box (needed to install the runner as a Windows service).
-- **PowerShell execution policy loosened to `RemoteSigned`** (see below).
+- **Python 3.13 installed via uv** at the pinned path:
+  `C:\Users\suhas\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\python.exe`
+  (the CI job's `env.PYTHON` points here — see `.github/workflows/ci.yml`).
 
-You do **not** need a pre-installed Python or torch — the `test-cuda` CI job
-uses `actions/setup-python` to install a known Python into the runner's
-workspace, then installs the cu128 nightly torch itself. The runner's only
-job is to provide the GPU + driver.
+You do **not** need a pre-installed torch — the `test-cuda` CI job installs
+the cu128 nightly torch itself. The runner's only job is to provide the
+GPU + driver + Python.
 
-### Loosen the PowerShell execution policy (required, one-time)
+### Install Python via uv (one-time)
 
-`actions/setup-python` downloads a Python archive, extracts it, and runs
-`setup.ps1`. The runner service runs as `WindowsPowerShell\v1.0\powershell.exe`
-(Windows PowerShell 5), which on a default Windows client install uses the
-`Restricted` execution policy and blocks the script with
-`PSSecurityException / UnauthorizedAccess`. Every self-hosted Windows runner
-hits this on the first `setup-python` call.
-
-Fix it once, as admin:
-
-```powershell
-# Run from an admin PowerShell.
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
-```
-
-`RemoteSigned` lets locally-created scripts run and downloaded scripts run
-only if they're signed — the standard tradeoff for dev machines. Verify:
+We deliberately do NOT use `actions/setup-python` on this runner: on a
+self-hosted Windows box it downloads a Python zip and runs `setup.ps1`,
+which (a) needs the PowerShell execution policy loosened to `RemoteSigned`
+system-wide and (b) on this box tripped Windows Defender quarantining the
+downloaded python.exe ("Error happened during Python installation"). A
+pre-installed uv Python sidesteps both.
 
 ```powershell
-Get-ExecutionPolicy -List  # LocalMachine should show RemoteSigned
+# Once, in any shell (uv manages its own Python builds).
+uv python install 3.13
 ```
+
+Verify the path matches what's pinned in `.github/workflows/ci.yml`:
+
+```powershell
+uv python list --only-installed
+```
+
+To change the Python version: `uv python install <ver>`, then update the
+`env.PYTHON` path in `ci.yml` to match.
 
 ## Step 1 — Create the runner in GitHub
 
