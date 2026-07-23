@@ -10,7 +10,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
@@ -24,7 +24,7 @@ jobs:
       matrix:
         python: ["3.9", "3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "${{ matrix.python }}"
@@ -63,7 +63,7 @@ jobs:
     env:
       PYTHON: C:\Python313\python.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Create a venv in the runner's persistent work dir. The system Python
       # at C:\Python313 is uv-managed and carries the PEP 668 EXTERNALLY-
       # MANAGED marker, so installing straight into it fails with
@@ -99,7 +99,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
@@ -112,7 +112,7 @@ jobs:
   test-tf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
@@ -122,7 +122,7 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
@@ -163,7 +163,7 @@ jobs:
     permissions:
       id-token: write # trusted publishing, no API token needed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
