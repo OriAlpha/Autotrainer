@@ -296,6 +296,30 @@ class TestAutoBs:
         _, out_loader = prepare(model, loader, auto_bs=True, max_bs=64)
         assert out_loader.batch_size >= loader.batch_size
 
+    def test_forward_only_sweep_prints_note_without_loss_fn(self, capsys):
+        """Without loss_fn the sweep is conservative; surface that once."""
+        import torch
+
+        from autotrainer.backends.torch_backend import prepare
+
+        model, loader = self._model_loader(torch)
+        prepare(model, loader, auto_bs=True, max_bs=64)
+        out = capsys.readouterr().out
+        assert "forward-only" in out
+        assert "pass loss_fn" in out
+
+    def test_forward_only_note_silent_when_loss_fn_given(self, capsys):
+        """With a loss_fn the sweep is real, so the conservative note is absent."""
+        import torch
+        import torch.nn as nn
+
+        from autotrainer.backends.torch_backend import prepare
+
+        model, loader = self._model_loader(torch)
+        prepare(model, loader, auto_bs=True, loss_fn=nn.CrossEntropyLoss(), max_bs=64)
+        out = capsys.readouterr().out
+        assert "forward-only" not in out
+
     def test_respects_max_bs_ceiling(self):
         import torch
         import torch.nn as nn

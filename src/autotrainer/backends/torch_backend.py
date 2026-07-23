@@ -409,6 +409,16 @@ def prepare(
     if auto_bs and dataloader is not None and use_cuda:
         from ..utils import print0, robust_forward, split_xy, to_device
 
+        # Without a loss_fn we can only measure activations+params, not grads
+        # +optimizer state, so the picked batch size is safe but smaller than
+        # what a real fwd+bwd sweep would allow. Surface this once so a user
+        # surprised by a small size knows why (and how to get a bigger one).
+        if loss_fn is None:
+            print0(
+                "[autotrainer] optimize: auto_bs running forward-only "
+                "(no loss_fn); pass loss_fn for a larger batch size"
+            )
+
         def sample_batch_fn(bs: int) -> None:
             from torch.utils.data import DataLoader as _DL
 
