@@ -142,5 +142,7 @@ def summarize(
         parts.append("FSDP")
     if applied.get("cpu_offload"):
         parts.append("CPU-offload")
+    if applied.get("ddp_opts"):
+        parts.append(f"DDP[{'+'.join(applied['ddp_opts'])}]")
     if parts:
         print0(f"[autotrainer] optimize: {', '.join(parts)} (hyperparameters untouched)")

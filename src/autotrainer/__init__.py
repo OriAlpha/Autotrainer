@@ -42,6 +42,7 @@ __all__ = [
     "scale_batch_size",
     "scope",
     "set_epoch",
+    "ThroughputMonitor",
     "train_mode",
     "tune",
     "zero_grad",
@@ -51,6 +52,7 @@ from .bottleneck import BottleneckMonitor  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
 from .slurm import node_scratch
+from .throughput import ThroughputMonitor  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,
@@ -90,8 +92,9 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None, **kwargs:
     For PyTorch models, keyword arguments are forwarded to the torch backend
     (``torch_backend.prepare``), which accepts: ``optimize``, ``amp``,
     ``auto_bs``, ``loss_fn``, ``max_bs``, ``compile``, ``compile_mode``,
-    ``fsdp``, ``cpu_offload``. The non-torch backends don't take kwargs;
-    passing any to a sklearn/boosting/tf model raises ``TypeError``.
+    ``fsdp``, ``cpu_offload``, ``static_graph``, ``find_unused_parameters``.
+    The non-torch backends don't take kwargs; passing any to a
+    sklearn/boosting/tf model raises ``TypeError``.
     """
     mod = type(model).__module__ or ""
 
@@ -149,26 +152,17 @@ def tune(model: Any, train: Any = None, val: Any = None, **kwargs: Any) -> tuple
     sklearn-API estimators (scikit-learn, XGBoost, LightGBM): pass
     ``(X, y)`` tuples; searches the model's hyperparameters, with curated
     default spaces for the common families.
-
-    The keyword names ``train_loader=``/``val_loader=`` are deprecated
-    aliases for ``train=``/``val=`` and will be removed in 1.0.
     """
-    # Deprecated aliases (pre-0.10 names; misleading for estimator inputs).
-    for old, new, value in (("train_loader", "train", train), ("val_loader", "val", val)):
+    # The pre-0.10 names ``train_loader=``/``val_loader=`` were deprecated in
+    # 0.10 and removed; they were misleading for estimator inputs (which take
+    # arrays, not loaders). Give a clear error pointing at the new names
+    # rather than letting them flow into **kwargs and fail cryptically downstream.
+    for old, new in (("train_loader", "train"), ("val_loader", "val")):
         if old in kwargs:
-            if value is not None:
-                raise TypeError(f"tune() got both '{new}' and deprecated '{old}'")
-            import warnings
-
-            warnings.warn(
-                f"tune(..., {old}=) is deprecated; use {new}= (removal in 1.0)",
-                DeprecationWarning,
-                stacklevel=2,
+            raise TypeError(
+                f"tune() no longer accepts {old}=; it was removed in 1.0 "
+                f"(deprecated since 0.10). Use {new}= instead."
             )
-            if old == "train_loader":
-                train = kwargs.pop(old)
-            else:
-                val = kwargs.pop(old)
     if train is None or val is None:
         raise TypeError("tune() requires train and val data")
 

@@ -53,6 +53,30 @@ def _ensure_process_group() -> bool:
     return True
 
 
+def _ddp_kwargs(
+    local_rank: int, use_cuda: bool, static_graph: bool, find_unused_parameters: bool
+) -> tuple[dict[str, Any], list[str]]:
+    """Build ``DDP(...)`` constructor kwargs from the user's opts.
+
+    Returns the kwargs plus the short tag names to record in ``applied`` for
+    the summary line. ``static_graph=True`` also turns on
+    ``gradient_as_bucket_view`` (peak-memory win that pairs naturally with
+    a static graph); both are opt-in because they have correctness
+    implications when the computation graph genuinely changes across iters.
+    """
+    kwargs: dict[str, Any] = {"device_ids": [local_rank] if use_cuda else None}
+    tags: list[str] = []
+    if static_graph:
+        kwargs["static_graph"] = True
+        # Bucket grads as views into the allreduce buffers: lower peak memory.
+        kwargs["gradient_as_bucket_view"] = True
+        tags.append("static_graph")
+    if find_unused_parameters:
+        kwargs["find_unused_parameters"] = True
+        tags.append("find_unused_parameters")
+    return kwargs, tags
+
+
 def _loader_kwargs(dataloader: Any) -> dict[str, Any]:
     """Carry the user's DataLoader settings over to a rebuilt loader."""
     kwargs: dict[str, Any] = {
@@ -124,6 +148,8 @@ def prepare(
     compile_mode: str = "default",
     fsdp: bool = False,
     cpu_offload: bool = False,
+    static_graph: bool = False,
+    find_unused_parameters: bool = False,
 ) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
@@ -178,6 +204,23 @@ def prepare(
             don't fit in GPU memory even when sharded across ranks. Only
             effective with ``fsdp=True``; ignored (with a warning) on the DDP
             path or single-process. Does NOT touch lr / loss / schedule.
+        static_graph: when distributed (DDP path), enable DDP's
+            ``static_graph=True`` plus ``gradient_as_bucket_view=True``.
+            Both are free wins when the computation graph is the same every
+            iteration (the common case): static graph skips per-iteration
+            graph-recording overhead after the first step, and
+            gradient-as-bucketing-view lowers peak memory by bucketing grads
+            into the allreduce buffers. They are *opt-in* because they have
+            correctness implications when the graph genuinely changes across
+            iterations (conditional execution, varying depth) - enabling them
+            silently there would hang or produce wrong grads. No-op on
+            single-device and on the FSDP path. Does NOT touch lr / loss /
+            schedule / optimizer. Mutually exclusive with
+            ``find_unused_parameters`` (torch forbids the combination).
+        find_unused_parameters: forward DDP's ``find_unused_parameters=True``
+            to the DDP wrap. Needed when the model doesn't use all params every
+            step (e.g. conditional branches) - without it DDP would hang. Only
+            applies to the DDP path; no-op on single-device and FSDP.
     """
     import torch
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -185,6 +228,16 @@ def prepare(
     from .._optimize import apply_gpu_flags, build_loader_defaults, summarize
 
     rank, local_rank, world_size = _dist_info()
+    # static_graph and find_unused_parameters are mutually exclusive - torch
+    # raises an opaque error if both hit the DDP constructor. Catch it here
+    # with a clear message instead. (Only matters on the DDP path, but this
+    # is the natural place to validate since both are user-facing opts.)
+    if static_graph and find_unused_parameters:
+        raise ValueError(
+            "prepare(static_graph=True, find_unused_parameters=True): "
+            "torch DDP forbids this combination - a static graph can't also "
+            "have unused parameters. Drop one."
+        )
     # cuda_device() gates on device_count() > 0 so a driver-present but
     # GPU-hidden box doesn't try to bind a phantom device.
     from ..utils import cuda_device
@@ -273,16 +326,26 @@ def prepare(
                     "[autotrainer] fsdp: FullyShardedDataParallel unavailable "
                     "(torch < 2.0); falling back to DDP"
                 )
-                model = DDP(model, device_ids=[local_rank] if use_cuda else None)
+                ddp_kw, ddp_tags = _ddp_kwargs(
+                    local_rank, use_cuda, static_graph, find_unused_parameters
+                )
+                model = DDP(model, **ddp_kw)
                 applied["wrap"] = "ddp"
+                if ddp_tags:
+                    applied["ddp_opts"] = ddp_tags
                 if cpu_offload:
                     print0(
                         "[autotrainer] cpu_offload: ignored (FSDP unavailable; "
                         "DDP has no built-in CPU param offload)"
                     )
         else:
-            model = DDP(model, device_ids=[local_rank] if use_cuda else None)
+            ddp_kw, ddp_tags = _ddp_kwargs(
+                local_rank, use_cuda, static_graph, find_unused_parameters
+            )
+            model = DDP(model, **ddp_kw)
             applied.setdefault("wrap", "ddp")
+            if ddp_tags:
+                applied["ddp_opts"] = ddp_tags
             if cpu_offload:
                 from ..utils import print0
 
@@ -305,6 +368,21 @@ def prepare(
         print0(
             "[autotrainer] cpu_offload: ignored (world_size == 1 and fsdp=False; "
             "CPU param offload only applies to the FSDP path)"
+        )
+    if world_size <= 1 and (static_graph or find_unused_parameters):
+        # static_graph / find_unused_parameters only affect the DDP wrap,
+        # which never happens single-process. Tell the user rather than
+        # silently dropping the opt-in.
+        from ..utils import print0
+
+        opts = []
+        if static_graph:
+            opts.append("static_graph")
+        if find_unused_parameters:
+            opts.append("find_unused_parameters")
+        print0(
+            f"[autotrainer] {'/'.join(opts)}: ignored (world_size == 1; "
+            "these only apply to the multi-rank DDP path)"
         )
 
     # Loader optimizations run AFTER sharding so they see the final loader.

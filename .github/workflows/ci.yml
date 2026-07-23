@@ -53,6 +53,13 @@ jobs:
   # Runner setup (one-time): see RUNNER_SETUP.md.
   test-cuda:
     runs-on: [self-hosted, gpu]
+    # Cap the job's *execution* time. This does NOT cover the "queued
+    # forever because the runner is offline" case (the timeout only starts
+    # counting once a runner picks the job up), but it turns an
+    # in-execution hang (driver crash, stuck NCCL collective, deadlocked
+    # distributed test) from "stuck running silently" into "failed after
+    # 30min" - a visible signal instead of an invisible one.
+    timeout-minutes: 30
     env:
       PYTHON: C:\Python313\python.exe
     steps:

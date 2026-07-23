@@ -163,3 +163,72 @@ class TestTwoRankGloo:
         r0, r1 = _run_two_ranks(_FIT_WORKER, extra_env={"TEST_STUDY_STORAGE": storage})
         # Same broadcast recipe + synced DDP training = bit-identical models.
         assert r0.split("rank=0 ")[1] == r1.split("rank=1 ")[1]
+
+
+# Exercises the DDP-opts path (prepare(static_graph=True)) over the same
+# 2-rank gloo harness. static_graph + gradient_as_bucketing_view are the
+# free DDP wins when the computation graph is static across iterations; both
+# need a real process group (world_size > 1) so they can't be tested in
+# single-process unit tests. The mutual-exclusion guard runs in-process.
+_DDP_OPTS_WORKER = """
+import os
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
+import autotrainer
+
+rank = int(os.environ["RANK"])
+torch.manual_seed(0)
+x = torch.randn(32, 3)
+y = x.sum(dim=1, keepdim=True)
+loader = DataLoader(TensorDataset(x, y), batch_size=8)
+
+model = nn.Linear(3, 1)
+model, loader = autotrainer.prepare(model, loader, static_graph=True)
+assert isinstance(model, nn.parallel.DistributedDataParallel), "model not DDP-wrapped"
+assert model.static_graph is True, "static_graph did not reach the DDP constructor"
+print(f"RESULT rank={rank} ok=1 wrap=ddp")
+"""
+
+
+class TestDdpOpts:
+    """DDP constructor opts (static_graph, find_unused_parameters).
+
+    NEXT_STEPS suggested living in test_tier3.py, but that module is
+    cuda-gated (module-level skipif no GPU) while these run on CPU-gloo -
+    so they belong here next to the other 2-rank gloo tests.
+    """
+
+    def test_static_graph_wired_into_ddp(self):
+        r0, r1 = _run_two_ranks(_DDP_OPTS_WORKER)
+        assert "wrap=ddp" in r0 and "wrap=ddp" in r1
+
+    def test_static_graph_and_find_unused_parameters_are_mutually_exclusive(self):
+        """torch forbids static_graph + find_unused_parameters; prepare must
+        raise a clear ValueError rather than letting torch emit an opaque one
+        deep inside DDP init."""
+        import torch.nn as nn
+
+        from autotrainer.backends.torch_backend import prepare
+
+        model = nn.Linear(3, 1)
+        with pytest.raises(ValueError, match="mutually exclusive|forbids this combination"):
+            prepare(model, static_graph=True, find_unused_parameters=True)
+
+    def test_static_graph_single_process_is_noop_with_warning(self, capsys, monkeypatch):
+        """world_size == 1: no DDP wrap happens, so static_graph is a no-op.
+        Must warn rather than silently dropping the opt-in."""
+        import torch.nn as nn
+
+        from autotrainer.backends.torch_backend import prepare
+
+        monkeypatch.delenv("WORLD_SIZE", raising=False)
+        monkeypatch.delenv("RANK", raising=False)
+        monkeypatch.delenv("LOCAL_RANK", raising=False)
+        model = nn.Linear(3, 1)
+        out = prepare(model, static_graph=True)
+        assert not isinstance(out, nn.parallel.DistributedDataParallel)
+        assert "static_graph" in capsys.readouterr().out
+
+

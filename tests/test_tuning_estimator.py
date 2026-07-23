@@ -108,27 +108,25 @@ class TestTuneEstimator:
             autotrainer.fit(LogisticRegression(), train, val)
 
 
-class TestDeprecatedLoaderKwargs:
-    def test_old_kwarg_names_warn_but_work(self):
+class TestRemovedLoaderKwargs:
+    """The ``train_loader=``/``val_loader=`` names were deprecated in 0.10
+    and removed in 1.0 (they were misleading for estimator inputs, which take
+    arrays not loaders). They must now raise a clear TypeError pointing at the
+    new names, not a cryptic downstream failure."""
+
+    def test_old_kwarg_names_raise(self):
         from sklearn.linear_model import LogisticRegression
 
         train, val = _classification_arrays()
-        with pytest.warns(DeprecationWarning, match="train_loader"):
-            _, params, _ = autotrainer.tune(
-                LogisticRegression(max_iter=200),
-                train_loader=train,
-                val_loader=val,
-                trials=1,
-                verbose=False,
-            )
-        assert "C" in params
+        with pytest.raises(TypeError, match=r"train_loader=.*removed.*Use train="):
+            autotrainer.tune(LogisticRegression(max_iter=200), train_loader=train, val_loader=val)
 
-    def test_mixing_old_and_new_names_raises(self):
+    def test_old_val_kwarg_name_raises(self):
         from sklearn.linear_model import LogisticRegression
 
         train, val = _classification_arrays()
-        with pytest.raises(TypeError, match="both 'train' and deprecated 'train_loader'"):
-            autotrainer.tune(LogisticRegression(), train, val, train_loader=train)
+        with pytest.raises(TypeError, match=r"val_loader=.*removed.*Use val="):
+            autotrainer.tune(LogisticRegression(max_iter=200), train=train, val_loader=val)
 
     def test_missing_data_raises(self):
         from sklearn.linear_model import LogisticRegression
