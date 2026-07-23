@@ -156,23 +156,6 @@ class TestPrepareOptimizeIntegration:
         loader = DataLoader(ds, batch_size=4)  # bare loader, no overrides
         return model, loader
 
-    def _pretend_cuda(self, torch, monkeypatch):
-        """Stub the CUDA entry points prepare() touches on a CPU-only box.
-
-        We want to exercise the optimize=True code path without a real GPU.
-        ``torch.cuda.set_device`` and ``model.to('cuda')`` both hit C
-        extensions that aren't built for CPU torch, so stub them along with
-        ``is_available`` AND ``device_count`` (cuda_device() gates on the
-        latter, not just the former). Device placement is orthogonal to
-        what these tests check (flag application + non-mutation of
-        hyperparameters).
-        """
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
-        monkeypatch.setattr(torch.cuda, "set_device", lambda _d: None)
-        # Keep tensors where they are; "to(cuda)" becomes a no-op.
-        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
-
     def test_optimize_false_is_no_op_on_cpu(self, capsys):
         torch = pytest.importorskip("torch")
         from autotrainer.backends.torch_backend import prepare
@@ -183,12 +166,16 @@ class TestPrepareOptimizeIntegration:
         out = capsys.readouterr().out
         assert "optimize" not in out
 
-    def test_optimize_true_does_not_touch_hyperparameters(self, monkeypatch):
-        """The contract: optimize sets flags, never overrides lr/loss/sched."""
+    def test_optimize_true_does_not_touch_hyperparameters(self, pretend_cuda):
+        """The contract: optimize sets flags, never overrides lr/loss/sched.
+
+        ``pretend_cuda`` (see conftest.py) swaps in a fake ``torch.cuda`` so
+        the optimize=True branches run on this CPU-only box; it covers the
+        full CUDA surface prepare() reads, so a new entry point breaks the
+        stub loudly instead of silently exercising the wrong path.
+        """
         torch = pytest.importorskip("torch")
         from autotrainer.backends.torch_backend import prepare
-
-        self._pretend_cuda(torch, monkeypatch)
 
         model, loader = self._model_loader(torch)
         opt = torch.optim.SGD(model.parameters(), lr=0.123)
@@ -198,11 +185,9 @@ class TestPrepareOptimizeIntegration:
         assert returned_opt is opt
         assert opt.param_groups[0]["lr"] == 0.123
 
-    def test_amp_default_follows_optimize(self, monkeypatch):
+    def test_amp_default_follows_optimize(self, pretend_cuda):
         torch = pytest.importorskip("torch")
         from autotrainer.backends.torch_backend import prepare
-
-        self._pretend_cuda(torch, monkeypatch)
 
         # optimize=True should imply AMP=True in the summary line.
         model, loader = self._model_loader(torch)
@@ -211,21 +196,17 @@ class TestPrepareOptimizeIntegration:
         # GradScaler the user never asked for; the actual autocast context
         # is what the caller uses at train time.
 
-    def test_amp_can_be_disabled_when_optimizing(self, monkeypatch):
+    def test_amp_can_be_disabled_when_optimizing(self, pretend_cuda):
         torch = pytest.importorskip("torch")
         from autotrainer.backends.torch_backend import prepare
-
-        self._pretend_cuda(torch, monkeypatch)
 
         model, loader = self._model_loader(torch)
         # amp=False must win even under optimize=True.
         prepare(model, loader, optimize=True, amp=False)
 
-    def test_loader_defaults_applied_only_when_optimize(self, monkeypatch):
+    def test_loader_defaults_applied_only_when_optimize(self, pretend_cuda):
         torch = pytest.importorskip("torch")
         from autotrainer.backends.torch_backend import prepare
-
-        self._pretend_cuda(torch, monkeypatch)
 
         # optimize=False: bare loader stays bare.
         model, loader = self._model_loader(torch)
@@ -353,14 +334,9 @@ class TestPublicDispatcherForwardsKwargs:
         loader = DataLoader(ds, batch_size=4)
         return model, loader
 
-    def test_public_prepare_accepts_optimize_kwarg(self, monkeypatch):
+    def test_public_prepare_accepts_optimize_kwarg(self, pretend_cuda):
         """autotrainer.prepare(model, loader, optimize=True) must not raise TypeError."""
         import torch
-
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
-        monkeypatch.setattr(torch.cuda, "set_device", lambda _d: None)
-        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
 
         import autotrainer  # public package, not the backend
 
@@ -370,14 +346,9 @@ class TestPublicDispatcherForwardsKwargs:
         # __init__.py lost its **kwargs forwarding.
         model, loader = autotrainer.prepare(model, loader, optimize=True)
 
-    def test_public_prepare_accepts_compile_kwarg(self, monkeypatch):
+    def test_public_prepare_accepts_compile_kwarg(self, pretend_cuda):
         """compile= must also reach the backend through the dispatcher."""
         import torch
-
-        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
-        monkeypatch.setattr(torch.cuda, "set_device", lambda _d: None)
-        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
 
         import autotrainer
 
@@ -394,3 +365,51 @@ class TestPublicDispatcherForwardsKwargs:
 
         model, loader = self._model_loader(torch)
         autotrainer.prepare(model, loader, fsdp=True)
+
+
+class TestCudaSurfaceCoverage:
+    """Guard against the brittle-stub failure mode (NEXT_STEPS #12).
+
+    The ``pretend_cuda`` conftest fixture stubs a fixed set of public
+    ``torch.cuda`` attributes. If ``prepare()``/``_optimize``/``utils`` start
+    reading a public ``torch.cuda.<name>`` that the fixture doesn't stub, the
+    optimize-path tests would silently exercise the CPU path on a CPU-only box
+    instead of the intended CUDA branch - exactly the bug that bit PR #1.
+
+    This test scans the source for ``torch.cuda.<name>`` references and fails
+    if any public name is absent from ``CUDA_OPTIMIZE_SURFACE``. When it fires,
+    add the name to the set (and a fake in ``pretend_cuda``). Private
+    (underscore-prefixed) and submodule (``torch.cuda.amp``) accesses are out
+    of scope; only the leaf-call surface matters.
+    """
+
+    def test_every_public_cuda_attr_used_is_in_the_surface(self):
+        import re
+        from pathlib import Path
+
+        from conftest import CUDA_OPTIMIZE_SURFACE
+
+        src_root = Path(__file__).resolve().parent.parent / "src" / "autotrainer"
+        # Match `torch.cuda.NAME` where NAME is a plain identifier. Capture
+        # NAME. This is deliberately conservative: false positives (a name in
+        # the source but not actually called at runtime) just require adding
+        # the name to the surface, which is harmless.
+        pattern = re.compile(r"torch\.cuda\.([A-Za-z_][A-Za-z0-9_]*)")
+        found: set[str] = set()
+        for py in src_root.rglob("*.py"):
+            found.update(pattern.findall(py.read_text(encoding="utf-8")))
+
+        # Drop private (underscore-prefixed) and the `amp` submodule (it's a
+        # module, not a stubbed attribute - GradScaler is constructed in
+        # utils.py via torch.cuda.amp.GradScaler and isn't part of the
+        # pretend surface).
+        public = {n for n in found if not n.startswith("_") and n != "amp"}
+
+        missing = public - CUDA_OPTIMIZE_SURFACE
+        assert not missing, (
+            f"prepare()/source reads public torch.cuda attributes not covered by "
+            f"the pretend_cuda fixture: {sorted(missing)}. Add them to "
+            f"CUDA_OPTIMIZE_SURFACE in conftest.py and stub them in the "
+            f"pretend_cuda fixture, or the optimize-path tests silently run the "
+            f"CPU branch on a CPU-only box."
+        )
