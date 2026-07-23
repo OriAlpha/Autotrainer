@@ -152,7 +152,7 @@ jobs:
       - uses: actions/configure-pages@v6
         with:
           enablement: true # first run enables Pages with the Actions source
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
 
   publish:
