@@ -8,7 +8,7 @@ interactions.
 ## Development setup
 
 ```bash
-git clone https://github.com/OriAlpha/autotrainer
+git clone https://github.com/OriAlpha/Autotrainer
 cd autotrainer
 
 # Using uv (recommended):
@@ -66,8 +66,7 @@ The `test-cuda` CI job runs only the `cuda`-marked subset on a self-hosted
 GPU runner (`runs-on: [self-hosted, gpu]`). It's **not required** for merge
 (no branch-protection rule includes it), so PRs don't block if the runner is
 offline. See [`RUNNER_SETUP.md`](RUNNER_SETUP.md) for one-time runner
-registration, and [`NEXT_STEPS.md`](NEXT_STEPS.md) for the engineering
-backlog. If you add CUDA-dependent behavior, mark the test `@pytest.mark.cuda`
+registration. If you add CUDA-dependent behavior, mark the test `@pytest.mark.cuda`
 and gate it with `skipif(not _has_cuda())` so it skips cleanly on CPU.
 
 ### Pre-commit hooks (optional)
@@ -130,7 +129,7 @@ docs: document SLURM environment variables in .env.example
 
 ## Reporting bugs
 
-[Open an issue](https://github.com/OriAlpha/autotrainer/issues) and include
+[Open an issue](https://github.com/OriAlpha/Autotrainer/issues) and include
 the output of `autotrainer doctor` and `autotrainer info` - they capture most
 environment details needed to reproduce issues. The bug report template will
 prompt you for these.

@@ -1,9 +1,9 @@
 # Autotrainer
 
-[![CI](https://github.com/OriAlpha/autotrainer/actions/workflows/ci.yml/badge.svg)](https://github.com/OriAlpha/autotrainer/actions/workflows/ci.yml)
+[![CI](https://github.com/OriAlpha/Autotrainer/actions/workflows/ci.yml/badge.svg)](https://github.com/OriAlpha/Autotrainer/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/autotrainer.svg)](https://pypi.org/project/autotrainer/)
 [![Python](https://img.shields.io/pypi/pyversions/autotrainer.svg)](https://pypi.org/project/autotrainer/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/OriAlpha/autotrainer/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/OriAlpha/Autotrainer/blob/main/LICENSE)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v0.json)](https://github.com/astral-sh/ruff)
 
 **Automatic distributed training and optimization for ML models.**
@@ -368,9 +368,9 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 
 Toward 1.0:
 
-- **Stabilization**: the public API is frozen as of 0.10; 1.0 removes the
-  deprecated `train_loader=`/`val_loader=` aliases after a soak period and
-  real multi-node SLURM validation.
+- **Stabilization**: the public API is frozen as of 0.10; 1.0 now only blocks
+  on real multi-node SLURM validation (the deprecated
+  `train_loader=`/`val_loader=` aliases have been removed).
 
 Understanding your training run (the theme after 1.0 - autotrainer should
 explain runs, not just launch them):
@@ -404,5 +404,5 @@ More breadth:
   Optuna recipe.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history, and open or
-upvote [issues](https://github.com/OriAlpha/autotrainer/issues) to prioritize
+upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to prioritize
 these.
