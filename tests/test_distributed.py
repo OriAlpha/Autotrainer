@@ -232,3 +232,131 @@ class TestDdpOpts:
         assert "static_graph" in capsys.readouterr().out
 
 
+# Closes the gap the single-process test (test_tier3.py::TestFsdp) leaves open:
+# that one only checks the world_size==1 no-op. The multi-rank FSDP *wrap* had
+# never run against a real process group in CI. The wrap + use_orig_params
+# param-addressability check run fine on CPU-gloo and is what's exercised here.
+#
+# The full sharded fwd+bwd+step is a different story: on torch 2.13, FSDP
+# refuses to run a forward when params are on CPU if `cuda.is_available()` is
+# True ("An FSDP-managed module unexpectedly has parameters on cpu. Move the
+# module to cuda:0 before training."). On this test box the CUDA driver is
+# present but the GPU is hidden (CUDA_VISIBLE_DEVICES="" -> device_count=0),
+# so FSDP insists on a cuda:0 that doesn't exist - the step can't run. That
+# full-step path is therefore gated on a real, usable GPU (device_count > 0)
+# and left to the cuda-marked CI. This is exactly the contingency NEXT_STEPS
+# item #4 flagged. The wrap itself - the part that was genuinely unproven -
+# runs here on CPU-gloo.
+_FSDP_WRAP_WORKER = """
+import os
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
+import autotrainer
+
+rank = int(os.environ["RANK"])
+torch.manual_seed(0)
+x = torch.randn(16, 3)
+y = x.sum(dim=1, keepdim=True)
+loader = DataLoader(TensorDataset(x, y), batch_size=4)
+
+model = nn.Linear(3, 1)
+m, loader = autotrainer.prepare(model, loader, fsdp=True)
+
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+assert isinstance(m, FSDP), "model not FSDP-wrapped"
+
+# use_orig_params=True is what lets the user's optimizer keep working under
+# FSDP - assert params are still addressable by name (not flattened away).
+named = dict(m.named_parameters())
+assert any("weight" in k for k in named), "weight not addressable (use_orig_params?)"
+assert any("bias" in k for k in named), "bias not addressable (use_orig_params?)"
+print(f"RESULT rank={rank} ok=1 wrap=fsdp nparams={len(named)}")
+"""
+
+
+class TestFsdpMultiRank:
+    """The multi-rank FSDP wrap path (prepare(fsdp=True) over a real group).
+
+    Lives here rather than test_tier3.py (as NEXT_STEPS suggested) because
+    test_tier3.py is cuda-gated at module level, and the FSDP *wrap* +
+    use_orig_params path runs fine on CPU-gloo - that's the part that was
+    wired but never proven. The full sharded step needs a usable GPU (see
+    the _FSDP_WRAP_WORKER comment) and is left to the cuda-marked CI.
+    """
+
+    def test_fsdp_wraps_with_orig_params_over_process_group(self):
+        """The wrap itself + use_orig_params param addressability - the gap the
+        single-process no-op test leaves open."""
+        r0, r1 = _run_two_ranks(_FSDP_WRAP_WORKER)
+        assert "wrap=fsdp" in r0 and "wrap=fsdp" in r1
+
+    def test_fsdp_with_cpu_offload_wraps(self):
+        """prepare(fsdp=True, cpu_offload=True) must wrap without crashing in
+        the multi-rank path. (A full step isn't run - see the worker comment for
+        why; this just proves the cpu_offload kwarg is plumbed through FSDP
+        init across ranks.)"""
+        worker = _FSDP_WRAP_WORKER.replace(
+            "autotrainer.prepare(model, loader, fsdp=True)",
+            "autotrainer.prepare(model, loader, fsdp=True, cpu_offload=True)",
+        )
+        r0, r1 = _run_two_ranks(worker)
+        assert "wrap=fsdp" in r0 and "wrap=fsdp" in r1
+
+    @pytest.mark.cuda
+    def test_fsdp_runs_a_sharded_forward_backward_step(self):
+        """Full sharded fwd+bwd+step. Needs at least 2 usable GPUs (one per
+        rank): on torch 2.13 FSDP won't run a forward with params on CPU when
+        cuda.is_available() is True, so each rank needs its own real device.
+        Skipped on the single-GPU dev box and in CPU-only CI - this is real
+        multi-GPU validation, left to a runner that has it."""
+        import torch
+
+        if torch.cuda.device_count() < 2:
+            pytest.skip("FSDP sharded step needs >= 2 usable GPUs (one per rank)")
+
+        worker = """
+import os
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+
+import autotrainer
+
+rank = int(os.environ["RANK"])
+torch.manual_seed(0)
+x = torch.randn(16, 3)
+y = x.sum(dim=1, keepdim=True)
+loader = DataLoader(TensorDataset(x, y), batch_size=4)
+
+model = nn.Linear(3, 1)
+# CUDA is NOT hidden here - each rank gets its own device via LOCAL_RANK so
+# FSDP can shard onto it and move inputs there.
+m, loader = autotrainer.prepare(model, loader, fsdp=True)
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+assert isinstance(m, FSDP), "model not FSDP-wrapped"
+
+autotrainer.set_epoch(loader, 0)
+xb, yb = next(iter(loader))
+device = next(m.parameters()).device
+xb, yb = xb.to(device), yb.to(device)
+opt = torch.optim.SGD(m.parameters(), lr=0.01)
+opt.zero_grad()
+loss = ((m(xb) - yb) ** 2).mean()
+loss.backward()
+opt.step()
+assert torch.isfinite(loss), "loss is not finite after a sharded step"
+print(f"RESULT rank={rank} ok=1 wrap=fsdp loss={loss.item():.6e}")
+"""
+        # Don't hide CUDA here - the workers need real devices. LOCAL_RANK in
+        # the harness already pins each rank to its own GPU via CUDA_VISIBLE_DEVICES
+        # ... but _run_two_ranks forces CUDA_VISIBLE_DEVICES="". Override that
+        # by letting the workers see all devices; torch's default local-rank
+        # binding + prepare()'s set_device handles the split.
+        r0, r1 = _run_two_ranks(worker, extra_env={"CUDA_VISIBLE_DEVICES": "0,1"})
+        assert "wrap=fsdp" in r0 and "wrap=fsdp" in r1
+        for r in (r0, r1):
+            assert "loss=" in r
+            loss = float(r.split("loss=")[1].split()[0])
+            assert loss == loss  # NaN check (NaN != NaN)
