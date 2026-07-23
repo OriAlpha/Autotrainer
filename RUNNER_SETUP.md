@@ -35,7 +35,26 @@ runner. On a self-hosted Windows box it downloads a Python zip and runs
 downloaded `python.exe`. A pre-installed system-wide Python sidesteps both.
 
 The fastest path is to copy a uv-managed Python to a system path and grant
-NETWORK SERVICE read access:
+NETWORK SERVICE read access. The repo ships a script that does all of this
+idempotently — run it from an admin PowerShell:
+
+```powershell
+# Default: provisions 3.13 to C:\Python313 (matches env.PYTHON in ci.yml).
+.\scripts\provision-runner-python.ps1
+
+# Bumping the CI Python? Pass the new version; it reprovisions and reminds
+# you to update env.PYTHON in ci.yml to match.
+.\scripts\provision-runner-python.ps1 -Version 3.14
+```
+
+The script (`scripts/provision-runner-python.ps1`) installs the CPython via
+`uv python install`, copies it to `C:\Python<ver>`, runs
+`icacls /grant 'NETWORK SERVICE:(OI)(CI)RX' /T`, and verifies the result.
+It is idempotent — re-running with the same `-Version` is a no-op if the
+target is already the right interpreter. Requires `uv` on PATH and an
+elevated shell.
+
+<details><summary>Manual equivalent (what the script does under the hood)</summary>
 
 ```powershell
 # From an admin PowerShell. Pick the version that matches env.PYTHON in
@@ -46,9 +65,11 @@ icacls C:\Python313 /grant 'NETWORK SERVICE:(OI)(CI)RX' /T
 & "C:\Python313\python.exe" --version   # should print Python 3.13.x
 ```
 
-To change the Python version later: re-run the copy + icacls to a new
-folder (e.g. `C:\Python314`), then update `env.PYTHON` in
-`.github/workflows/ci.yml` to match.
+To change the Python version later: re-run with `-Version <new>` (or re-do
+the copy + icacls to a new folder, e.g. `C:\Python314`), then update
+`env.PYTHON` in `.github/workflows/ci.yml` to match.
+
+</details>
 
 ## Step 1 — Create the runner in GitHub
 
