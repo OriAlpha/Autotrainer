@@ -40,23 +40,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   starts once a runner picks the job up.
 - `.github/dependabot.yml`: weekly dependency-update checks for the Python
   (`pip`) ecosystem and the GitHub Actions versions used in CI.
-### Changed
-- `fitting.py` split: the phase-1 search and checkpoint helpers
-  (`_unwrap`, `_sync_from_rank0`, `_journal_storage`, `_parallel_search`,
-  `_save_checkpoint`, `_load_checkpoint`, `_CHECKPOINT_FORMAT`) moved to a
-  new `_fit_search.py`, leaving `fitting.py` (431 -> 319 LOC) as the
-  orchestrator + phase-2 training loop. Pure move, no behavior change; the
-  names are re-exported from `fitting.py` so existing imports keep working.
-  Prepares the ground for the roadmap's training-triage features by
-  separating the two phases before layering more onto either.
-
-### Removed
-- **Breaking:** `tune()` no longer accepts the `train_loader=`/`val_loader=`
-  keyword aliases (deprecated in 0.10). Passing them now raises `TypeError`
-  pointing at the replacement `train=`/`val=` names. The soak period elapsed;
-  these names were misleading for estimator inputs (which take arrays, not
-  loaders).
-
+- `autotrainer.configure_nccl()`: sets `NCCL_SOCKET_IFNAME` to the
+  default-route interface when unset, so multi-node SLURM jobs don't hang
+  or crawl because NCCL guessed the wrong (or loopback) network interface.
+  Non-clobbering (`setdefault` semantics, like `configure_scratch`); an
+  optional `debug=True` turns on `NCCL_DEBUG=INFO` and prints a hint when
+  detection fails (no `ip` binary, Windows host, stripped container) instead
+  of a silent hang. Detection is isolated in `_detect_primary_interface()`
+  (fails closed -> `None`); the env-var logic is fully unit-tested via
+  monkeypatch. Real multi-node validation remains a 1.0-gate item.
+- `scripts/provision-runner-python.ps1`: automates the self-hosted GPU
+  runner's system-wide Python install (the `test-cuda` CI job's `env.PYTHON`
+  points at `C:\Python<ver>`, which the `NETWORK SERVICE` runner account
+  must be able to read). Idempotent: re-running with the same `-Version` is
+  a no-op; changing `-Version` re-provisions and reminds the operator to
+  update `env.PYTHON` in ci.yml. Requires admin + `uv`; `RUNNER_SETUP.md`
+  now points at it as the recommended path.
+- `prepare(auto_bs=True)` now prints a one-line note when the forward-only
+  sweep is used (no `loss_fn`): "auto_bs running forward-only (no loss_fn);
+  pass loss_fn for a larger batch size". Without a loss the sweep measures
+  only activations+params, not grads + optimizer state, so the picked size
+  is safe but smaller than a real fwd+bwd sweep would allow; the note
+  surfaces why instead of leaving the user to find it in the docstring.
+  Silent when a `loss_fn` is given (the sweep is then real).
 ### Changed
 - Repository-hygiene cleanup (no behavior change, no public-API change):
     * Refreshed stale version references: `SECURITY.md` supported-versions
@@ -73,6 +79,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
     * `NEXT_STEPS.md` moved out of the published repo (it was an internal
       engineering backlog); it is no longer tracked. Maintainers keep it
       locally under the gitignored `docs/internal/`.
+- `fitting.py` split: the phase-1 search and checkpoint helpers
+  (`_unwrap`, `_sync_from_rank0`, `_journal_storage`, `_parallel_search`,
+  `_save_checkpoint`, `_load_checkpoint`, `_CHECKPOINT_FORMAT`) moved to a
+  new `_fit_search.py`, leaving `fitting.py` (431 -> 319 LOC) as the
+  orchestrator + phase-2 training loop. Pure move, no behavior change; the
+  names are re-exported from `fitting.py` so existing imports keep working.
+  Prepares the ground for the roadmap's training-triage features by
+  separating the two phases before layering more onto either.
+- Optimize-path CUDA test stub consolidated: the per-attribute
+  `_pretend_cuda` helper (patched `is_available`/`device_count`/`set_device`/
+  `Tensor.to` individually) is replaced by a shared `pretend_cuda` conftest
+  fixture that patches the *complete* public `torch.cuda` surface
+  `prepare()` reads (`CUDA_OPTIMIZE_SURFACE`), on the real module object so
+  torch's internal `torch.cuda` reads still resolve. A new guard test
+  (`test_optimize.py::TestCudaSurfaceCoverage`) scans the source and fails
+  loudly if `prepare()`/`_optimize`/`utils` reach for a public `torch.cuda`
+  attribute the fixture doesn't stub - closing the "silently exercises the
+  CPU path on a CPU-only box" gap that bit PR #1. No behavior change;
+  pure test-hygiene improvement.
+
+### Removed
+- **Breaking:** `tune()` no longer accepts the `train_loader=`/`val_loader=`
+  keyword aliases (deprecated in 0.10). Passing them now raises `TypeError`
+  pointing at the replacement `train=`/`val=` names. The soak period elapsed;
+  these names were misleading for estimator inputs (which take arrays, not
+  loaders).
 
 ## [0.11.0] - 2026-07-22
 ### Added
