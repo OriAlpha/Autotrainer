@@ -106,6 +106,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   these names were misleading for estimator inputs (which take arrays, not
   loaders).
 
+### Fixed
+- The multi-rank FSDP wrap tests (`test_fsdp_wraps_with_orig_params_over_process_group`,
+  `test_fsdp_with_cpu_offload_wraps`) failed on torch >= 2.13 in CPU-gloo CI
+  with "FSDP needs a non-CPU accelerator device, but no accelerator device is
+  detected". On those builds FSDP() refuses even the *wrap* when no CUDA/XPU
+  device is visible - and the harness deliberately hides CUDA (`CUDA_VISIBLE_DEVICES=""`)
+  so two ranks don't fight over one GPU. The worker now catches that specific
+  refusal and emits a `SKIP reason=fsdp-needs-accelerator` line, so the test
+  skips cleanly on builds where torch forbids the CPU wrap while still running
+  the real assertion on builds where torch allows it (and where a usable GPU
+  exists, the existing cuda-marked full-step test covers the rest).
+
 ## [0.11.0] - 2026-07-22
 ### Added
 - `prepare(model, loader, opt, optimize=True)`: the GPU optimization layer
