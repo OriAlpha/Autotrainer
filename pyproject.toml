@@ -45,11 +45,11 @@ tune = ["optuna>=3.0"]
 dev = ["pytest", "pytest-cov>=4.1", "ruff", "mypy>=1.8", "pdoc>=14", "build", "twine"]
 
 [project.urls]
-Homepage = "https://github.com/OriAlpha/autotrainer"
-Repository = "https://github.com/OriAlpha/autotrainer"
-Changelog = "https://github.com/OriAlpha/autotrainer/blob/main/CHANGELOG.md"
-Issues = "https://github.com/OriAlpha/autotrainer/issues"
-Security = "https://github.com/OriAlpha/autotrainer/blob/main/SECURITY.md"
+Homepage = "https://github.com/OriAlpha/Autotrainer"
+Repository = "https://github.com/OriAlpha/Autotrainer"
+Changelog = "https://github.com/OriAlpha/Autotrainer/blob/main/CHANGELOG.md"
+Issues = "https://github.com/OriAlpha/Autotrainer/issues"
+Security = "https://github.com/OriAlpha/Autotrainer/blob/main/SECURITY.md"
 
 [project.scripts]
 autotrainer = "autotrainer.cli:main"

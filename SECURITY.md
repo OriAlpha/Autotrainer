@@ -8,8 +8,8 @@ yet.
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.7.x   | :white_check_mark: |
-| < 0.7   | :x:                |
+| 0.11.x  | :white_check_mark: |
+| < 0.11  | :x:                |
 
 ## Reporting a vulnerability
 
@@ -18,7 +18,7 @@ yet.
 Instead, report vulnerabilities privately so a fix can be prepared before
 details are public:
 
-1. Go to **https://github.com/OriAlpha/autotrainer/security/advisories/new**
+1. Go to **https://github.com/OriAlpha/Autotrainer/security/advisories/new**
    and create a private security advisory, **or**
 2. Email **suhasgoravale@gmail.com** with the details.
 

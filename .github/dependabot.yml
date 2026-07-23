@@ -1,0 +1,30 @@
+# Keep dependencies and GitHub Actions up to date.
+# Config reference: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # Python dependencies declared in pyproject.toml ([project] + [project.optional-dependencies]).
+  # Note: uv.lock is the resolved graph; Dependabot's pip ecosystem updates the
+  # version specifiers in pyproject.toml. Re-run `uv lock` after a Dependabot PR
+  # to refresh the lockfile before merging.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  # GitHub Actions used in .github/workflows/ci.yml (actions/checkout, setup-uv,
+  # upload-artifact, pypi-publish, etc.).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "dependencies"
