@@ -4,6 +4,75 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Added
+- `prepare(..., static_graph=True)`: when distributed (DDP path), enables
+  DDP's `static_graph=True` plus `gradient_as_bucket_view=True` - free
+  wins when the computation graph is the same every iteration (static graph
+  skips per-iteration graph-recording overhead after the first step;
+  bucketing lowers peak memory). Both are opt-in because they have
+  correctness implications when the graph genuinely changes (conditional
+  execution, varying depth). No-op on single-device and the FSDP path. Does
+  NOT touch lr / loss / schedule / optimizer.
+- `prepare(..., find_unused_parameters=True)`: forwards DDP's
+  `find_unused_parameters=True` for models that don't touch every param each
+  step (e.g. conditional branches). Mutually exclusive with `static_graph`
+  (torch forbids the combination; `prepare` raises a clear `ValueError`).
+- `autotrainer.ThroughputMonitor`: throughput (samples/sec), peak GPU memory,
+  and a rough model-FLOPS-utilization (MFU) estimate. The companion to
+  `BottleneckMonitor` - where that answers "am I waiting on the loader?"
+  (a ratio), this answers "how fast am I going, and is that fast relative to
+  the GPU's peak?" (absolute numbers). MFU is opt-in (pass `model_flops`);
+  the GPU-peak denominator comes from a small spec table (A100/H100/common
+  consumer parts) or is reported as `None` for unknown hardware rather than
+  invented. Bookkeeping is unit-tested on CPU; the real-GPU memory read is
+  gated on the `cuda` marker. MFU is a diagnostic, not a benchmark - it
+  assumes a matmul-heavy model.
+- Multi-rank FSDP test coverage: the FSDP *wrap* + `use_orig_params` param-
+  addressability path now runs against a real process group in
+  `test_distributed.py` (CPU-gloo), closing the gap that the single-process
+  no-op test left open. The full sharded fwd+bwd+step is gated on `>= 2`
+  usable GPUs (torch 2.13 FSDP won't run a forward with CPU params when
+  `cuda.is_available()` is True), and is left to a multi-GPU runner.
+- `timeout-minutes: 30` on the `test-cuda` CI job, so an in-execution hang
+  (driver crash, stuck NCCL collective, deadlocked test) fails loudly after
+  30 minutes instead of running silently. Note this does not cover the
+  "queued forever because the runner is offline" case - the timeout only
+  starts once a runner picks the job up.
+- `.github/dependabot.yml`: weekly dependency-update checks for the Python
+  (`pip`) ecosystem and the GitHub Actions versions used in CI.
+### Changed
+- `fitting.py` split: the phase-1 search and checkpoint helpers
+  (`_unwrap`, `_sync_from_rank0`, `_journal_storage`, `_parallel_search`,
+  `_save_checkpoint`, `_load_checkpoint`, `_CHECKPOINT_FORMAT`) moved to a
+  new `_fit_search.py`, leaving `fitting.py` (431 -> 319 LOC) as the
+  orchestrator + phase-2 training loop. Pure move, no behavior change; the
+  names are re-exported from `fitting.py` so existing imports keep working.
+  Prepares the ground for the roadmap's training-triage features by
+  separating the two phases before layering more onto either.
+
+### Removed
+- **Breaking:** `tune()` no longer accepts the `train_loader=`/`val_loader=`
+  keyword aliases (deprecated in 0.10). Passing them now raises `TypeError`
+  pointing at the replacement `train=`/`val=` names. The soak period elapsed;
+  these names were misleading for estimator inputs (which take arrays, not
+  loaders).
+
+### Changed
+- Repository-hygiene cleanup (no behavior change, no public-API change):
+    * Refreshed stale version references: `SECURITY.md` supported-versions
+      table now reflects the current release line (`0.11.x`, was `0.7.x`);
+      the bug-report issue template placeholder updated to `0.11.0`.
+    * Normalized GitHub URL casing to the canonical `OriAlpha/Autotrainer`
+      across `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `pyproject.toml`,
+      and issue templates (GitHub redirects case-insensitively, but the
+      canonical form is now used everywhere).
+    * `RUNNER_SETUP.md` generalized: removed maintainer/machine-specific
+      details (GPU model, driver version, runner name, fixed paths) so it
+      reads as a reusable guide for any contributor setting up a self-hosted
+      GPU runner.
+    * `NEXT_STEPS.md` moved out of the published repo (it was an internal
+      engineering backlog); it is no longer tracked. Maintainers keep it
+      locally under the gitignored `docs/internal/`.
 
 ## [0.11.0] - 2026-07-22
 ### Added
