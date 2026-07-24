@@ -87,14 +87,14 @@ for epoch in range(epochs):
     # ... your normal training loop
 ```
 
-### Want throughput, not magic? `prepare(..., optimize=True)`
+### Want throughput, not magic? `prepare(..., optimize=True)` (the default)
 
-`prepare()` by itself makes your model/loader distribution-ready and leaves
-everything else alone. Pass `optimize=True` to also flip on the GPU wins
-users forget — TF32, `cudnn.benchmark` for CNNs, sane `num_workers` /
-`pin_memory` / `persistent_workers` defaults on bare loaders, and AMP —
-**without touching your lr, loss, schedule, or optimizer choice**. No-op on
-CPU and when the flag is off, so existing scripts see no change.
+`prepare()` makes your model/loader distribution-ready and — by default on a
+GPU — also flips on the wins users forget: TF32, `cudnn.benchmark` for CNNs,
+sane `num_workers` / `pin_memory` / `persistent_workers` defaults on bare
+loaders, and AMP — **without touching your lr, loss, schedule, or optimizer
+choice**. It's a no-op on CPU (every flag gates on a visible CUDA device), so
+CPU-only scripts see no change. Pass `optimize=False` to opt out.
 
 #### Before: the boilerplate you write today to "use your GPUs well"
 
@@ -136,7 +136,8 @@ loss_fn = nn.CrossEntropyLoss()                             # your hyperparamete
 
 # ONE line detects hardware and sets TF32 / cudnn.benchmark / num_workers /
 # pin_memory / persistent_workers / AMP. lr, loss, schedule, optimizer untouched.
-model, loader, optimizer = autotrainer.prepare(model, loader, optimizer, optimize=True)
+# (optimize=True is the default on GPU; shown explicitly here for clarity.)
+model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 scaler = autotrainer.GradScaler()   # no-op when bf16 is available
 for epoch in range(epochs):
@@ -148,23 +149,31 @@ for epoch in range(epochs):
         scaler.step(optimizer); scaler.update()
 ```
 
-What changed: **one `prepare(..., optimize=True)` call + two no-op-on-CPU
-helpers.** What didn't: your lr, your loss, your schedule, your optimizer.
-Same script runs unchanged on a laptop (everything degrades to no-ops) and
-on an A100.
+What changed: **one `prepare(...)` call (optimize is on by default) + two
+no-op-on-CPU helpers.** What didn't: your lr, your loss, your schedule, your
+optimizer. Same script runs unchanged on a laptop (everything degrades to
+no-ops) and on an A100.
 
 #### What it prints when it runs
 
-Nothing is silent — every speedup is named, and the user is explicitly told
-their hyperparameters weren't touched:
+Nothing is silent — every speedup is named, the user is explicitly told their
+hyperparameters weren't touched, and when AMP is on `prepare()` prints the
+exact two-line snippet to add to the training loop (we can't wrap an
+arbitrary loop for you, but the helpers are no-ops on CPU so it's safe to
+copy verbatim):
 
 ```
 [autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
 [autotrainer] DistributedSampler installed (shuffle=True) - call autotrainer.set_epoch(loader, epoch) ...
 [autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
+[autotrainer] optimize: for AMP, wrap your step:
+    scaler = autotrainer.GradScaler()
+    with autotrainer.autocast_context():
+        out = model(x); loss = loss_fn(out, y)
+    scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
 ```
 
-| | Manual | `prepare(optimize=True)` |
+| | Manual | `prepare()` (optimize default) |
 |---|---|---|
 | Lines of "optimize my GPUs" boilerplate | ~10, hand-written, easy to forget | **1** |
 | Hyperparameters touched | none (correct) | none (correct) |
