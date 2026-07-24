@@ -166,6 +166,41 @@ class TestPrepareOptimizeIntegration:
         out = capsys.readouterr().out
         assert "optimize" not in out
 
+    def test_optimize_defaults_to_true(self):
+        """prepare() defaults optimize=True now (the GPU-optimized-by-default
+        vision). The signature default is the contract under test; if someone
+        flips it back to False without intent this fails loudly."""
+        import inspect
+
+        from autotrainer.backends.torch_backend import prepare
+
+        sig = inspect.signature(prepare)
+        assert sig.parameters["optimize"].default is True
+
+    def test_default_optimize_is_noop_on_cpu(self, monkeypatch, capsys):
+        """The default flip to optimize=True must NOT change CPU behavior: on a
+        box with no CUDA every flag in the bundle gates on use_cuda, so a bare
+        prepare(model, loader) call (no optimize= kwarg) must leave the loader
+        untouched and print nothing. This is the safety guarantee that makes
+        the default flip safe for CPU-only callers.
+
+        We force CUDA off explicitly because this test runs on dev boxes that
+        DO have a GPU (where optimize=True legitimately applies the bundle) -
+        the CPU-no-op claim is what we're verifying, so hide CUDA here."""
+        torch = pytest.importorskip("torch")
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 0)
+        from autotrainer.backends.torch_backend import prepare
+
+        model, loader = self._model_loader(torch)
+        _, out_loader = prepare(model, loader)  # no optimize= kwarg -> default True
+        # CPU: no loader defaults applied, no AMP snippet, no summary.
+        assert out_loader.num_workers == 0
+        assert out_loader.pin_memory is False
+        out = capsys.readouterr().out
+        assert "optimize" not in out
+        assert "autocast_context" not in out
+
     def test_optimize_true_does_not_touch_hyperparameters(self, pretend_cuda):
         """The contract: optimize sets flags, never overrides lr/loss/sched.
 
@@ -218,6 +253,30 @@ class TestPrepareOptimizeIntegration:
         _, out_loader = prepare(model, loader, optimize=True)
         assert out_loader.num_workers >= 1
         assert out_loader.pin_memory is True
+
+    def test_amp_snippet_printed_when_optimize_applies_on_gpu(self, pretend_cuda, capsys):
+        """When the optimize bundle fires on a GPU with AMP on, prepare() prints
+        the exact two-line autocast+GradScaler snippet so the user knows what to
+        add to their loop (we can't wrap an arbitrary loop from here). The
+        snippet must reference the public helpers, which are no-ops on CPU."""
+        torch = pytest.importorskip("torch")
+        from autotrainer.backends.torch_backend import prepare
+
+        model, loader = self._model_loader(torch)
+        prepare(model, loader, optimize=True)  # amp defaults to optimize=True
+        out = capsys.readouterr().out
+        assert "autotrainer.autocast_context()" in out
+        assert "autotrainer.GradScaler()" in out
+
+    def test_amp_snippet_silent_when_amp_disabled(self, pretend_cuda, capsys):
+        """amp=False must suppress the AMP snippet (the user opted out)."""
+        torch = pytest.importorskip("torch")
+        from autotrainer.backends.torch_backend import prepare
+
+        model, loader = self._model_loader(torch)
+        prepare(model, loader, optimize=True, amp=False)
+        out = capsys.readouterr().out
+        assert "autotrainer.autocast_context()" not in out
 
 
 # auto_bs runs real forward+backward passes to probe memory, so it needs an

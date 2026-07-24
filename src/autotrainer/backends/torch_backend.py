@@ -139,7 +139,7 @@ def prepare(
     dataloader: Any = None,
     optimizer: Any = None,
     *,
-    optimize: bool = False,
+    optimize: bool = True,
     amp: bool | None = None,
     auto_bs: bool = False,
     loss_fn: Any = None,
@@ -162,13 +162,19 @@ def prepare(
         optimizer: optional optimizer; passed through untouched.
         optimize: turn on the GPU wins users forget (TF32, cudnn.benchmark
             for CNNs, ``num_workers``/``pin_memory``/``persistent_workers``
-            defaults on bare loaders). Never touches lr, loss, schedule, or
-            optimizer choice. No-op on CPU.
-        amp: enable mixed precision (bf16-preferred, fp16 fallback). When
-            ``optimize=True`` this defaults to True; otherwise False. The
-            caller uses ``autotrainer.autocast_context()`` around the
-            forward and ``autotrainer.GradScaler()`` for the backward; both
-            already exist as no-ops on CPU / when bf16 is supported.
+            defaults on bare loaders). **Default ``True``** - this is the
+            no-brainer bundle; pass ``optimize=False`` to opt out. Never
+            touches lr, loss, schedule, or optimizer choice. A no-op on CPU
+            (every flag in it gates on a visible CUDA device), so CPU-only
+            callers are unaffected by the default. The caller still wraps the
+            forward/backward in ``autotrainer.autocast_context()`` /
+            ``autotrainer.GradScaler()`` for AMP (both no-ops on CPU / when
+            bf16 is supported); see the printed snippet when this fires.
+        amp: enable mixed precision (bf16-preferred, fp16 fallback). Defaults
+            to the value of ``optimize``. The caller wraps the forward in
+            ``autotrainer.autocast_context()`` and the backward/step in
+            ``autotrainer.GradScaler()`` (both no-ops on CPU / when bf16 is
+            supported); see the printed snippet when this fires.
         auto_bs: grow the loader's batch size until OOM, then back off one
             step. Requires ``loss_fn`` for an accurate forward+backward
             measurement; without it the sweep is forward-only (conservative
@@ -469,6 +475,23 @@ def prepare(
             applied=applied,
             compile=compile,
             fsdp=fsdp,
+        )
+
+    # When the optimize bundle fired on a GPU, the flags are applied but AMP
+    # (autocast + GradScaler) still lives in the user's training loop - we
+    # can't wrap an arbitrary loop from here. Print the exact two lines so
+    # the user knows what to add; the helpers are no-ops on CPU so the
+    # snippet is safe to copy verbatim. (fit() already does this internally
+    # in its own loop, so this only matters for the manual-loop path.)
+    if optimize and use_cuda and amp:
+        from ..utils import print0
+
+        print0(
+            "[autotrainer] optimize: for AMP, wrap your step:\n"
+            "    scaler = autotrainer.GradScaler()\n"
+            "    with autotrainer.autocast_context():\n"
+            "        out = model(x); loss = loss_fn(out, y)\n"
+            "    scaler.scale(loss).backward(); scaler.step(opt); scaler.update()"
         )
 
     out = [model]
