@@ -32,7 +32,7 @@ jobs:
       - run: uv run pytest tests/ -v -m "not cuda"
       # Coverage XML is uploaded so coverage trends are inspectable without a
       # third-party account. pytest already produces it via addopts.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-py${{ matrix.python }}
           path: coverage.xml
@@ -128,7 +128,7 @@ jobs:
           python-version: "3.11"
       - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run pdoc -o docs/build src/autotrainer
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: api-docs
           path: docs/build/
