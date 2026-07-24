@@ -25,13 +25,24 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _run_two_ranks(script: str, timeout: int = 240, extra_env: dict | None = None) -> list[str]:
+def _run_two_ranks(
+    script: str,
+    timeout: int = 240,
+    extra_env: dict | None = None,
+    *,
+    skip_on: str | None = None,
+) -> list[str]:
     """Run `script` in 2 worker processes; return each rank's RESULT line.
 
     These tests validate the sharding / broadcast *logic* on CPU-gloo. They
     force CUDA off in the worker env so a 1-GPU dev box doesn't get tangled
     in CUDA init (two ranks can't both bind the same single GPU). Add a
     dedicated NCCL job for true multi-GPU validation.
+
+    If `skip_on` is set, a worker printing a "SKIP reason=<skip_on>" line
+    causes the whole test to skip (both ranks must agree) instead of being
+    reported as a failure. Used for torch-version-gated paths (e.g. FSDP on
+    torch >= 2.13 refuses to wrap without a visible accelerator).
     """
     port = _free_port()
     procs = []
@@ -78,6 +89,13 @@ def _run_two_ranks(script: str, timeout: int = 240, extra_env: dict | None = Non
                 + "\n".join(traces)
             )
         assert p.returncode == 0, f"rank {rank} failed:\nstdout:\n{out}\nstderr:\n{err}"
+        if skip_on:
+            skips = [ln for ln in out.splitlines() if ln.startswith("SKIP ")]
+            if any(f"reason={skip_on}" in ln for ln in skips):
+                pytest.skip(
+                    f"rank {rank} reported SKIP (reason={skip_on}); "
+                    f"this torch build/environment doesn't support the path under test"
+                )
         lines = [ln for ln in out.splitlines() if ln.startswith("RESULT ")]
         assert lines, f"rank {rank} printed no RESULT line:\n{out}"
         results.append(lines[-1])
@@ -235,7 +253,7 @@ class TestDdpOpts:
 # Closes the gap the single-process test (test_tier3.py::TestFsdp) leaves open:
 # that one only checks the world_size==1 no-op. The multi-rank FSDP *wrap* had
 # never run against a real process group in CI. The wrap + use_orig_params
-# param-addressability check run fine on CPU-gloo and is what's exercised here.
+# param-addressability check run on CPU-gloo and is what's exercised here.
 #
 # The full sharded fwd+bwd+step is a different story: on torch 2.13, FSDP
 # refuses to run a forward when params are on CPU if `cuda.is_available()` is
@@ -245,8 +263,17 @@ class TestDdpOpts:
 # so FSDP insists on a cuda:0 that doesn't exist - the step can't run. That
 # full-step path is therefore gated on a real, usable GPU (device_count > 0)
 # and left to the cuda-marked CI. This is exactly the contingency NEXT_STEPS
-# item #4 flagged. The wrap itself - the part that was genuinely unproven -
-# runs here on CPU-gloo.
+# item #4 flagged.
+#
+# On torch >= 2.13 the *wrap itself* also needs a non-CPU accelerator: FSDP()
+# raises "FSDP needs a non-CPU accelerator device, but no accelerator device
+# is detected" whenever no CUDA/XPU/HPU is visible - even though the params
+# are on CPU. The CPU-gloo harness deliberately hides CUDA so two ranks don't
+# fight over one GPU, so the wrap can't run there on newer torch. The worker
+# below probes for that refusal up front: if FSDP won't wrap on a hidden-CUDA
+# box, it prints a SKIP line instead of RESULT, and the test skips rather than
+# fails. On boxes where torch *does* allow the CPU wrap (older torch, or a
+# runner that leaves a visible device) the wrap is still exercised for real.
 _FSDP_WRAP_WORKER = """
 import os
 import torch
@@ -262,7 +289,18 @@ y = x.sum(dim=1, keepdim=True)
 loader = DataLoader(TensorDataset(x, y), batch_size=4)
 
 model = nn.Linear(3, 1)
-m, loader = autotrainer.prepare(model, loader, fsdp=True)
+# On torch >= 2.13 with no accelerator visible (the CPU-gloo harness hides
+# CUDA so two ranks don't fight over one GPU), FSDP() raises "FSDP needs a
+# non-CPU accelerator device" even just to wrap. Catch that specific refusal
+# and emit a SKIP line so the test skips cleanly on those builds instead of
+# failing; on builds/torch where the CPU wrap is allowed, it runs for real.
+try:
+    m, loader = autotrainer.prepare(model, loader, fsdp=True)
+except RuntimeError as e:
+    if "non-CPU accelerator" in str(e):
+        print(f"SKIP rank={rank} reason=fsdp-needs-accelerator")
+        raise SystemExit(0)
+    raise  # a different RuntimeError is still a real failure
 
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 assert isinstance(m, FSDP), "model not FSDP-wrapped"
@@ -288,20 +326,24 @@ class TestFsdpMultiRank:
 
     def test_fsdp_wraps_with_orig_params_over_process_group(self):
         """The wrap itself + use_orig_params param addressability - the gap the
-        single-process no-op test leaves open."""
-        r0, r1 = _run_two_ranks(_FSDP_WRAP_WORKER)
+        single-process no-op test leaves open.
+
+        Skips cleanly on torch >= 2.13 in CPU-gloo CI (no visible accelerator):
+        see _FSDP_WRAP_WORKER. On builds where torch allows the CPU wrap it
+        still runs the real assertion."""
+        r0, r1 = _run_two_ranks(_FSDP_WRAP_WORKER, skip_on="fsdp-needs-accelerator")
         assert "wrap=fsdp" in r0 and "wrap=fsdp" in r1
 
     def test_fsdp_with_cpu_offload_wraps(self):
         """prepare(fsdp=True, cpu_offload=True) must wrap without crashing in
         the multi-rank path. (A full step isn't run - see the worker comment for
         why; this just proves the cpu_offload kwarg is plumbed through FSDP
-        init across ranks.)"""
+        init across ranks.) Same torch-version skip as above."""
         worker = _FSDP_WRAP_WORKER.replace(
             "autotrainer.prepare(model, loader, fsdp=True)",
             "autotrainer.prepare(model, loader, fsdp=True, cpu_offload=True)",
         )
-        r0, r1 = _run_two_ranks(worker)
+        r0, r1 = _run_two_ranks(worker, skip_on="fsdp-needs-accelerator")
         assert "wrap=fsdp" in r0 and "wrap=fsdp" in r1
 
     @pytest.mark.cuda
