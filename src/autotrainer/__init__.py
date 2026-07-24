@@ -96,9 +96,9 @@ def prepare(model: Any, dataloader: Any = None, optimizer: Any = None, **kwargs:
     For PyTorch models, keyword arguments are forwarded to the torch backend
     (``torch_backend.prepare``), which accepts: ``optimize``, ``amp``,
     ``auto_bs``, ``loss_fn``, ``max_bs``, ``compile``, ``compile_mode``,
-    ``fsdp``, ``cpu_offload``, ``static_graph``, ``find_unused_parameters``.
-    The non-torch backends don't take kwargs; passing any to a
-    sklearn/boosting/tf model raises ``TypeError``.
+    ``fsdp``, ``cpu_offload``, ``static_graph``, ``find_unused_parameters``,
+    ``auto_launch``. The non-torch backends don't take kwargs; passing any to
+    a sklearn/boosting/tf model raises ``TypeError``.
     """
     mod = type(model).__module__ or ""
 

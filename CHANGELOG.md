@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- **`prepare()` auto-launches multi-GPU workers.** On a box with ≥2 visible
+  GPUs, a bare `python train.py` now distributes across all of them with no
+  launcher: the first `prepare()` call detects it's a fresh parent process
+  (no `RANK`/`WORLD_SIZE` env set), spawns one worker per GPU via the same
+  spawn+supervisor machinery the `autotrainer run` CLI uses, and the parent
+  `sys.exit`s without entering the training loop. Each worker re-enters the
+  script with `RANK` set and proceeds through `prepare()` normally (DDP wrap,
+  distributed sampler). Closes the second vision gap: "drop a script in and
+  it auto-detects single AND multi-GPU." Spawn only fires when all three hold
+  (no `RANK` set, not under SLURM, `detect()` reports `local_multi_gpu`), so
+  it never double-spawns under `srun` or loops on already-launched workers.
+  Opt out with `prepare(..., auto_launch=False)`. Each spawned child is
+  pinned to its own GPU via per-child `CUDA_VISIBLE_DEVICES` (the torchrun
+  pattern) so workers don't race on `set_device`.
 - `prepare(..., static_graph=True)`: when distributed (DDP path), enables
   DDP's `static_graph=True` plus `gradient_as_bucket_view=True` - free
   wins when the computation graph is the same every iteration (static graph

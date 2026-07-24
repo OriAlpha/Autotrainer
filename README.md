@@ -251,12 +251,25 @@ for xb, yb in loader:
 
 Opt-in; zero overhead when not constructed.
 
-Then launch:
+Then launch. **`prepare()` auto-distributes** — on a multi-GPU box it spawns
+one worker per GPU the first time it's called, so a bare `python train.py`
+uses all visible GPUs with no launcher:
 
 ```bash
-autotrainer info                 # show what was detected
-autotrainer run train.py         # local machine (1 or many GPUs)
+python train.py                   # local: prepare() auto-spawns per-GPU workers
+autotrainer run train.py          # equivalent, explicit (same spawn machinery)
+autotrainer info                  # show what was detected
 ```
+
+Set `prepare(..., auto_launch=False)` to opt out (e.g. you're managing
+processes yourself, or running under your own launcher). The auto-spawn only
+fires when all three hold: no `RANK` env var set (fresh parent, not a worker),
+not under SLURM, and ≥2 GPUs on one node — so it never double-spawns under
+`srun` or loops on already-launched workers.
+
+On SLURM (multi-node), the front door stays `srun autotrainer run` — SLURM
+itself starts one task per GPU across nodes, so auto-spawn is correctly
+skipped there:
 
 On SLURM, inside your sbatch script:
 
