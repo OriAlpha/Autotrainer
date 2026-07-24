@@ -33,8 +33,9 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader)
 ```
 
 ```bash
-autotrainer run train.py         # local: 1 or many GPUs, auto-detected
-srun autotrainer run train.py    # SLURM: multi-node, zero config
+python train.py                  # local: prepare() auto-distributes across GPUs
+autotrainer run train.py         # equivalent, explicit (same spawn machinery)
+srun autotrainer run train.py    # SLURM multi-node (srun starts the tasks)
 autotrainer doctor               # diagnose your environment first
 ```
 
@@ -356,9 +357,11 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=3
    ranks via a shared journal-file study - one trial per process, every
    GPU busy during the search.
 2. **Train**: the winning recipe is retrained from your model's original
-   init through `prepare()` - so `autotrainer run` distributes it across
-   every GPU/node - with warmup+cosine, mixed precision, and early stopping
-   on the val loss. The best epoch's weights are returned.
+   init through `prepare()` - which auto-distributes it across every
+   GPU/node (a bare `python train.py` spawns one worker per GPU locally;
+   under SLURM, `srun autotrainer run` does the same across nodes) - with
+   warmup+cosine, mixed precision, and early stopping on the val loss. The
+   best epoch's weights are returned.
 
 Pass `checkpoint="fit.ckpt"` to make it preemption-safe: the full training
 state is saved every epoch, and rerunning the same script resumes where it
