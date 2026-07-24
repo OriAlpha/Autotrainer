@@ -64,6 +64,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   surfaces why instead of leaving the user to find it in the docstring.
   Silent when a `loss_fn` is given (the sweep is then real).
 ### Changed
+- **`prepare()` now defaults `optimize=True`** (was `False`). On a GPU this
+  turns on the free-win bundle by default — TF32, `cudnn.benchmark` for CNNs,
+  `num_workers`/`pin_memory`/`persistent_workers` defaults on bare loaders,
+  and AMP — without touching lr/loss/schedule/optimizer. This closes the
+  "drop a script in and it runs GPU-optimized" gap: a bare
+  `prepare(model, loader)` no longer leaves the GPU wins on the table. The
+  bundle is a documented no-op on CPU (every flag gates on a visible CUDA
+  device), so CPU-only callers are unaffected. Pass `optimize=False` to opt
+  out. When the bundle fires on a GPU with AMP on, `prepare()` now also
+  prints the exact two-line `autocast_context()` + `GradScaler()` snippet to
+  add to the training loop (we can't wrap an arbitrary loop from inside
+  `prepare`; the helpers are no-ops on CPU so the snippet is safe verbatim).
+  `auto()` and `fit()` inherit the new default automatically.
 - Repository-hygiene cleanup (no behavior change, no public-API change):
     * Refreshed stale version references: `SECURITY.md` supported-versions
       table now reflects the current release line (`0.11.x`, was `0.7.x`);
