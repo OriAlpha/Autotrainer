@@ -107,6 +107,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   loaders).
 
 ### Fixed
+- **`ThroughputMonitor` MFU computation crashed on Python 3.9:** it used
+  `zip(..., strict=True)`, which is PEP 618 (3.10+ runtime syntax). The
+  project's `requires-python` and ruff `target-version` both target 3.9,
+  so the 3.9 CI cell raised `TypeError: zip() takes no keyword arguments`
+  in the three MFU tests. The two deques are appended in lockstep
+  (`step_time` + `tick` fire once per step), so the strict check was only a
+  defensive assertion; replaced with a plain `zip()` plus a comment
+  documenting the lockstep invariant.
 - The multi-rank FSDP wrap tests (`test_fsdp_wraps_with_orig_params_over_process_group`,
   `test_fsdp_with_cpu_offload_wraps`) failed on torch >= 2.13 in CPU-gloo CI
   with "FSDP needs a non-CPU accelerator device, but no accelerator device is
