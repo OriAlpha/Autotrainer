@@ -53,6 +53,63 @@ def _ensure_process_group() -> bool:
     return True
 
 
+def _maybe_auto_launch() -> None:
+    """If this is a fresh parent process on a multi-GPU box, spawn one worker
+    per GPU and exit - so a bare ``python train.py`` distributes across all
+    visible GPUs without the user invoking ``autotrainer run``.
+
+    This is called at the very top of ``prepare()``. It spawns ONLY when all
+    three hold:
+
+    1. No ``RANK``/``WORLD_SIZE`` env var is set - we're a fresh parent, not a
+       worker that the launcher (or a prior auto-launch) already spawned. The
+       worker path has ``RANK`` set and must NOT re-spawn (infinite loop).
+    2. Not under SLURM (``SLURM_JOB_ID`` absent). SLURM uses ``srun`` to start
+       one task per GPU, so self-spawning here would double-spawn. The SLURM
+       front door stays ``srun autotrainer run train.py``.
+    3. ``detect()`` reports ``local_multi_gpu`` (>= 2 GPUs on this one box).
+
+    When it fires, the parent process re-executes ``sys.argv`` once per GPU via
+    :func:`autotrainer.launcher._spawn_local_workers` (each child pinned to its
+    own GPU by ``CUDA_VISIBLE_DEVICES``), supervises them fail-fast, then
+    ``sys.exit``\\ s with the aggregate exit code. The parent NEVER returns into
+    the caller's training loop - that's the point. Each child re-imports,
+    re-runs the user's script, and hits ``prepare()`` again, but now ``RANK`` is
+    set so condition (1) fails and ``prepare()`` proceeds normally (DDP wrap,
+    distributed sampler, etc.).
+
+    This is opt-out: ``prepare(..., auto_launch=False)`` skips the call
+    entirely (for users managing their own process spawning).
+    """
+    import sys
+
+    # Condition 1: already a worker (launched by autotrainer run, srun, or a
+    # prior auto-launch) - never re-spawn.
+    if os.environ.get("RANK") is not None or os.environ.get("WORLD_SIZE") is not None:
+        return
+    # Condition 2: under SLURM, srun already started the tasks.
+    if "SLURM_JOB_ID" in os.environ:
+        return
+
+    from ..detect import detect
+    from ..launcher import _spawn_local_workers
+    from ..utils import print0
+
+    env = detect()
+    # Condition 3: only self-spawn for local multi-GPU. Single-GPU and SLURM
+    # modes are handled by the normal prepare() path / srun respectively.
+    if env.mode != "local_multi_gpu":
+        return
+
+    print0(
+        f"[autotrainer] auto-launch: {env.nproc_per_node} GPUs detected on one "
+        f"node; spawning one worker per GPU (use prepare(..., auto_launch=False) "
+        f"to disable, or `autotrainer run` for explicit control)"
+    )
+    rc = _spawn_local_workers(sys.argv[0], list(sys.argv[1:]), env)
+    sys.exit(rc)
+
+
 def _ddp_kwargs(
     local_rank: int, use_cuda: bool, static_graph: bool, find_unused_parameters: bool
 ) -> tuple[dict[str, Any], list[str]]:
@@ -150,6 +207,7 @@ def prepare(
     cpu_offload: bool = False,
     static_graph: bool = False,
     find_unused_parameters: bool = False,
+    auto_launch: bool = True,
 ) -> Any:
     """Make (model, dataloader, optimizer) distribution-ready.
 
@@ -227,7 +285,18 @@ def prepare(
             to the DDP wrap. Needed when the model doesn't use all params every
             step (e.g. conditional branches) - without it DDP would hang. Only
             applies to the DDP path; no-op on single-device and FSDP.
+        auto_launch: if ``True`` (default) and this is a fresh process on a
+            multi-GPU box (no ``RANK`` set, not under SLURM, ``detect()``
+            reports ``local_multi_gpu``), spawn one worker per GPU and exit
+            the parent - so a bare ``python train.py`` distributes across all
+            GPUs without ``autotrainer run``. Each worker re-enters this script
+            with ``RANK`` set and proceeds normally. Set ``False`` to manage
+            process spawning yourself (e.g. you already called ``autotrainer
+            run`` or use your own launcher).
     """
+    if auto_launch:
+        _maybe_auto_launch()
+
     import torch
     from torch.nn.parallel import DistributedDataParallel as DDP
 
