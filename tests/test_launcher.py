@@ -192,3 +192,51 @@ class TestLaunchLocalMultiGpu:
             lambda: Environment(mode="local_multi_gpu", nproc_per_node=1, gpus=2),
         )
         assert launch("dummy_script.py", []) == 130
+
+    def test_each_child_pinned_to_its_own_gpu(self, monkeypatch):
+        """Per-child CUDA_VISIBLE_DEVICES isolates GPUs (torchrun pattern):
+        each worker sees exactly one GPU so device 0 == its assigned GPU,
+        instead of all workers seeing all GPUs and racing on set_device."""
+        seen_cvd = []
+
+        def fake_popen(cmd, env=None, **kw):
+            seen_cvd.append(env["CUDA_VISIBLE_DEVICES"])
+            p = MagicMock()
+            p.poll.return_value = 0
+            p.pid = 1
+            return p
+
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        monkeypatch.setattr("autotrainer.launcher.subprocess.Popen", fake_popen)
+        monkeypatch.setattr("autotrainer.launcher.time.sleep", lambda *_: None)
+        monkeypatch.setattr(
+            "autotrainer.launcher.detect",
+            lambda: Environment(mode="local_multi_gpu", nproc_per_node=4, gpus=4),
+        )
+        assert launch("dummy_script.py", []) == 0
+        # No CUDA_VISIBLE_DEVICES set by the user -> each local_rank maps to
+        # itself: worker 0 sees GPU 0, worker 1 sees GPU 1, etc.
+        assert seen_cvd == ["0", "1", "2", "3"]
+
+    def test_child_gpu_isolation_honors_user_cvd(self, monkeypatch):
+        """If the user restricted CUDA_VISIBLE_DEVICES="2,3", the spawned
+        workers must be pinned to those physical GPUs (in order), not to the
+        raw local_rank indices."""
+        seen_cvd = []
+
+        def fake_popen(cmd, env=None, **kw):
+            seen_cvd.append(env["CUDA_VISIBLE_DEVICES"])
+            p = MagicMock()
+            p.poll.return_value = 0
+            p.pid = 1
+            return p
+
+        monkeypatch.setattr("autotrainer.launcher.subprocess.Popen", fake_popen)
+        monkeypatch.setattr("autotrainer.launcher.time.sleep", lambda *_: None)
+        monkeypatch.setattr(
+            "autotrainer.launcher.detect",
+            lambda: Environment(mode="local_multi_gpu", nproc_per_node=2, gpus=2),
+        )
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2,3")
+        assert launch("dummy_script.py", []) == 0
+        assert seen_cvd == ["2", "3"]
