@@ -196,7 +196,11 @@ class ThroughputMonitor:
             # model_flops is per-batch, so per-sample = model_flops / batch_size -
             # but batches can vary (remainder), so sum FLOPs per step instead.
             achieved = 0.0
-            for step_t, bs in zip(self._step_times, self._samples, strict=True):
+            # _step_times and _samples are appended in lockstep (step_time +
+            # tick are called once per step), so they're always equal length.
+            # zip(strict=True) would assert that but is 3.10+ (PEP 618); this
+            # project supports 3.9, so the plain zip relies on the invariant.
+            for step_t, bs in zip(self._step_times, self._samples):
                 if bs > 0 and step_t > 0:
                     achieved += (self._model_flops / max(self._default_bs or bs, 1)) * bs
             achieved /= total_time  # FLOPs/sec over the window

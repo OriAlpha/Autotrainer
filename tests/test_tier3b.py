@@ -159,3 +159,118 @@ class TestConfigureScratch:
         monkeypatch.setenv("TMPDIR", str(tmp_path))
         scratch = configure_scratch(warn=False)
         assert scratch.exists()
+
+
+# --------------------------------------------------------------------------- #
+# NCCL env tuning (Tier 4 #3)
+# --------------------------------------------------------------------------- #
+
+
+class TestConfigureNccl:
+    """The env-var logic; real multi-node validation is a 1.0-gate item."""
+
+    def test_does_not_clobber_user_set_value(self, monkeypatch):
+        import autotrainer as at
+
+        monkeypatch.setenv("NCCL_SOCKET_IFNAME", "ib0")
+        # Even if detection would pick something else, the user value wins.
+        result = at.configure_nccl()
+        assert result == "ib0"
+        assert os.environ["NCCL_SOCKET_IFNAME"] == "ib0"
+
+    def test_sets_var_when_detection_succeeds(self, monkeypatch):
+        import autotrainer as at
+        import autotrainer.slurm as slurm_mod
+
+        monkeypatch.delenv("NCCL_SOCKET_IFNAME", raising=False)
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr(slurm_mod, "_detect_primary_interface", lambda: "eth0")
+        result = at.configure_nccl()
+        assert result == "eth0"
+        assert os.environ["NCCL_SOCKET_IFNAME"] == "eth0"
+
+    def test_leaves_unset_when_detection_fails(self, monkeypatch):
+        import autotrainer as at
+        import autotrainer.slurm as slurm_mod
+
+        monkeypatch.delenv("NCCL_SOCKET_IFNAME", raising=False)
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr(slurm_mod, "_detect_primary_interface", lambda: None)
+        result = at.configure_nccl()
+        assert result is None
+        assert "NCCL_SOCKET_IFNAME" not in os.environ
+
+    def test_debug_enables_nccl_debug_when_detection_fails(self, monkeypatch, capsys):
+        import autotrainer as at
+        import autotrainer.slurm as slurm_mod
+
+        monkeypatch.delenv("NCCL_SOCKET_IFNAME", raising=False)
+        monkeypatch.delenv("NCCL_DEBUG", raising=False)
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr(slurm_mod, "_detect_primary_interface", lambda: None)
+        result = at.configure_nccl(debug=True)
+        assert result is None
+        assert os.environ.get("NCCL_DEBUG") == "INFO"
+        out = capsys.readouterr().out
+        assert "could not detect" in out
+
+    def test_debug_enables_nccl_debug_when_detection_succeeds(self, monkeypatch):
+        import autotrainer as at
+        import autotrainer.slurm as slurm_mod
+
+        monkeypatch.delenv("NCCL_SOCKET_IFNAME", raising=False)
+        monkeypatch.delenv("NCCL_DEBUG", raising=False)
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr(slurm_mod, "_detect_primary_interface", lambda: "eth1")
+        at.configure_nccl(debug=True)
+        assert os.environ.get("NCCL_DEBUG") == "INFO"
+
+
+class TestDetectPrimaryInterface:
+    """The shell-out parser; monkeypatched so it runs anywhere.
+
+    shutil/subprocess are imported inside _detect_primary_interface, so we
+    patch them at their source modules (monkeypatch undoes it after the test).
+    """
+
+    def test_parses_default_route_dev_field(self, monkeypatch):
+        import shutil
+        import subprocess
+
+        import autotrainer.slurm as slurm_mod
+
+        # Typical `ip -o -4 route show to default` output.
+        fake_out = "default via 10.0.0.1 dev eth0 proto dhcp metric 100\n"
+
+        class _FakeResult:
+            stdout = fake_out
+            stderr = ""
+
+        monkeypatch.setattr(shutil, "which", lambda _cmd: "/sbin/ip")
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeResult())
+        assert slurm_mod._detect_primary_interface() == "eth0"
+
+    def test_returns_none_when_no_ip_binary(self, monkeypatch):
+        import shutil
+
+        import autotrainer.slurm as slurm_mod
+
+        monkeypatch.setattr(shutil, "which", lambda _cmd: None)
+        assert slurm_mod._detect_primary_interface() is None
+
+    def test_skips_loopback_interface(self, monkeypatch):
+        import shutil
+        import subprocess
+
+        import autotrainer.slurm as slurm_mod
+
+        # If the only "dev" is lo, don't return it.
+        fake_out = "default via 127.0.0.1 dev lo\n"
+
+        class _FakeResult:
+            stdout = fake_out
+            stderr = ""
+
+        monkeypatch.setattr(shutil, "which", lambda _cmd: "/sbin/ip")
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeResult())
+        assert slurm_mod._detect_primary_interface() is None
