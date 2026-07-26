@@ -155,20 +155,44 @@ no-op-on-CPU helpers.** What didn't: your lr, your loss, your schedule, your
 optimizer. Same script runs unchanged on a laptop (everything degrades to
 no-ops) and on an A100.
 
+#### Even simpler: `train_step()` runs the whole step
+
+`prepare()` can't wrap *your* loop, so the AMP block above is the one thing
+you still hand-write. `train_step()` does it for you - forward under autocast,
+loss, scale/backward/step/update, then zero the grads - in one call, returning
+the (detached) loss for logging:
+
+```python
+model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
+scaler = autotrainer.GradScaler()          # no-op on CPU / bf16; omit to skip
+
+for epoch in range(epochs):
+    autotrainer.set_epoch(loader, epoch)
+    model.train()
+    for xb, yb in loader:
+        loss = autotrainer.train_step(model, loss_fn, xb, yb, optimizer, scaler=scaler)
+```
+
+Same contract: lr / loss / schedule / optimizer are yours; `train_step` only
+runs the forgettable, order-sensitive bookkeeping (backward stays outside
+autocast). Pass `autocast=False` to keep full precision, or omit `scaler` on
+CPU / bf16 GPUs.
+
 #### What it prints when it runs
 
 Nothing is silent — every speedup is named, the user is explicitly told their
-hyperparameters weren't touched, and when AMP is on `prepare()` prints the
-exact two-line snippet to add to the training loop (we can't wrap an
-arbitrary loop for you, but the helpers are no-ops on CPU so it's safe to
-copy verbatim):
+hyperparameters weren't touched, and when AMP is on `prepare()` points at
+`train_step()` (and still shows the manual form) so the loop is one call
+either way (the helpers are no-ops on CPU, so the snippet is safe verbatim):
 
 ```
 [autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
 [autotrainer] DistributedSampler installed (shuffle=True) - call autotrainer.set_epoch(loader, epoch) ...
 [autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
-[autotrainer] optimize: for AMP, wrap your step:
-    scaler = autotrainer.GradScaler()
+[autotrainer] optimize: AMP is on. Simplest - one call per step:
+    scaler = autotrainer.GradScaler()   # once, before the loop
+    loss = autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=scaler)
+  or wrap the step yourself:
     with autotrainer.autocast_context():
         out = model(x); loss = loss_fn(out, y)
     scaler.scale(loss).backward(); scaler.step(opt); scaler.update()

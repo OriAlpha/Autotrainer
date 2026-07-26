@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- **`autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=...)`.** The
+  all-in-one companion to `prepare(optimize=True)`: one call per step does the
+  full AMP dance in the correct order - move the batch to the model's device,
+  forward under autocast (bf16 on modern GPUs, fp16 otherwise, no-op on CPU),
+  compute the loss, backward + `optimizer.step()` + `scaler.update()` (a plain
+  `backward()/step()` when no scaler), and zero the grads. Returns the detached
+  loss for logging. Closes the last "not fully automatic" gap: `prepare()`
+  can't wrap your loop, so AMP used to be a hand-written, order-sensitive
+  snippet users had to copy; `train_step()` runs it for you. Touches nothing
+  about your recipe (lr/loss/schedule/optimizer). `scaler` is optional (leave
+  it `None` on CPU / bf16 GPUs); `autocast=False` opts the forward out of mixed
+  precision while keeping the backward/step/zero bookkeeping. Backward runs
+  outside autocast (the documented-correct scoping). The AMP path now also has
+  end-to-end tests (CPU: loss actually decreases through the helper; `cuda`:
+  the same on-device, plus a forced-enabled fp16 scaler exercising the real
+  scaling arithmetic) - previously only the pieces were unit-tested.
 - **`prepare()` auto-launches multi-GPU workers.** On a box with ≥2 visible
   GPUs, a bare `python train.py` now distributes across all of them with no
   launcher: the first `prepare()` call detects it's a fresh parent process
@@ -152,6 +168,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   skips cleanly on builds where torch forbids the CPU wrap while still running
   the real assertion on builds where torch allows it (and where a usable GPU
   exists, the existing cuda-marked full-step test covers the rest).
+- **Examples now run standalone on the spawn start method (Windows/macOS):**
+  every script in `examples/` wraps its executable code in a `main()` behind
+  `if __name__ == "__main__":`. Without it, `prepare()`/`fit()` setting
+  `num_workers > 0` (and sklearn's joblib/loky) spawned workers that
+  re-imported the module and re-ran training, crashing with "DataLoader worker
+  exited unexpectedly". `autotrainer run` and `srun` were already unaffected
+  (they run the script as `__main__`).
 
 ## [0.11.0] - 2026-07-22
 ### Added

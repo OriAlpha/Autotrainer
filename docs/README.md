@@ -13,9 +13,18 @@ pdoc -o docs/build src/autotrainer
 Then open `docs/build/index.html` in a browser. The CI `docs` job builds this
 on every push/PR and uploads it as an artifact (`api-docs`).
 
-The reference covers the public API in `autotrainer.__init__` (`prepare`,
-`auto`, `tune`, `find_lr`, `find_batch_size`, `scope`, `scale_batch_size`,
-`boost_params`) and the rank-aware utilities, plus the per-framework backends.
+The reference covers everything exported in `autotrainer.__all__`:
+
+- **Entry points:** `prepare`, `auto`, `tune`, `fit`, `find_lr`,
+  `find_batch_size`, `scope`, `scale_batch_size`, `boost_params`.
+- **Training-loop helpers:** `train_step`, `accumulate`, `zero_grad`,
+  `eval_mode`, `train_mode`, `set_epoch`, `GradScaler`, `autocast_context`.
+- **Rank-aware utilities:** `rank`, `is_main`, `print0`, `save0`, `barrier`.
+- **Monitors:** `ThroughputMonitor`, `BottleneckMonitor`.
+- **SLURM helpers:** `configure_scratch`, `configure_nccl`, `node_scratch`.
+
+plus the per-framework backends. Everything else (submodules, `_`-prefixed
+helpers) is internal - see the [public API policy](../CONTRIBUTING.md#public-api-and-deprecation-policy).
 
 ## Other docs
 

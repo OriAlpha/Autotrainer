@@ -45,12 +45,13 @@ __all__ = [
     "set_epoch",
     "ThroughputMonitor",
     "train_mode",
+    "train_step",
     "tune",
     "zero_grad",
 ]
 
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
-from .loop import accumulate, eval_mode, train_mode, zero_grad  # noqa: E402,F401
+from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
 from .slurm import (
     configure_nccl,  # noqa: E402,F401
