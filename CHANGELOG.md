@@ -5,6 +5,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- **`metric=` on `tune()` and `fit()`: select on the number you actually care
+  about.** The torch path could only ever optimize validation *loss* - it
+  picked the recipe, pruned trials, early-stopped, and chose the best epoch on
+  it - while the sklearn-estimator path has scored on accuracy/R² through
+  `scoring=` since 0.10. Loss is a proxy, and it comes apart from the goal
+  exactly where the search space is widest: a regularized recipe (label
+  smoothing, augmentation) is *less confident*, so val cross-entropy can bottom
+  out and start climbing from overconfidence while val accuracy is still
+  improving - and a loss-driven `patience` stops there and restores a
+  less-accurate checkpoint. Pass `metric="accuracy"`, `"f1"`, `"auc"`, `"r2"`,
+  or a `callable(model, loader) -> float` (with `direction=` if lower is
+  better). Training still always uses the loss; this changes only what runs are
+  *scored* by. Default is `"loss"`, so existing behavior is unchanged.
+- **`autotrainer.metrics`.** Pure-torch implementations of the built-ins, so
+  scoring on a metric doesn't make scikit-learn a hard dependency. F1 is
+  macro-averaged over the classes present in the targets (the one to reach for
+  on imbalanced data, where accuracy flatters a majority-class predictor); AUC
+  is rank-based with average ranks for ties, which a naive implementation gets
+  wrong whenever a saturated model emits identical logits, and its multiclass
+  one-vs-rest form ranks on softmax probabilities rather than raw logits (they
+  differ: softmax's per-sample denominator makes it non-monotone in a single
+  logit column). All four agree with scikit-learn to 1e-9 across 1500
+  randomized cross-checks.
+- **Preemption handling in `fit(checkpoint=...)`.** The resumable checkpoint
+  has existed since 0.11, but nothing caught the scheduler's warning shot, so a
+  job preempted mid-epoch still threw that epoch away - and a job preempted
+  during phase 1 threw away the entire search. `fit()` now watches
+  SIGUSR1/SIGTERM (SLURM's `--signal=B:USR1@120`) and stops at the next epoch
+  boundary *after* the checkpoint is written, so the requeued job resumes at the
+  following epoch. Phase 1 is journaled to `<checkpoint>.study`, so an
+  interrupted search resumes with its completed trials instead of restarting.
+  Both are armed only when `checkpoint=` is set.
+- **Data sanity checks in `auto()` and `tune()`.** The failures that aren't the
+  framework's fault and don't announce themselves: un-normalized or non-finite
+  inputs (which look like a bad learning rate), class imbalance (which looks
+  like a model that "works" at 95%), constant inputs or targets, and - the
+  expensive one - a train/val split that overlaps, which doesn't fail at all,
+  it just reports an excellent validation score that every trial then optimizes
+  against. The batches were already being peeked to infer the loss, so the
+  checks are nearly free, and they run *before* the LR range test and the first
+  trial rather than after an allocation is spent. Overlap is exact when both
+  loaders are `Subset`s of one dataset, and otherwise compares a bounded sample
+  of rows byte-for-byte (skipped below 4 features, where identical rows arise
+  by chance). Warnings only - nothing is changed for you. `sanity=False` turns
+  them off; `tune()` also gates them on `verbose`.
+- **`autotrainer.sanity`.** The checks themselves (`report()` / `overlap()`),
+  returning message strings rather than printing, so they can be called
+  directly against your own loaders.
+- **`autotrainer.preempt`.** The watcher behind it (`watch()` / `preempted()`),
+  usable in hand-written loops. The handler only sets a flag - it never raises
+  or exits - so your loop chooses a stopping point where its state is
+  consistent.
 - **`epochs` is now a searched hyperparameter.** Training length is one of the
   largest levers on final quality, and every trial previously ran on one fixed
   horizon. Each trial now trains for its own searched budget *and* anneals its
@@ -36,6 +88,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   long trial for converging later rather than worse. Trials now report at a
   fixed number of rungs measured as fraction-of-own-schedule-completed, which
   compares like with like. Custom `pruner=` overrides are unaffected.
+- **`fit()`'s held-out test number is stored under `test_score`.** It is no
+  longer necessarily a loss. `test_loss` is still set as well when the metric
+  is the loss, so existing readers keep working.
+- **Checkpoint format version 2** (adds `metric`/`direction`). `fit()` refuses
+  to resume a checkpoint written under a different metric rather than compare
+  an accuracy against a stored loss and restore the wrong epoch. Version-1
+  checkpoints are rejected with the usual "delete to start fresh" message.
 
 ## [0.12.0] - 2026-07-27
 ### Added

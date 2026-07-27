@@ -26,6 +26,12 @@ def main() -> None:
     # Phase 2: the winner is retrained from the original init - distributed when
     # launched with `autotrainer run` - with warmup+cosine, mixed precision, and
     # early stopping; the best epoch's weights come back.
+    #
+    # metric= is what both phases select on. It defaults to the val loss; name
+    # the number you actually care about ("accuracy"/"f1"/"auc"/"r2", or your
+    # own callable) and the search, the pruning, early stopping and best-epoch
+    # selection all follow it. checkpoint= makes the run resumable AND makes it
+    # stop cleanly on SLURM's preemption signal.
     model, params, study = autotrainer.fit(
         model,
         train,
@@ -33,6 +39,8 @@ def main() -> None:
         trials=15,
         epochs=20,
         patience=4,
+        metric="accuracy",
+        checkpoint="fit.ckpt",
     )
     print("Winning recipe:", params)
     autotrainer.save0(model.state_dict(), "fit_model.pt")  # rank-0-only save

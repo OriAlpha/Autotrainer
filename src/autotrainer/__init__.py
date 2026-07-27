@@ -157,10 +157,12 @@ def tune(model: Any, train: Any = None, val: Any = None, **kwargs: Any) -> tuple
     """Search hyperparameters for a model (dispatches by framework).
 
     PyTorch modules: pass DataLoaders; searches the training recipe
-    (lr, weight decay, optimizer, batch size).
+    (lr, weight decay, optimizer, batch size). Trials are scored on the
+    validation loss unless ``metric=`` names something else
+    (``"accuracy"``/``"f1"``/``"auc"``/``"r2"``, or a callable).
     sklearn-API estimators (scikit-learn, XGBoost, LightGBM): pass
     ``(X, y)`` tuples; searches the model's hyperparameters, with curated
-    default spaces for the common families.
+    default spaces for the common families, scored by ``scoring=``.
     """
     # The pre-0.10 names ``train_loader=``/``val_loader=`` were deprecated in
     # 0.10 and removed; they were misleading for estimator inputs (which take

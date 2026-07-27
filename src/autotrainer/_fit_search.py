@@ -66,6 +66,8 @@ def _parallel_search(
     verbose: bool,
     storage_path: str,
     lr_scaling: str = "auto",
+    metric: Any = "loss",
+    direction: str = "auto",
 ) -> tuple[dict[str, Any], Any]:
     """One search, every rank working: trials are split across the ranks and
     pulled from a shared journal-file study, so the whole allocation is busy
@@ -98,6 +100,8 @@ def _parallel_search(
         seed=seed + r,
         verbose=verbose and r == 0,
         lr_scaling=lr_scaling,
+        metric=metric,
+        direction=direction,
         storage=_journal_storage(storage_path),
         study_name="autotrainer-fit",
     )
@@ -125,7 +129,9 @@ def _save_checkpoint(path: str, payload: dict[str, Any]) -> None:
 
 # Bump when the checkpoint payload layout changes; _load_checkpoint rejects
 # unknown versions instead of silently misreading them.
-_CHECKPOINT_FORMAT = 1
+#   2: added "metric"/"direction" - `best_val` is no longer necessarily a loss,
+#      and resuming with a different metric would compare incomparable numbers.
+_CHECKPOINT_FORMAT = 2
 
 
 def _load_checkpoint(path: str | None) -> dict[str, Any] | None:
