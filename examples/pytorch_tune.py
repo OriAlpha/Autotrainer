@@ -16,7 +16,7 @@ model = nn.Sequential(nn.Linear(20, 64), nn.ReLU(), nn.Linear(64, 5))
 
 best_model, best_params, study = autotrainer.tune(
     model, train, val,
-    trials=20,            # searches lr, weight_decay, optimizer, batch_size
+    trials=20,            # ASHA search: lr, wd, optimizer, batch, schedule, warmup, grad-clip, smoothing
     epochs_per_trial=3,
 )
 print("Best params:", best_params)
