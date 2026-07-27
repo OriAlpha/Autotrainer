@@ -4,6 +4,8 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.12.0] - 2026-07-27
 ### Added
 - **`autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=...)`.** The
   all-in-one companion to `prepare(optimize=True)`: one call per step does the
