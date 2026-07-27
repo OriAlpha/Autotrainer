@@ -65,6 +65,7 @@ def _parallel_search(
     seed: int,
     verbose: bool,
     storage_path: str,
+    lr_scaling: str = "auto",
 ) -> tuple[dict[str, Any], Any]:
     """One search, every rank working: trials are split across the ranks and
     pulled from a shared journal-file study, so the whole allocation is busy
@@ -96,6 +97,7 @@ def _parallel_search(
         loss=loss,
         seed=seed + r,
         verbose=verbose and r == 0,
+        lr_scaling=lr_scaling,
         storage=_journal_storage(storage_path),
         study_name="autotrainer-fit",
     )

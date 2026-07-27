@@ -25,7 +25,7 @@ def main() -> None:
         model,
         train,
         val,
-        trials=20,  # searches lr, weight_decay, optimizer, batch_size
+        trials=20,  # ASHA search over the recipe (lr, wd, opt, batch, schedule, ...)
         epochs_per_trial=3,
     )
     print("Best params:", best_params)
