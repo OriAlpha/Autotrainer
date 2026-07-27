@@ -556,8 +556,10 @@ def prepare(
         from ..utils import print0
 
         print0(
-            "[autotrainer] optimize: for AMP, wrap your step:\n"
-            "    scaler = autotrainer.GradScaler()\n"
+            "[autotrainer] optimize: AMP is on. Simplest - one call per step:\n"
+            "    scaler = autotrainer.GradScaler()   # once, before the loop\n"
+            "    loss = autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=scaler)\n"
+            "  or wrap the step yourself:\n"
             "    with autotrainer.autocast_context():\n"
             "        out = model(x); loss = loss_fn(out, y)\n"
             "    scaler.scale(loss).backward(); scaler.step(opt); scaler.update()"

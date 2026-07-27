@@ -136,13 +136,16 @@ def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
     return nn.MSELoss(), "mse", "float targets, no heavy outliers"
 
 
-def _make_loss(name: str) -> nn.Module:
+def _make_loss(name: str, label_smoothing: float = 0.0) -> nn.Module:
     import torch.nn as nn
 
     if name == "bce":
         return _bce_loss()
+    if name == "cross_entropy":
+        # label_smoothing is a classification-only regularizer and a tunable
+        # knob; accept it here and default to off (0.0) everywhere else.
+        return nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     return {
-        "cross_entropy": nn.CrossEntropyLoss,
         "mse": nn.MSELoss,
         "huber": nn.HuberLoss,
     }[name]()
@@ -186,6 +189,79 @@ def _make_optimizer(
     if name == "sgd":
         return torch.optim.SGD(groups, lr=lr, momentum=0.9, nesterov=True), name, reason
     return torch.optim.AdamW(groups, lr=lr), name, reason
+
+
+def _make_scheduler(
+    name: str,
+    optimizer: Any,
+    total_steps: int,
+    warmup_frac: float = 0.05,
+) -> Any:
+    """Build a per-batch LR scheduler by name (``None`` means constant LR).
+
+    Shared by ``tune``/``fit`` so a searched ``scheduler`` choice trains the
+    same way in the short trials and in the final retrain. Step it once per
+    optimizer step (per batch). Names:
+
+      * ``"cosine"`` - optional linear warmup then cosine anneal (the default).
+        ``warmup_frac`` of the steps are warmup; ``0`` disables warmup.
+      * ``"onecycle"`` - Leslie Smith's 1cycle. It has its own built-in warmup,
+        so ``warmup_frac`` is ignored; falls back to cosine when there are too
+        few steps for a meaningful cycle.
+      * ``"constant"`` - no schedule; returns ``None`` (caller skips stepping).
+    """
+    import torch
+
+    total_steps = max(int(total_steps), 1)
+    if name == "constant":
+        return None
+    if name == "onecycle" and total_steps >= 3:
+        # OneCycleLR raises the LR to each group's current lr (the searched
+        # value) and back down over the run; too few steps make its phases
+        # degenerate, hence the >= 3 guard with a cosine fallback below.
+        max_lrs = [g["lr"] for g in optimizer.param_groups]
+        return torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=max_lrs, total_steps=total_steps, pct_start=0.3
+        )
+    warmup = max(int(warmup_frac * total_steps), 1) if warmup_frac > 0 else 0
+    cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, max(total_steps - warmup, 1))
+    if warmup < 1:
+        return cosine
+    warm = torch.optim.lr_scheduler.LinearLR(optimizer, 0.01, 1.0, warmup)
+    return torch.optim.lr_scheduler.SequentialLR(optimizer, [warm, cosine], milestones=[warmup])
+
+
+# The batch size at which a searched ``lr`` is treated as calibrated. When a
+# trial's batch differs, the applied lr is scaled toward it so the search does
+# not burn trials rediscovering the (well-known) lr<->batch coupling.
+_LR_REF_BATCH = 32
+
+
+def _scale_lr(
+    base_lr: float,
+    batch_size: int | None,
+    optimizer_name: str | None,
+    mode: str = "auto",
+) -> float:
+    """Scale ``base_lr`` for the batch size using the standard rules.
+
+    Linear scaling (lr proportional to batch, Goyal et al. 2017) for SGD and
+    square-root scaling for Adam-family optimizers, relative to
+    :data:`_LR_REF_BATCH`. A no-op when disabled (``mode="none"``), when the
+    batch size or optimizer is not being searched (so no rule can be
+    attributed), or when the batch already equals the reference.
+    """
+    if mode == "none" or not batch_size or optimizer_name is None:
+        return base_lr
+    if batch_size == _LR_REF_BATCH:
+        return base_lr
+    ratio = batch_size / _LR_REF_BATCH
+    name = optimizer_name.lower()
+    if name == "sgd":
+        return base_lr * ratio
+    if name in ("adamw", "adam"):
+        return float(base_lr * ratio**0.5)  # float() so ** doesn't widen to Any
+    return base_lr
 
 
 def find_lr(

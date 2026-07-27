@@ -155,20 +155,44 @@ no-op-on-CPU helpers.** What didn't: your lr, your loss, your schedule, your
 optimizer. Same script runs unchanged on a laptop (everything degrades to
 no-ops) and on an A100.
 
+#### Even simpler: `train_step()` runs the whole step
+
+`prepare()` can't wrap *your* loop, so the AMP block above is the one thing
+you still hand-write. `train_step()` does it for you - forward under autocast,
+loss, scale/backward/step/update, then zero the grads - in one call, returning
+the (detached) loss for logging:
+
+```python
+model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
+scaler = autotrainer.GradScaler()          # no-op on CPU / bf16; omit to skip
+
+for epoch in range(epochs):
+    autotrainer.set_epoch(loader, epoch)
+    model.train()
+    for xb, yb in loader:
+        loss = autotrainer.train_step(model, loss_fn, xb, yb, optimizer, scaler=scaler)
+```
+
+Same contract: lr / loss / schedule / optimizer are yours; `train_step` only
+runs the forgettable, order-sensitive bookkeeping (backward stays outside
+autocast). Pass `autocast=False` to keep full precision, or omit `scaler` on
+CPU / bf16 GPUs.
+
 #### What it prints when it runs
 
 Nothing is silent — every speedup is named, the user is explicitly told their
-hyperparameters weren't touched, and when AMP is on `prepare()` prints the
-exact two-line snippet to add to the training loop (we can't wrap an
-arbitrary loop for you, but the helpers are no-ops on CPU so it's safe to
-copy verbatim):
+hyperparameters weren't touched, and when AMP is on `prepare()` points at
+`train_step()` (and still shows the manual form) so the loop is one call
+either way (the helpers are no-ops on CPU, so the snippet is safe verbatim):
 
 ```
 [autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
 [autotrainer] DistributedSampler installed (shuffle=True) - call autotrainer.set_epoch(loader, epoch) ...
 [autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
-[autotrainer] optimize: for AMP, wrap your step:
-    scaler = autotrainer.GradScaler()
+[autotrainer] optimize: AMP is on. Simplest - one call per step:
+    scaler = autotrainer.GradScaler()   # once, before the loop
+    loss = autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=scaler)
+  or wrap the step yourself:
     with autotrainer.autocast_context():
         out = model(x); loss = loss_fn(out, y)
     scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
@@ -233,7 +257,7 @@ model, loader, opt = autotrainer.prepare(
 
 ### Dataloader bottleneck monitor
 
-The cheapest piece of the roadmap's training-triage theme. Sample per-step
+The cheapest piece of the training-triage family. Sample per-step
 data-load vs compute time and get a plain-language warning when the loader
 is starving the GPU:
 
@@ -251,6 +275,38 @@ for xb, yb in loader:
 ```
 
 Opt-in; zero overhead when not constructed.
+
+### Training health monitor (triage)
+
+`BottleneckMonitor` and `ThroughputMonitor` answer *"is it fast?"*;
+`TrainingMonitor` answers *"is it healthy?"* — the silent numerical failures.
+Call `step()` once per optimizer step (after `backward()`, before
+`zero_grad()`) and it flags each problem **once**, in plain language, with the
+fix:
+
+```python
+mon = autotrainer.TrainingMonitor()
+for xb, yb in loader:
+    loss = loss_fn(model(xb), yb)
+    loss.backward()
+    mon.step(loss, model=model, optimizer=opt, scaler=scaler)
+    opt.step(); opt.zero_grad()
+mon.report()   # one-line all-clear, or a recap of what fired
+```
+
+It catches NaN/Inf loss (lr too high, or bad inputs), loss divergence, fp16
+gradient overflow (→ "switch to bf16"), and non-finite / spiking / vanishing
+gradients — e.g.:
+
+```
+[autotrainer] triage: gradient norm spiked to 4.1e+03 (128x the recent median)
+    - add gradient clipping (torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
+```
+
+Everything but `loss` is optional (pass `model` for gradient checks,
+`optimizer` for a concrete lr hint, `scaler` for fp16 overflow). Like the
+other monitors it only *observes* — it never touches your lr, loss, schedule,
+or optimizer. Opt-in; zero overhead when not constructed.
 
 Then launch. **`prepare()` auto-distributes** — on a multi-GPU box it spawns
 one worker per GPU the first time it's called, so a bare `python train.py`
@@ -352,16 +408,24 @@ back the best model it can produce on your hardware:
 model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=30)
 ```
 
-1. **Tune**: Optuna searches lr / weight decay / optimizer / batch size on
-   short trials. Launched distributed, the trials are split across all
-   ranks via a shared journal-file study - one trial per process, every
-   GPU busy during the search.
+1. **Tune**: an ASHA (successive-halving) search over the training recipe -
+   lr, weight decay, optimizer, batch size, LR schedule + warmup, gradient
+   clipping, and (for classification) label smoothing - on short trials, with
+   the default space chosen from your model and its inferred loss. Most
+   candidates get a small budget and only survivors are promoted, so the wide
+   space stays cheap. Launched distributed, the trials are split across all
+   ranks via a shared journal-file study - one trial per process, every GPU
+   busy during the search.
 2. **Train**: the winning recipe is retrained from your model's original
    init through `prepare()` - which auto-distributes it across every
    GPU/node (a bare `python train.py` spawns one worker per GPU locally;
    under SLURM, `srun autotrainer run` does the same across nodes) - with
-   warmup+cosine, mixed precision, and early stopping on the val loss. The
-   best epoch's weights are returned.
+   the winning schedule, mixed precision, and early stopping on the val loss.
+   The best epoch's weights are returned.
+
+Pass `test_loader=` to also get an honest held-out score the search never saw
+(printed and stored on `study.user_attrs["test_loss"]`) - the number to trust
+once a wide search has been optimizing against your val set.
 
 Pass `checkpoint="fit.ckpt"` to make it preemption-safe: the full training
 state is saved every epoch, and rerunning the same script resumes where it
@@ -404,9 +468,6 @@ explain runs, not just launch them):
   then report projected training time, memory headroom, and cost per GPU
   count - answer "how many GPUs do I actually need?" before burning an
   allocation.
-- **Training triage**: watch the loop and diagnose failures in plain
-  language - NaN loss traced to a too-high LR, GPU idle time traced to a
-  dataloader bottleneck, fp16 overflow with a bf16 suggestion.
 - **Data sanity checks in `auto()`**: the same one-batch peek that infers
   the loss can flag class imbalance (suggest weighted loss), unnormalized
   inputs, and train/val overlap.
@@ -425,8 +486,10 @@ More breadth:
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **More schedulers and search spaces** beyond warmup+cosine and the default
-  Optuna recipe.
+- **Augmentation and architecture-aware search**: the recipe search now
+  covers schedule/warmup/grad-clip/label-smoothing; data-augmentation policies
+  and width/depth are the natural next frontier (a bigger, opt-in commitment
+  that would step beyond "the model is yours").
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history, and open or
 upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to prioritize

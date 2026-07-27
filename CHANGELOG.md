@@ -4,7 +4,73 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.12.0] - 2026-07-27
 ### Added
+- **`autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=...)`.** The
+  all-in-one companion to `prepare(optimize=True)`: one call per step does the
+  full AMP dance in the correct order - move the batch to the model's device,
+  forward under autocast (bf16 on modern GPUs, fp16 otherwise, no-op on CPU),
+  compute the loss, backward + `optimizer.step()` + `scaler.update()` (a plain
+  `backward()/step()` when no scaler), and zero the grads. Returns the detached
+  loss for logging. Closes the last "not fully automatic" gap: `prepare()`
+  can't wrap your loop, so AMP used to be a hand-written, order-sensitive
+  snippet users had to copy; `train_step()` runs it for you. Touches nothing
+  about your recipe (lr/loss/schedule/optimizer). `scaler` is optional (leave
+  it `None` on CPU / bf16 GPUs); `autocast=False` opts the forward out of mixed
+  precision while keeping the backward/step/zero bookkeeping. Backward runs
+  outside autocast (the documented-correct scoping). The AMP path now also has
+  end-to-end tests (CPU: loss actually decreases through the helper; `cuda`:
+  the same on-device, plus a forced-enabled fp16 scaler exercising the real
+  scaling arithmetic) - previously only the pieces were unit-tested.
+- **`autotrainer.TrainingMonitor`: training triage - explains numerical
+  failures in plain language.** The health companion to the perf monitors:
+  where `BottleneckMonitor`/`ThroughputMonitor` answer "is it fast?", this
+  answers "is it healthy?". Call `monitor.step(loss, model=..., optimizer=...,
+  scaler=...)` once per step (after `backward()`) and it flags, **once each**,
+  with the fix: non-finite loss (lr too high / bad inputs, with a concrete
+  lr/10 suggestion when the optimizer is passed), loss divergence, fp16
+  gradient overflow (persistent AMP-scaler backoff -> "switch to bf16 via
+  `autocast_context()`"), and non-finite / spiking / vanishing gradient norms.
+  Gradient checks are skipped while an AMP scaler is active (grads are still
+  scaled there, so the scaler-backoff signal owns fp16 health). `report()`
+  prints a one-line all-clear or a recap. Everything but `loss` is optional;
+  it only *observes* - never touches lr/loss/schedule/optimizer - and is
+  opt-in with zero overhead when unused. Fully unit-tested on CPU (synthetic
+  losses, a fake scaler, hand-set gradients).
+- **`tune()`/`fit()` search a much wider training recipe.** The default space
+  now covers the LR *schedule* (`cosine`/`onecycle`/`constant`) and its warmup
+  fraction, gradient clipping (`max_norm`), and - for classification -
+  label smoothing, on top of the original lr / weight-decay / optimizer /
+  batch-size. The default is now *task-aware*: it's built from the model and
+  the inferred loss (CNNs lean on the SGD + 1cycle recipe with a higher LR
+  band; everything else defaults to a lower band with cosine/constant), so
+  trials are spent where they pay off. `DEFAULT_SPACE` stays as the maximal
+  superset of every searchable knob. A searched `scheduler`/`grad_clip`/
+  `label_smoothing` trains identically in the short trials and the phase-2
+  retrain via a shared `_make_scheduler` helper. Trials are always *scored*
+  with the plain unsmoothed loss so label-smoothing candidates stay
+  comparable. Does NOT search the architecture (no NAS) or the loss family
+  (still inferred).
+- **ASHA (successive-halving) is the default tuning pruner**, replacing the
+  median pruner. Most trials get a small budget and only survivors are
+  promoted - the multi-fidelity strategy that keeps the now-wider search
+  affordable. `min_resource=1`, so a trial is never pruned before its second
+  epoch (single-epoch trials behave exactly as before). Override with
+  `tune(..., pruner=...)`.
+- **`lr` is coupled to `batch_size`** when both are searched: the applied LR
+  is scaled toward the trial's batch (linear for SGD, square-root for
+  Adam-family, relative to a batch of 32) so the search doesn't burn trials
+  rediscovering that relationship. `best_params` still records the un-scaled
+  searched LR. Toggle with `tune(..., lr_scaling="none")` /
+  `fit(..., lr_scaling="none")`; applied consistently across the search and
+  the phase-2 retrain.
+- **`fit(..., test_loader=...)`: an honest held-out generalization estimate.**
+  The final (best-epoch) model is scored on a loader the search never saw;
+  the number is printed and stored on rank 0's
+  `study.user_attrs["test_loss"]`. Guards against reading too much into a val
+  loss that a wide search has implicitly optimized against. The
+  `(model, best_params, study)` return shape is unchanged.
 - **`prepare()` auto-launches multi-GPU workers.** On a box with ≥2 visible
   GPUs, a bare `python train.py` now distributes across all of them with no
   launcher: the first `prepare()` call detects it's a fresh parent process
@@ -152,6 +218,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   skips cleanly on builds where torch forbids the CPU wrap while still running
   the real assertion on builds where torch allows it (and where a usable GPU
   exists, the existing cuda-marked full-step test covers the rest).
+- **Examples now run standalone on the spawn start method (Windows/macOS):**
+  every script in `examples/` wraps its executable code in a `main()` behind
+  `if __name__ == "__main__":`. Without it, `prepare()`/`fit()` setting
+  `num_workers > 0` (and sklearn's joblib/loky) spawned workers that
+  re-imported the module and re-ran training, crashing with "DataLoader worker
+  exited unexpectedly". `autotrainer run` and `srun` were already unaffected
+  (they run the script as `__main__`).
 
 ## [0.11.0] - 2026-07-22
 ### Added
