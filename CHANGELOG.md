@@ -4,6 +4,38 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Added
+- **`epochs` is now a searched hyperparameter.** Training length is one of the
+  largest levers on final quality, and every trial previously ran on one fixed
+  horizon. Each trial now trains for its own searched budget *and* anneals its
+  LR schedule over exactly that budget, so a recipe that wants a short, fast
+  anneal and one that wants a long, gentle one are each evaluated the way they
+  would actually run. The range is `1..epochs_per_trial`, so adding the knob
+  widens *what* is searched without making any trial cost more than it did
+  before; raise `epochs_per_trial` to widen it.
+- **`aug_strength`: searchable image augmentation for CNNs.** A single scalar
+  dials a fixed flip + cutout policy from off to standard, and it enters the
+  default space only when conv layers are detected (the policy is
+  image-specific, so searching it elsewhere would burn trials on a dimension
+  that changes nothing). `0.0` is in range, so "no augmentation" stays a
+  candidate. The winning strength carries into `fit()`'s phase-2 retrain -
+  dropping it there would retrain a different, unregularized recipe.
+  Augmentation is applied to inputs on the training path only; validation and
+  test passes always see clean data.
+- **`autotrainer.augment_batch(x, strength)`.** The primitive behind
+  `aug_strength`, exported for use in hand-written loops. Pure torch (no new
+  torchvision dependency), target-preserving, never mutates its input, and a
+  no-op on anything that isn't a float NCHW batch - so it can sit in a loop
+  that also trains tabular or text models.
+
+### Changed
+- **ASHA now prunes on normalized rungs instead of raw epoch indices.**
+  Required by the `epochs` knob: with per-trial budgets, reporting at the raw
+  epoch index would pit a long-budget trial (still mid-anneal at epoch 1)
+  against a short-budget one that had already finished annealing, pruning the
+  long trial for converging later rather than worse. Trials now report at a
+  fixed number of rungs measured as fraction-of-own-schedule-completed, which
+  compares like with like. Custom `pruner=` overrides are unaffected.
 
 ## [0.12.0] - 2026-07-27
 ### Added

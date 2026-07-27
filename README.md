@@ -410,7 +410,8 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=3
 
 1. **Tune**: an ASHA (successive-halving) search over the training recipe -
    lr, weight decay, optimizer, batch size, LR schedule + warmup, gradient
-   clipping, and (for classification) label smoothing - on short trials, with
+   clipping, training length, (for classification) label smoothing, and (for
+   CNNs) augmentation strength - on short trials, with
    the default space chosen from your model and its inferred loss. Most
    candidates get a small budget and only survivors are promoted, so the wide
    space stays cheap. Launched distributed, the trials are split across all
@@ -486,10 +487,13 @@ More breadth:
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **Augmentation and architecture-aware search**: the recipe search now
-  covers schedule/warmup/grad-clip/label-smoothing; data-augmentation policies
-  and width/depth are the natural next frontier (a bigger, opt-in commitment
-  that would step beyond "the model is yours").
+- **Richer augmentation policies**: the recipe search now covers a single
+  `aug_strength` scalar over flip + cutout for CNNs. Label-mixing policies
+  (mixup/cutmix) and per-op RandAugment-style search are the next step - both
+  need to rewrite targets and the loss, so they are a larger change to the
+  contract than a searchable scalar.
+- **Architecture-aware search**: width/depth remain out of scope (a bigger,
+  opt-in commitment that would step beyond "the model is yours").
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history, and open or
 upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to prioritize
