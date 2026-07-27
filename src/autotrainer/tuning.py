@@ -12,6 +12,14 @@ Every trial starts from the model's ORIGINAL initial weights (deep-copied),
 so trials are comparable and the user's model object is never mutated.
 Bad trials are pruned early by ASHA (successive halving) to save compute, so
 widening the search space stays affordable.
+
+Trials are always TRAINED on the loss; ``metric=`` only changes what they are
+SCORED and ranked by - ``"loss"`` by default, or accuracy/f1/auc/r2/a callable
+when the number you care about isn't the loss. See :mod:`autotrainer.metrics`.
+
+Before the first trial, the same batches used to infer the loss are checked
+for the data problems that would make the whole search meaningless - see
+:mod:`autotrainer.sanity`.
 """
 
 from __future__ import annotations
@@ -134,7 +142,18 @@ def _rebuild_loader(loader: Any, batch_size: int) -> Any:
     )
 
 
-def _evaluate(model: Any, val_loader: Any, loss_fn: Any, device: Any) -> float:
+def _evaluate(model: Any, val_loader: Any, loss_fn: Any, device: Any, metric: Any = None) -> float:
+    """Score the model on the validation set.
+
+    ``metric=None`` (or ``"loss"``) is the historical behavior - the
+    sample-weighted mean of ``loss_fn``. Any other metric is delegated to
+    :mod:`autotrainer.metrics`, which doesn't need the criterion.
+    """
+    if metric is not None and metric != "loss":
+        from .metrics import score
+
+        return score(model, val_loader, metric, device)
+
     import torch
 
     from .utils import get_batch_size, robust_forward, split_xy, to_device
@@ -168,6 +187,10 @@ def tune(
     study_name: str | None = None,
     pruner: Any = None,
     lr_scaling: str = "auto",
+    metric: Any = "loss",
+    direction: str = "auto",
+    resume: bool = False,
+    sanity: bool = True,
 ) -> tuple[Any, dict[str, Any], Any]:
     """Search training hyperparameters for the user's model.
 
@@ -179,6 +202,9 @@ def tune(
     are comparable and the input model is left untouched. Bad trials are pruned
     early by ASHA (successive halving) so a wide search stays affordable - most
     candidates get a small budget and only the survivors are promoted.
+
+    Trials are scored on the validation loss unless ``metric=`` says otherwise
+    (``"accuracy"``, ``"f1"``, ``"auc"``, ``"r2"``, or your own callable).
 
     Args:
         model: a ``torch.nn.Module``; never mutated.
@@ -220,17 +246,46 @@ def tune(
             doesn't waste trials rediscovering that coupling. ``"none"``
             disables it. ``best_params`` always records the un-scaled searched
             lr; the scaling is applied when the optimizer is built.
+        metric: what "best" means. ``"loss"`` (default) selects on the
+            validation loss; ``"accuracy"``, ``"f1"``, ``"auc"`` and ``"r2"``
+            select on that metric instead, as does any
+            ``callable(model, loader) -> float``. Worth setting whenever the
+            number you actually care about isn't the loss: a regularized
+            recipe can raise val loss while raising accuracy, and a
+            loss-selected search will reject it. Trials are always *trained*
+            on the loss - this only changes what they are scored and ranked by.
+        direction: ``"auto"`` (default) infers it from ``metric`` (minimize
+            loss, maximize the rest; a custom callable is assumed to be a score).
+            Pass ``"minimize"``/``"maximize"`` for a custom callable that goes
+            the other way.
+        resume: when a ``storage`` holds trials from an interrupted run, count
+            those toward ``trials`` and only run the remainder, instead of
+            running ``trials`` more on top of them. Used by ``fit()``'s
+            preemption-safe path; leave ``False`` for a parallel search, where
+            each rank owns a share of the total.
+        sanity: if True (default) and ``verbose``, warn before the search
+            starts about data problems that would make its result meaningless
+            - un-normalized or non-finite inputs, class imbalance, and
+            validation samples that also appear in train (which flatters the
+            very score every trial is ranked by). See
+            :mod:`autotrainer.sanity`. Warnings only; nothing is changed.
 
     Returns:
         ``(best_model, best_params, study)`` where ``best_model`` carries the
-        weights from the best trial.
+        weights from the best trial. ``best_params`` reflects the whole study;
+        on a resumed study ``best_model`` can only carry weights from the
+        trials this call actually ran (earlier trials' weights died with the
+        interrupted process), so prefer re-training from ``best_params``.
     """
     import optuna
     import torch
 
     from .auto_optim import _infer_loss, _make_loss, _make_optimizer, _make_scheduler, _scale_lr
+    from .metrics import is_better, name_of, resolve, worst
     from .utils import cuda_device, split_xy
 
+    metric, direction = resolve(metric, direction)
+    metric_label = name_of(metric)
     device = cuda_device()
     init_state = copy.deepcopy(model.state_dict())
 
@@ -250,6 +305,24 @@ def tune(
         if verbose:
             print(f"[autotrainer] tune: loss={loss_name} ({why})")
 
+    # Before any trial runs: a broken split or un-normalized inputs would make
+    # every number the search produces meaningless, and the search is the
+    # expensive part.
+    if sanity and verbose:
+        from torch.utils.data import IterableDataset
+
+        from .auto_optim import _gather_targets
+        from .sanity import overlap, report
+
+        # Class balance wants more than one batch, but re-reading a streaming
+        # loader would consume the very data we are about to train on.
+        streaming = isinstance(getattr(train_loader, "dataset", None), IterableDataset)
+        targets = None if streaming else _gather_targets(train_loader)
+        for msg in report(xb, targets if targets is not None else yb, loss_name) + overlap(
+            train_loader, val_loader
+        ):
+            print(f"[autotrainer] tune: {msg}")
+
     space = space or _default_space(model, loss_name, epochs_per_trial)
     # Trials are SCORED with a fixed, unsmoothed loss so their val numbers stay
     # comparable when label_smoothing is being searched (smoothing raises the
@@ -257,7 +330,7 @@ def tune(
     # worse than they are).
     eval_loss_fn = _make_loss(loss_name)
 
-    best: dict[str, Any] = {"loss": float("inf"), "state": None}
+    best: dict[str, Any] = {"score": worst(direction), "state": None}
 
     def objective(trial: Any) -> float:
         params = _suggest(trial, space)
@@ -293,7 +366,7 @@ def tune(
 
         from .utils import robust_forward, split_xy, to_device
 
-        val = float("inf")
+        val = worst(direction)
         for epoch in range(n_epochs):
             m.train()
             for batch in tl:
@@ -312,16 +385,17 @@ def tune(
                 opt.step()
                 if sched is not None:
                     sched.step()
-            val = _evaluate(m, val_loader, eval_loss_fn, device)
+            val = _evaluate(m, val_loader, eval_loss_fn, device, metric)
             # Report at a normalized rung (see _ASHA_RUNGS) so trials with
             # different epoch budgets are pruned on progress-through-schedule
-            # rather than on raw epoch count.
+            # rather than on raw epoch count. The pruner reads the study's
+            # direction, so a maximized metric is reported as-is.
             trial.report(val, max(round((epoch + 1) / n_epochs * _ASHA_RUNGS), 1))
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
-        if val < best["loss"]:
-            best["loss"] = val
+        if is_better(val, best["score"], direction):
+            best["score"] = val
             best["state"] = copy.deepcopy(m.state_dict())
         return val
 
@@ -331,7 +405,7 @@ def tune(
     try:
         optuna.logging.set_verbosity(optuna.logging.INFO if verbose else optuna.logging.WARNING)
         study = optuna.create_study(
-            direction="minimize",
+            direction=direction,
             sampler=optuna.samplers.TPESampler(seed=seed),
             pruner=pruner
             or optuna.pruners.SuccessiveHalvingPruner(min_resource=1, reduction_factor=3),
@@ -339,7 +413,17 @@ def tune(
             study_name=study_name,
             load_if_exists=storage is not None,
         )
-        study.optimize(objective, n_trials=trials)
+        # Optuna's n_trials counts trials in THIS call, so a resumed study
+        # would otherwise run `trials` more on top of the ones an interrupted
+        # run already paid for.
+        n_trials = trials
+        if resume:
+            done = sum(t.state.is_finished() for t in study.trials)
+            n_trials = max(trials - done, 0)
+            if done and verbose:
+                print(f"[autotrainer] tune: resuming study - {done} trials done, {n_trials} to go")
+        if n_trials:
+            study.optimize(objective, n_trials=n_trials)
     finally:
         optuna.logging.set_verbosity(prior_verbosity)
 
@@ -356,8 +440,9 @@ def tune(
 
     if verbose:
         pruned = sum(t.state.name == "PRUNED" for t in study.trials)
+        label = "val loss" if metric == "loss" else f"val {metric_label}"
         print(
-            f"[autotrainer] tune: best val loss {best_value:.4f} "
+            f"[autotrainer] tune: best {label} {best_value:.4f} "
             f"with {best_params} ({pruned}/{trials} trials pruned early)"
         )
     return best_model, best_params, study

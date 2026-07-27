@@ -421,16 +421,68 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=3
    init through `prepare()` - which auto-distributes it across every
    GPU/node (a bare `python train.py` spawns one worker per GPU locally;
    under SLURM, `srun autotrainer run` does the same across nodes) - with
-   the winning schedule, mixed precision, and early stopping on the val loss.
+   the winning schedule, mixed precision, and early stopping on the val score.
    The best epoch's weights are returned.
 
+### Select on the metric you care about
+
+Both phases select on validation loss by default. Loss is a proxy, and on
+classification it drifts from the goal exactly where it matters: a regularized
+recipe is less confident, so val cross-entropy can bottom out and start
+climbing from overconfidence while val accuracy is still improving - and a
+loss-driven `patience` stops there and hands back a less-accurate model. Name
+the number instead:
+
+```python
+model, params, study = autotrainer.fit(model, train, val, metric="accuracy")
+```
+
+`"accuracy"`, `"f1"` (macro - use it on imbalanced data), `"auc"`, `"r2"`, or
+your own `callable(model, loader) -> float` (add `direction="minimize"` if
+lower is better). It drives the search, the ASHA pruning, early stopping, and
+best-epoch selection. Training always uses the loss; this changes only what
+runs are *scored* by.
+
 Pass `test_loader=` to also get an honest held-out score the search never saw
-(printed and stored on `study.user_attrs["test_loss"]`) - the number to trust
+(printed and stored on `study.user_attrs["test_score"]`) - the number to trust
 once a wide search has been optimizing against your val set.
+
+### Data checks, before the compute
+
+`auto()` and `tune()` already peek at your batches to infer the loss, so they
+also check them for the problems that look like a bad recipe and aren't:
+
+```
+[autotrainer] tune: data check: class imbalance 19:1 in the 200 targets sampled -
+  the largest class is 95% of them, so a model that only ever predicts it scores
+  95% accuracy. Consider metric='f1' so the search doesn't reward that, and class
+  weights in your loss.
+[autotrainer] tune: data check: train and validation share 30 of the validation
+  set's 50 samples (same indices of the same dataset). The val score - and
+  everything the search picks from it - is optimistic by however much that leaks.
+```
+
+Also caught: un-normalized or raw 0-255 inputs, NaN/Inf in inputs or targets,
+and constant inputs or targets. They run *before* the LR range test and the
+first trial, so you hear about it before the allocation is spent, not after.
+Warnings only - nothing is changed for you. `sanity=False` turns them off.
+
+### Surviving preemption
 
 Pass `checkpoint="fit.ckpt"` to make it preemption-safe: the full training
 state is saved every epoch, and rerunning the same script resumes where it
-died (skipping the search) - ideal for requeued SLURM jobs.
+died (skipping the search) - ideal for requeued SLURM jobs. It also arms the
+signal watcher, so with
+
+```bash
+#SBATCH --signal=B:USR1@120
+```
+
+a preempted job stops at the next epoch boundary *after* its checkpoint is
+written, instead of losing the epoch it was in the middle of. The search is
+journaled to `fit.ckpt.study`, so a job preempted during phase 1 resumes with
+its completed trials rather than searching again. Delete both files to start
+fresh.
 
 For long searches under multi-process launches, raise the collective
 timeout with `AUTOTRAINER_TIMEOUT` (seconds) - see `.env.example`.
@@ -469,9 +521,6 @@ explain runs, not just launch them):
   then report projected training time, memory headroom, and cost per GPU
   count - answer "how many GPUs do I actually need?" before burning an
   allocation.
-- **Data sanity checks in `auto()`**: the same one-batch peek that infers
-  the loss can flag class imbalance (suggest weighted loss), unnormalized
-  inputs, and train/val overlap.
 - **Training cards**: every `fit()` emits a reproducibility card
   (recipe, seeds, environment, val curve) and `replay` reruns it.
 
@@ -480,8 +529,10 @@ Deeper SLURM ergonomics:
 - **`autotrainer sbatch train.py --nodes 2 --time 4h`**: generate and
   submit a correct sbatch script (no more `--ntasks-per-node` != GPUs
   footguns).
-- **Preemption handling**: catch SLURM's requeue signal, checkpoint via
-  `fit()`'s resume support, and continue after requeue automatically.
+- **Automatic requeue**: `fit(checkpoint=...)` now catches the preemption
+  signal and stops cleanly on a written checkpoint, but resubmitting is still
+  yours to do (`--requeue`, or `scontrol requeue`). Issuing it from inside the
+  handler is the remaining step.
 
 More breadth:
 

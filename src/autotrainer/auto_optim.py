@@ -402,6 +402,7 @@ def auto(
     weight_decay: float = 0.01,
     schedule: bool = True,
     epochs: int = 10,
+    sanity: bool = True,
 ) -> tuple[Any, ...]:
     """Infer loss/optimizer/LR/schedule, then distribute the model.
 
@@ -422,6 +423,11 @@ def auto(
         weight_decay: decoupled weight decay (excluded from biases/norms).
         schedule: if True, build a warmup(5%)+cosine schedule.
         epochs: assumed epoch count, used to size the schedule.
+        sanity: if True (default), warn about data problems visible in the
+            batches already peeked for loss inference - un-normalized or
+            non-finite inputs, class imbalance, constant targets. These are
+            the failures that look like a bad recipe and aren't; see
+            :mod:`autotrainer.sanity`. Warnings only; nothing is changed.
 
     Returns:
         ``(model, dataloader, optimizer, loss_fn, scheduler)``. The
@@ -432,6 +438,7 @@ def auto(
     from .utils import print0
 
     xb, yb = _peek_batch(dataloader)
+    targets = yb
 
     if loss is not None:
         loss_fn, loss_name, loss_why = _make_loss(loss), loss, "user override"
@@ -449,6 +456,15 @@ def auto(
         if targets is None:
             targets = yb
         loss_fn, loss_name, loss_why = _infer_loss(model, targets, xb)
+
+    # Before the LR range test, not after: if the inputs are NaN or the split
+    # is broken, the user should hear it now rather than at the end of a
+    # search that never had a chance.
+    if sanity:
+        from .sanity import report
+
+        for msg in report(xb, targets, loss_name):
+            print0(f"[autotrainer] auto: {msg}")
 
     if lr is not None:
         lr_val, lr_why = lr, "user override"

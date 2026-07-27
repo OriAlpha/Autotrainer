@@ -8,7 +8,11 @@ Composes the two halves of autotrainer:
     2. TRAIN - full retrain of the winning recipe from the model's ORIGINAL
                initial weights, distributed via prepare(), with a
                warmup+cosine schedule, mixed precision, and early stopping
-               on the validation loss.
+               on the validation score.
+
+Both phases select on the same number. That is the validation loss by
+default; pass ``metric="accuracy"`` (or f1/auc/r2/a callable) when the loss
+isn't what you're actually trying to win - see :mod:`autotrainer.metrics`.
 
 Under `autotrainer run` with multiple processes, the search itself is
 parallel: trials are split across the ranks and pulled from a shared
@@ -59,6 +63,8 @@ def fit(
     seed: int = 0,
     verbose: bool = True,
     lr_scaling: str = "auto",
+    metric: Any = "loss",
+    direction: str = "auto",
 ) -> tuple[Any, dict[str, Any], Any]:
     """Search the training recipe, then fully train the winner.
 
@@ -73,7 +79,7 @@ def fit(
     ORIGINAL initial weights - not from the best trial's weights, which
     only saw ``epochs_per_trial`` epochs - through ``prepare()`` (DDP +
     DistributedSampler when launched distributed), with a warmup+cosine
-    schedule, mixed precision, and early stopping on the val loss. The
+    schedule, mixed precision, and early stopping on the val score. The
     weights from the best epoch are restored before returning.
 
     Args:
@@ -103,7 +109,9 @@ def fit(
             ``"bce"``, ``"mse"``, ``"huber"``. If ``None``, inferred.
         patience: stop phase 2 after this many epochs without val
             improvement.
-        min_delta: minimum val-loss decrease that counts as improvement.
+        min_delta: how much the val score must move to count as improvement.
+            Always a magnitude, so it means the same thing whether the run is
+            minimizing a loss or maximizing a metric.
         checkpoint: path for preemption-safe checkpointing. Rank 0 writes
             the full training state (weights, optimizer, scheduler, recipe,
             early-stop counters) atomically after every phase-2 epoch. If
@@ -111,8 +119,19 @@ def fit(
             skipped and training RESUMES from it - so a requeued SLURM job
             rerunning the same script picks up where it died. Delete the
             file to start fresh.
+
+            Setting this also makes the run react to preemption: fit()
+            watches for SIGUSR1/SIGTERM (SLURM's advance warning, with
+            ``#SBATCH --signal=B:USR1@120``) and stops at the next epoch
+            boundary with the checkpoint written, instead of losing the epoch
+            it was in the middle of. Phase 1 becomes resumable too - the
+            search is journaled next to the checkpoint (``<checkpoint>.study``)
+            so a job preempted mid-search resumes with the completed trials
+            instead of starting the search over. Delete that sidecar along
+            with the checkpoint to start fresh.
         study_storage: path of the shared Optuna journal file used for the
-            parallel search when launched distributed. Defaults to
+            parallel search when launched distributed (and for the resumable
+            single-process search when ``checkpoint`` is set). Defaults to
             ``.autotrainer_study_<jobid>.log`` in the working directory;
             on multi-node runs it must live on a filesystem all nodes
             share (SLURM working directories normally are).
@@ -122,18 +141,32 @@ def fit(
             rule (linear for SGD, square-root for Adam-family) in both the
             search and the phase-2 retrain, so the two stay consistent;
             ``"none"`` disables it. See :func:`autotrainer.tune`.
+        metric: what "best" means, for BOTH phases - ``"loss"`` (default),
+            ``"accuracy"``, ``"f1"``, ``"auc"``, ``"r2"``, or a
+            ``callable(model, loader) -> float``. It picks the recipe in phase
+            1 and then drives early stopping and best-epoch selection in phase
+            2, so the model handed back is the best one by the number you
+            asked for. This matters most late in a run: val loss can start
+            climbing from overconfidence while accuracy is still improving, and
+            a loss-driven ``patience`` would stop there and restore a
+            less-accurate checkpoint. Training always uses the loss.
+        direction: ``"auto"`` (default) infers it from ``metric``. See
+            :func:`autotrainer.tune`.
 
     Returns:
         ``(model, best_params, study)``. The model is the plain module
         (never DDP-wrapped) carrying the best epoch's weights. Under DDP,
         ``study`` is ``None`` on every rank except rank 0. When a
-        ``test_loader`` was given, rank 0's ``study.user_attrs["test_loss"]``
-        holds the held-out estimate.
+        ``test_loader`` was given, rank 0's ``study.user_attrs["test_score"]``
+        holds the held-out estimate (also under ``"test_loss"`` when the
+        metric is the loss).
     """
     import torch
 
     from .auto_optim import _infer_loss, _make_loss, _make_optimizer, _make_scheduler, _scale_lr
     from .backends.torch_backend import _ensure_process_group, prepare
+    from .metrics import is_better, name_of, resolve, worst
+    from .preempt import preempted, watch
     from .utils import (
         GradScaler,
         autocast_context,
@@ -151,18 +184,39 @@ def fit(
             "For sklearn/XGBoost/LightGBM estimators use autotrainer.tune()."
         )
 
+    metric, direction = resolve(metric, direction)
+    metric_label = name_of(metric)
     distributed = _ensure_process_group()
     init_state = copy.deepcopy(model.state_dict())
+
+    # Preemption: a checkpoint path is what makes reacting to the signal
+    # useful, so that's what arms it. The handler only sets a flag; the loop
+    # below stops at an epoch boundary, where the saved state is consistent.
+    if checkpoint is not None:
+        watch()
 
     # Resume: an existing checkpoint carries the winning recipe and the full
     # training state, so the search is skipped entirely. Every rank reads
     # the same file, so no broadcast is needed for the recipe.
     ckpt = _load_checkpoint(checkpoint)
-    if ckpt is not None and verbose:
-        print0(
-            f"[autotrainer] fit: resuming from {checkpoint} "
-            f"(epoch {ckpt['epoch'] + 1} done, best val_loss={ckpt['best_val']:.4f})"
-        )
+    if ckpt is not None:
+        # `best_val` is a score under whatever metric wrote it. Resuming with
+        # a different one would compare, say, an accuracy against a stored
+        # loss - and silently restore the wrong "best" epoch.
+        if ckpt.get("metric") != metric_label:
+            raise ValueError(
+                f"Checkpoint {checkpoint} was written with metric="
+                f"{ckpt.get('metric')!r}, but fit() was called with "
+                f"metric={metric_label!r}. Its recorded best score is not "
+                "comparable - pass the original metric, or delete the "
+                "checkpoint to start fresh."
+            )
+        if verbose:
+            print0(
+                f"[autotrainer] fit: resuming from {checkpoint} "
+                f"(epoch {ckpt['epoch'] + 1} done, "
+                f"best val_{metric_label}={ckpt['best_val']:.4f})"
+            )
 
     # ---- Phase 1: search the recipe ----
     study = None
@@ -189,6 +243,12 @@ def fit(
         assert loss is not None  # inferred above or user-provided
 
         if not distributed:
+            # With a checkpoint the search is journaled too, so a job preempted
+            # during phase 1 resumes with its completed trials rather than
+            # paying for them twice.
+            search_storage = None
+            if checkpoint is not None:
+                search_storage = _journal_storage(study_storage or checkpoint + ".study")
             _, best_params, study = tune(
                 model,
                 train_loader,
@@ -200,6 +260,11 @@ def fit(
                 seed=seed,
                 verbose=verbose,
                 lr_scaling=lr_scaling,
+                metric=metric,
+                direction=direction,
+                storage=search_storage,
+                study_name="autotrainer-fit" if search_storage is not None else None,
+                resume=search_storage is not None,
             )
         else:
             import os
@@ -216,6 +281,8 @@ def fit(
                 seed=seed,
                 verbose=verbose,
                 lr_scaling=lr_scaling,
+                metric=metric,
+                direction=direction,
                 storage_path=study_storage or f".autotrainer_study_{key}.log",
             )
             # Ranks > 0 hold an empty dict; rank 0 read the winner.
@@ -265,7 +332,7 @@ def fit(
         )
 
     scaler = GradScaler()
-    best_val, best_state, bad_epochs, start_epoch = float("inf"), None, 0, 0
+    best_val, best_state, bad_epochs, start_epoch = worst(direction), None, 0, 0
     if ckpt is not None:
         _unwrap(m).load_state_dict(ckpt["model"])
         opt.load_state_dict(ckpt["optimizer"])
@@ -299,9 +366,9 @@ def fit(
             if sched is not None:
                 sched.step()
 
-        val = _evaluate(m, val_loader, eval_loss_fn, device)
+        val = _evaluate(m, val_loader, eval_loss_fn, device, metric)
         if distributed:
-            # Every rank computes the same val loss up to float rounding,
+            # Every rank computes the same val score up to float rounding,
             # but the early-stop decision must be bit-identical everywhere
             # or the ranks desynchronize - so rank 0's number wins.
             import torch.distributed as dist
@@ -310,11 +377,11 @@ def fit(
             dist.broadcast(t, src=0)
             val = float(t.item())
 
-        improved = val < best_val - min_delta
+        improved = is_better(val, best_val, direction, min_delta)
         if verbose:
             print0(
                 f"[autotrainer] fit: epoch {epoch + 1}/{epochs} "
-                f"val_loss={val:.4f}{' *' if improved else ''}"
+                f"val_{metric_label}={val:.4f}{' *' if improved else ''}"
             )
         if improved:
             best_val, bad_epochs = val, 0
@@ -329,6 +396,8 @@ def fit(
                     "format_version": _CHECKPOINT_FORMAT,
                     "params": best_params,
                     "loss": loss,
+                    "metric": metric_label,
+                    "direction": direction,
                     "epoch": epoch,
                     "model": {
                         k: v.detach().cpu().clone() for k, v in _unwrap(m).state_dict().items()
@@ -340,6 +409,19 @@ def fit(
                     "bad_epochs": bad_epochs,
                 },
             )
+
+        # Checked after the checkpoint write, so what we stop on is already
+        # durable: the requeued job resumes at epoch+1 rather than redoing it.
+        if preempted():
+            print0(
+                f"[autotrainer] fit: preemption signal at epoch {epoch + 1}/{epochs} - "
+                + (
+                    f"checkpointed to {checkpoint}; rerunning this script resumes here"
+                    if checkpoint is not None
+                    else "no checkpoint= was set, so this progress is lost"
+                )
+            )
+            break
 
         if bad_epochs >= patience:
             if verbose:
@@ -353,18 +435,23 @@ def fit(
     if best_state is not None:
         final.load_state_dict(best_state)
     if verbose:
-        print0(f"[autotrainer] fit: done - best val_loss={best_val:.4f} with {best_params}")
+        print0(
+            f"[autotrainer] fit: done - best val_{metric_label}={best_val:.4f} with {best_params}"
+        )
 
-    # An honest generalization number: val_loss drove selection, so the more
-    # the search widened, the more it can flatter the val set. A held-out test
-    # set the search never saw is the number to actually trust.
+    # An honest generalization number: the val score drove selection, so the
+    # more the search widened, the more it can flatter the val set. A held-out
+    # test set the search never saw is the number to actually trust.
     if test_loader is not None:
-        test_loss = _evaluate(final, test_loader, eval_loss_fn, device)
+        test_score = _evaluate(final, test_loader, eval_loss_fn, device, metric)
         if study is not None:  # None on ranks > 0 and on a resumed (search-skipped) run
-            study.set_user_attr("test_loss", test_loss)
+            study.set_user_attr("test_score", test_score)
+            if metric == "loss":  # the pre-metric name, kept for existing readers
+                study.set_user_attr("test_loss", test_score)
         if verbose:
             print0(
-                f"[autotrainer] fit: held-out test_loss={test_loss:.4f} "
-                f"(val_loss={best_val:.4f} guided selection; test is the honest estimate)"
+                f"[autotrainer] fit: held-out test_{metric_label}={test_score:.4f} "
+                f"(val_{metric_label}={best_val:.4f} guided selection; "
+                "test is the honest estimate)"
             )
     return final, best_params, study

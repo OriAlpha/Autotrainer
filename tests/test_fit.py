@@ -91,8 +91,8 @@ class TestFit:
         calls = []
         real_evaluate = fit_mod._evaluate
 
-        def fake_evaluate(model, val_loader, loss_fn, device):
-            real_evaluate(model, val_loader, loss_fn, device)  # keep it exercised
+        def fake_evaluate(model, val_loader, loss_fn, device, metric=None):
+            real_evaluate(model, val_loader, loss_fn, device, metric)  # keep it exercised
             v = next(vals)
             calls.append(v)
             return v
@@ -175,9 +175,9 @@ class TestCheckpoint:
         epochs_run = []
         real_evaluate = fit_mod._evaluate
 
-        def counting_evaluate(model, val_loader, loss_fn, device):
+        def counting_evaluate(model, val_loader, loss_fn, device, metric=None):
             epochs_run.append(1)
-            return real_evaluate(model, val_loader, loss_fn, device)
+            return real_evaluate(model, val_loader, loss_fn, device, metric)
 
         monkeypatch.setattr(fit_mod, "_evaluate", counting_evaluate)
         _, params_resumed, study_resumed = fit(
