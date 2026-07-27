@@ -45,6 +45,7 @@ def fit(
     train_loader: Any,
     val_loader: Any,
     *,
+    test_loader: Any = None,
     trials: int = 20,
     epochs: int = 20,
     epochs_per_trial: int = 3,
@@ -56,6 +57,7 @@ def fit(
     study_storage: str | None = None,
     seed: int = 0,
     verbose: bool = True,
+    lr_scaling: str = "auto",
 ) -> tuple[Any, dict[str, Any], Any]:
     """Search the training recipe, then fully train the winner.
 
@@ -80,6 +82,11 @@ def fit(
         val_loader: validation DataLoader; scores trials, drives early
             stopping, and selects the best epoch. Not sharded - under DDP
             every rank evaluates the full val set.
+        test_loader: optional held-out DataLoader the search never sees.
+            When given, the final (best-epoch) model is scored on it and the
+            number is printed and stored on the study - an honest
+            generalization estimate that guards against reading too much into
+            a val loss the wide search has implicitly optimized against.
         trials: number of Optuna trials in phase 1.
         epochs: maximum full-training epochs in phase 2.
         epochs_per_trial: epochs trained per trial in phase 1.
@@ -103,15 +110,21 @@ def fit(
             share (SLURM working directories normally are).
         seed: Optuna sampler seed for reproducibility.
         verbose: print tuning output and per-epoch val losses.
+        lr_scaling: ``"auto"`` (default) applies the standard lr<->batch-size
+            rule (linear for SGD, square-root for Adam-family) in both the
+            search and the phase-2 retrain, so the two stay consistent;
+            ``"none"`` disables it. See :func:`autotrainer.tune`.
 
     Returns:
         ``(model, best_params, study)``. The model is the plain module
         (never DDP-wrapped) carrying the best epoch's weights. Under DDP,
-        ``study`` is ``None`` on every rank except rank 0.
+        ``study`` is ``None`` on every rank except rank 0. When a
+        ``test_loader`` was given, rank 0's ``study.user_attrs["test_loss"]``
+        holds the held-out estimate.
     """
     import torch
 
-    from .auto_optim import _infer_loss, _make_loss, _make_optimizer
+    from .auto_optim import _infer_loss, _make_loss, _make_optimizer, _make_scheduler, _scale_lr
     from .backends.torch_backend import _ensure_process_group, prepare
     from .utils import (
         GradScaler,
@@ -178,6 +191,7 @@ def fit(
                 loss=loss,
                 seed=seed,
                 verbose=verbose,
+                lr_scaling=lr_scaling,
             )
         else:
             import os
@@ -193,11 +207,16 @@ def fit(
                 loss=loss,
                 seed=seed,
                 verbose=verbose,
+                lr_scaling=lr_scaling,
                 storage_path=study_storage or f".autotrainer_study_{key}.log",
             )
             # Ranks > 0 hold an empty dict; rank 0 read the winner.
             [best_params] = _sync_from_rank0([best_params], True)
-    loss_fn = _make_loss(loss)
+    # Train with the winner's label_smoothing (if it was searched); SCORE with
+    # the plain unsmoothed loss so the val/test numbers and the early-stop
+    # decision stay honest and comparable across configs.
+    loss_fn = _make_loss(loss, label_smoothing=best_params.get("label_smoothing", 0.0))
+    eval_loss_fn = _make_loss(loss)
 
     # ---- Phase 2: full retrain of the winner from the original init ----
     m = copy.deepcopy(model)
@@ -209,27 +228,28 @@ def fit(
     )
     m, tl = prepare(m, tl)
     device = next(m.parameters()).device
+    lr_applied = _scale_lr(
+        best_params.get("lr", 1e-3),
+        best_params.get("batch_size"),
+        best_params.get("optimizer"),
+        lr_scaling,
+    )
     opt, opt_name, _ = _make_optimizer(
         m,
         best_params.get("optimizer"),
-        best_params.get("lr", 1e-3),
+        lr_applied,
         best_params.get("weight_decay", 0.0),
     )
 
     steps = max(len(tl) * epochs, 1)
-    warmup = max(int(0.05 * steps), 1)
-    sched = torch.optim.lr_scheduler.SequentialLR(
-        opt,
-        [
-            torch.optim.lr_scheduler.LinearLR(opt, 0.01, 1.0, warmup),
-            torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps - warmup),
-        ],
-        milestones=[warmup],
-    )
+    sched_name = best_params.get("scheduler", "cosine")
+    sched = _make_scheduler(sched_name, opt, steps, best_params.get("warmup_frac", 0.05))
+    grad_clip = best_params.get("grad_clip", 0.0)
     if verbose:
         print0(
             f"[autotrainer] fit: retraining winner from original init "
-            f"(optimizer={opt_name}, up to {epochs} epochs, patience={patience})"
+            f"(optimizer={opt_name}, schedule={sched_name}, up to {epochs} epochs, "
+            f"patience={patience})"
         )
 
     scaler = GradScaler()
@@ -237,7 +257,8 @@ def fit(
     if ckpt is not None:
         _unwrap(m).load_state_dict(ckpt["model"])
         opt.load_state_dict(ckpt["optimizer"])
-        sched.load_state_dict(ckpt["scheduler"])
+        if sched is not None and ckpt.get("scheduler") is not None:
+            sched.load_state_dict(ckpt["scheduler"])
         best_val = ckpt["best_val"]
         best_state = ckpt["best_state"]
         bad_epochs = ckpt["bad_epochs"]
@@ -257,11 +278,15 @@ def fit(
                 out = robust_forward(m, xb_dev)
                 loss_val = loss_fn(out, yb_dev)
             scaler.scale(loss_val).backward()
+            if grad_clip:
+                scaler.unscale_(opt)  # unscale before clipping so the norm is real
+                torch.nn.utils.clip_grad_norm_(m.parameters(), grad_clip)
             scaler.step(opt)
             scaler.update()
-            sched.step()
+            if sched is not None:
+                sched.step()
 
-        val = _evaluate(m, val_loader, loss_fn, device)
+        val = _evaluate(m, val_loader, eval_loss_fn, device)
         if distributed:
             # Every rank computes the same val loss up to float rounding,
             # but the early-stop decision must be bit-identical everywhere
@@ -296,7 +321,7 @@ def fit(
                         k: v.detach().cpu().clone() for k, v in _unwrap(m).state_dict().items()
                     },
                     "optimizer": opt.state_dict(),
-                    "scheduler": sched.state_dict(),
+                    "scheduler": sched.state_dict() if sched is not None else None,
                     "best_val": best_val,
                     "best_state": best_state,
                     "bad_epochs": bad_epochs,
@@ -316,4 +341,17 @@ def fit(
         final.load_state_dict(best_state)
     if verbose:
         print0(f"[autotrainer] fit: done - best val_loss={best_val:.4f} with {best_params}")
+
+    # An honest generalization number: val_loss drove selection, so the more
+    # the search widened, the more it can flatter the val set. A held-out test
+    # set the search never saw is the number to actually trust.
+    if test_loader is not None:
+        test_loss = _evaluate(final, test_loader, eval_loss_fn, device)
+        if study is not None:  # None on ranks > 0 and on a resumed (search-skipped) run
+            study.set_user_attr("test_loss", test_loss)
+        if verbose:
+            print0(
+                f"[autotrainer] fit: held-out test_loss={test_loss:.4f} "
+                f"(val_loss={best_val:.4f} guided selection; test is the honest estimate)"
+            )
     return final, best_params, study

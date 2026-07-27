@@ -256,15 +256,17 @@ class TestPrepareOptimizeIntegration:
 
     def test_amp_snippet_printed_when_optimize_applies_on_gpu(self, pretend_cuda, capsys):
         """When the optimize bundle fires on a GPU with AMP on, prepare() prints
-        the exact two-line autocast+GradScaler snippet so the user knows what to
-        add to their loop (we can't wrap an arbitrary loop from here). The
-        snippet must reference the public helpers, which are no-ops on CPU."""
+        guidance so the user knows what to add to their loop (we can't wrap an
+        arbitrary loop from here). It leads with the one-call train_step() path
+        and still shows the manual autocast+GradScaler form; all reference
+        public helpers that are no-ops on CPU."""
         torch = pytest.importorskip("torch")
         from autotrainer.backends.torch_backend import prepare
 
         model, loader = self._model_loader(torch)
         prepare(model, loader, optimize=True)  # amp defaults to optimize=True
         out = capsys.readouterr().out
+        assert "autotrainer.train_step(" in out
         assert "autotrainer.autocast_context()" in out
         assert "autotrainer.GradScaler()" in out
 
