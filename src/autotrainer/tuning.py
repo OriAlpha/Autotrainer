@@ -1,7 +1,8 @@
 """Hyperparameter tuning (PyTorch): the model is the user's, the recipe is ours.
 
 The user supplies a built model; we search over TRAINING hyperparameters
-only (lr, weight decay, optimizer, batch size). No architecture search.
+only (lr, weight decay, optimizer, batch size, schedule, training length,
+augmentation strength). No architecture search.
 
     best_model, best_params, study = autotrainer.tune(
         model, train_loader, val_loader, trials=30
@@ -18,6 +19,22 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from .augment import MAX_STRENGTH, augment_batch
+
+# Default per-trial epoch budget, and so the upper bound of the searched
+# ``epochs`` range. Kept as a constant because both tune()'s signature and
+# DEFAULT_SPACE have to agree on it.
+_DEFAULT_EPOCHS_PER_TRIAL = 3
+
+# ASHA compares trials at "rungs". When ``epochs`` is searched, trials have
+# different budgets, so reporting at the raw epoch index would pit a
+# long-budget trial (still mid-anneal at epoch 1) against a short-budget one
+# that has already fully annealed - and the long trial would be pruned for
+# being slower to converge rather than worse. Reporting at a fixed number of
+# NORMALIZED rungs (fraction of that trial's own schedule completed) compares
+# like with like.
+_ASHA_RUNGS = 8
+
 # The maximal recipe space: every knob tune()/fit() can search. The actual
 # default is narrowed per task by _default_space(); this superset stays so
 # callers (and tests) can reason about "all possible" search keys.
@@ -30,10 +47,14 @@ DEFAULT_SPACE = {
     "warmup_frac": ("uniform", 0.0, 0.1),
     "grad_clip": ("categorical", [0.0, 1.0, 5.0]),
     "label_smoothing": ("uniform", 0.0, 0.1),
+    "epochs": ("int", 1, _DEFAULT_EPOCHS_PER_TRIAL),
+    "aug_strength": ("uniform", 0.0, MAX_STRENGTH),
 }
 
 
-def _default_space(model: Any, loss_name: str) -> dict[str, Any]:
+def _default_space(
+    model: Any, loss_name: str, max_epochs: int = _DEFAULT_EPOCHS_PER_TRIAL
+) -> dict[str, Any]:
     """Task-aware default search space (a subset of ``DEFAULT_SPACE``'s keys).
 
     A good default *narrows* the maximal space to the model and task so trials
@@ -44,9 +65,20 @@ def _default_space(model: Any, loss_name: str) -> dict[str, Any]:
         cosine/constant schedule.
       * ``label_smoothing`` is only searched for cross-entropy - it's a
         classification-only regularizer and a wasted dimension elsewhere.
+      * ``aug_strength`` is only searched for CNNs. The policy behind it
+        (flip + cutout) is image-specific, and on non-vision batches
+        :func:`autotrainer.augment_batch` is a no-op - so searching it
+        elsewhere would burn trials on a dimension that changes nothing.
 
-    ``grad_clip=0.0`` means "no clipping", so the "off" case is always in the
-    space rather than being unreachable.
+    ``grad_clip=0.0`` means "no clipping", and ``aug_strength=0.0`` means "no
+    augmentation", so the "off" case is always in the space rather than being
+    unreachable.
+
+    ``epochs`` is searched over ``1..max_epochs``, where ``max_epochs`` is
+    ``tune()``'s ``epochs_per_trial``. Bounding it by the existing per-trial
+    budget is deliberate: adding the knob widens *what* is searched without
+    making any trial cost more than it does today. Raise ``epochs_per_trial``
+    to widen the range.
     """
     from .auto_optim import _looks_like_cnn
 
@@ -63,9 +95,12 @@ def _default_space(model: Any, loss_name: str) -> dict[str, Any]:
         ),
         "warmup_frac": ("uniform", 0.0, 0.1),
         "grad_clip": ("categorical", [0.0, 1.0, 5.0]),
+        "epochs": ("int", 1, max(int(max_epochs), 1)),
     }
     if loss_name == "cross_entropy":
         space["label_smoothing"] = ("uniform", 0.0, 0.1)
+    if is_cnn:
+        space["aug_strength"] = ("uniform", 0.0, MAX_STRENGTH)
     return space
 
 
@@ -124,7 +159,7 @@ def tune(
     val_loader: Any,
     *,
     trials: int = 20,
-    epochs_per_trial: int = 3,
+    epochs_per_trial: int = _DEFAULT_EPOCHS_PER_TRIAL,
     space: dict[str, Any] | None = None,
     loss: str | None = None,
     seed: int = 0,
@@ -137,8 +172,9 @@ def tune(
     """Search training hyperparameters for the user's model.
 
     Searches over the training *recipe* only (lr, weight decay, optimizer,
-    batch size, LR schedule, warmup, gradient clipping, and - for
-    classification - label smoothing) - never the architecture. Every trial
+    batch size, LR schedule, warmup, gradient clipping, training length, and -
+    for classification - label smoothing, - for CNNs - augmentation
+    strength) - never the architecture. Every trial
     starts from the model's ORIGINAL initial weights (deep-copied), so trials
     are comparable and the input model is left untouched. Bad trials are pruned
     early by ASHA (successive halving) so a wide search stays affordable - most
@@ -150,7 +186,12 @@ def tune(
             per trial if ``batch_size`` is in the search space).
         val_loader: validation DataLoader used to score each trial.
         trials: number of Optuna trials to run.
-        epochs_per_trial: epochs trained per trial before scoring/pruning.
+        epochs_per_trial: the per-trial epoch budget. When ``epochs`` is in
+            the search space (it is by default) this is its upper bound and
+            each trial trains for its own searched value, so no trial costs
+            more than it did before the knob existed; raise this to widen the
+            epoch range. When ``epochs`` is not searched, every trial trains
+            exactly this many epochs.
         space: custom search space; defaults to a task-aware subset of
             ``DEFAULT_SPACE`` (chosen from the model + inferred loss). Each
             entry is ``(kind, *args)`` where kind is one of
@@ -168,8 +209,11 @@ def tune(
         pruner: an Optuna pruner; defaults to ASHA
             (``SuccessiveHalvingPruner``), the multi-fidelity strategy that
             gives most trials a small budget and promotes only survivors so a
-            wide space stays cheap. Pass your own to override. ``min_resource``
-            is 1, so trials are never pruned before their second epoch.
+            wide space stays cheap. Pass your own to override. Trials report
+            at normalized rungs (fraction of their own schedule completed)
+            rather than at raw epoch indices, so that searching ``epochs``
+            doesn't make long-budget trials look worse than short ones that
+            have already finished annealing.
         lr_scaling: ``"auto"`` (default) applies the standard lr<->batch-size
             rule when both are searched - linear for SGD, square-root for
             Adam-family - relative to a reference batch of 32, so the search
@@ -206,7 +250,7 @@ def tune(
         if verbose:
             print(f"[autotrainer] tune: loss={loss_name} ({why})")
 
-    space = space or _default_space(model, loss_name)
+    space = space or _default_space(model, loss_name, epochs_per_trial)
     # Trials are SCORED with a fixed, unsmoothed loss so their val numbers stay
     # comparable when label_smoothing is being searched (smoothing raises the
     # loss floor, which would otherwise make smoothed trials look artificially
@@ -234,20 +278,30 @@ def tune(
             else train_loader
         )
         train_loss_fn = _make_loss(loss_name, label_smoothing=params.get("label_smoothing", 0.0))
-        total_steps = max(len(tl) * epochs_per_trial, 1)
+        # Each trial trains for ITS OWN epoch budget and anneals the schedule
+        # over exactly that budget - that coupling is the point of searching
+        # `epochs`. A recipe that wants a short, fast anneal and one that wants
+        # a long, gentle one are then both evaluated as they'd actually run,
+        # instead of every candidate being forced onto one fixed horizon.
+        n_epochs = max(int(params.get("epochs", epochs_per_trial)), 1)
+        total_steps = max(len(tl) * n_epochs, 1)
         sched = _make_scheduler(
             params.get("scheduler", "cosine"), opt, total_steps, params.get("warmup_frac", 0.05)
         )
         grad_clip = params.get("grad_clip", 0.0)
+        aug_strength = params.get("aug_strength", 0.0)
 
         from .utils import robust_forward, split_xy, to_device
 
         val = float("inf")
-        for epoch in range(epochs_per_trial):
+        for epoch in range(n_epochs):
             m.train()
             for batch in tl:
                 bx, by = split_xy(batch)
-                bx_dev = to_device(bx, device)
+                # Augment the inputs only, and only on the training path - the
+                # val pass in _evaluate() stays clean so scores are comparable
+                # across trials with different aug_strength.
+                bx_dev = augment_batch(to_device(bx, device), aug_strength)
                 by_dev = to_device(by, device)
                 opt.zero_grad()
                 out = robust_forward(m, bx_dev)
@@ -259,7 +313,10 @@ def tune(
                 if sched is not None:
                     sched.step()
             val = _evaluate(m, val_loader, eval_loss_fn, device)
-            trial.report(val, epoch)
+            # Report at a normalized rung (see _ASHA_RUNGS) so trials with
+            # different epoch budgets are pruned on progress-through-schedule
+            # rather than on raw epoch count.
+            trial.report(val, max(round((epoch + 1) / n_epochs * _ASHA_RUNGS), 1))
             if trial.should_prune():
                 raise optuna.TrialPruned()
 

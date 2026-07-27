@@ -37,6 +37,7 @@ from ._fit_search import (  # noqa: F401  (re-exported for back-compat)
     _sync_from_rank0,
     _unwrap,
 )
+from .augment import augment_batch
 from .tuning import _evaluate, _rebuild_loader, tune
 
 
@@ -88,8 +89,15 @@ def fit(
             generalization estimate that guards against reading too much into
             a val loss the wide search has implicitly optimized against.
         trials: number of Optuna trials in phase 1.
-        epochs: maximum full-training epochs in phase 2.
-        epochs_per_trial: epochs trained per trial in phase 1.
+        epochs: maximum full-training epochs in phase 2. This stays your
+            ceiling even though phase 1 searches an ``epochs`` knob of its
+            own: that searched value is a *trial* budget (bounded by
+            ``epochs_per_trial``) used to pick the recipe, and phase 2 already
+            decides its own length adaptively via ``patience``. It is recorded
+            in ``best_params`` for reproducibility but does not shorten - or
+            extend - the final retrain.
+        epochs_per_trial: the per-trial epoch budget in phase 1, and the upper
+            bound of the searched ``epochs`` knob.
         space: custom search space, as in :func:`autotrainer.tune`.
         loss: override the inferred loss; one of ``"cross_entropy"``,
             ``"bce"``, ``"mse"``, ``"huber"``. If ``None``, inferred.
@@ -245,6 +253,10 @@ def fit(
     sched_name = best_params.get("scheduler", "cosine")
     sched = _make_scheduler(sched_name, opt, steps, best_params.get("warmup_frac", 0.05))
     grad_clip = best_params.get("grad_clip", 0.0)
+    # The winning augmentation strength is part of the recipe that earned the
+    # best val score, so the full retrain has to train under it too - dropping
+    # it here would retrain a *different*, unregularized recipe.
+    aug_strength = best_params.get("aug_strength", 0.0)
     if verbose:
         print0(
             f"[autotrainer] fit: retraining winner from original init "
@@ -271,7 +283,8 @@ def fit(
         m.train()
         for batch in tl:
             xb, yb = split_xy(batch)
-            xb_dev = to_device(xb, device)
+            # Train-path only; _evaluate() below sees clean inputs.
+            xb_dev = augment_batch(to_device(xb, device), aug_strength)
             yb_dev = to_device(yb, device)
             opt.zero_grad()
             with autocast_context():

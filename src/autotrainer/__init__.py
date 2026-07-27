@@ -26,6 +26,7 @@ __all__ = [
     "accumulate",
     "auto",
     "autocast_context",
+    "augment_batch",
     "barrier",
     "boost_params",
     "configure_nccl",
@@ -51,6 +52,7 @@ __all__ = [
     "zero_grad",
 ]
 
+from .augment import augment_batch  # noqa: E402,F401
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
