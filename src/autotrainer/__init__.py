@@ -45,6 +45,7 @@ __all__ = [
     "set_epoch",
     "ThroughputMonitor",
     "train_mode",
+    "TrainingMonitor",
     "tune",
     "zero_grad",
 ]
@@ -57,6 +58,7 @@ from .slurm import (
     node_scratch,
 )
 from .throughput import ThroughputMonitor  # noqa: E402,F401
+from .triage import TrainingMonitor  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

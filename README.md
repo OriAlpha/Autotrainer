@@ -233,7 +233,7 @@ model, loader, opt = autotrainer.prepare(
 
 ### Dataloader bottleneck monitor
 
-The cheapest piece of the roadmap's training-triage theme. Sample per-step
+The cheapest piece of the training-triage family. Sample per-step
 data-load vs compute time and get a plain-language warning when the loader
 is starving the GPU:
 
@@ -251,6 +251,38 @@ for xb, yb in loader:
 ```
 
 Opt-in; zero overhead when not constructed.
+
+### Training health monitor (triage)
+
+`BottleneckMonitor` and `ThroughputMonitor` answer *"is it fast?"*;
+`TrainingMonitor` answers *"is it healthy?"* — the silent numerical failures.
+Call `step()` once per optimizer step (after `backward()`, before
+`zero_grad()`) and it flags each problem **once**, in plain language, with the
+fix:
+
+```python
+mon = autotrainer.TrainingMonitor()
+for xb, yb in loader:
+    loss = loss_fn(model(xb), yb)
+    loss.backward()
+    mon.step(loss, model=model, optimizer=opt, scaler=scaler)
+    opt.step(); opt.zero_grad()
+mon.report()   # one-line all-clear, or a recap of what fired
+```
+
+It catches NaN/Inf loss (lr too high, or bad inputs), loss divergence, fp16
+gradient overflow (→ "switch to bf16"), and non-finite / spiking / vanishing
+gradients — e.g.:
+
+```
+[autotrainer] triage: gradient norm spiked to 4.1e+03 (128x the recent median)
+    - add gradient clipping (torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
+```
+
+Everything but `loss` is optional (pass `model` for gradient checks,
+`optimizer` for a concrete lr hint, `scaler` for fp16 overflow). Like the
+other monitors it only *observes* — it never touches your lr, loss, schedule,
+or optimizer. Opt-in; zero overhead when not constructed.
 
 Then launch. **`prepare()` auto-distributes** — on a multi-GPU box it spawns
 one worker per GPU the first time it's called, so a bare `python train.py`
@@ -352,16 +384,24 @@ back the best model it can produce on your hardware:
 model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=30)
 ```
 
-1. **Tune**: Optuna searches lr / weight decay / optimizer / batch size on
-   short trials. Launched distributed, the trials are split across all
-   ranks via a shared journal-file study - one trial per process, every
-   GPU busy during the search.
+1. **Tune**: an ASHA (successive-halving) search over the training recipe -
+   lr, weight decay, optimizer, batch size, LR schedule + warmup, gradient
+   clipping, and (for classification) label smoothing - on short trials, with
+   the default space chosen from your model and its inferred loss. Most
+   candidates get a small budget and only survivors are promoted, so the wide
+   space stays cheap. Launched distributed, the trials are split across all
+   ranks via a shared journal-file study - one trial per process, every GPU
+   busy during the search.
 2. **Train**: the winning recipe is retrained from your model's original
    init through `prepare()` - which auto-distributes it across every
    GPU/node (a bare `python train.py` spawns one worker per GPU locally;
    under SLURM, `srun autotrainer run` does the same across nodes) - with
-   warmup+cosine, mixed precision, and early stopping on the val loss. The
-   best epoch's weights are returned.
+   the winning schedule, mixed precision, and early stopping on the val loss.
+   The best epoch's weights are returned.
+
+Pass `test_loader=` to also get an honest held-out score the search never saw
+(printed and stored on `study.user_attrs["test_loss"]`) - the number to trust
+once a wide search has been optimizing against your val set.
 
 Pass `checkpoint="fit.ckpt"` to make it preemption-safe: the full training
 state is saved every epoch, and rerunning the same script resumes where it
@@ -404,9 +444,6 @@ explain runs, not just launch them):
   then report projected training time, memory headroom, and cost per GPU
   count - answer "how many GPUs do I actually need?" before burning an
   allocation.
-- **Training triage**: watch the loop and diagnose failures in plain
-  language - NaN loss traced to a too-high LR, GPU idle time traced to a
-  dataloader bottleneck, fp16 overflow with a bf16 suggestion.
 - **Data sanity checks in `auto()`**: the same one-batch peek that infers
   the loss can flag class imbalance (suggest weighted loss), unnormalized
   inputs, and train/val overlap.
@@ -425,8 +462,10 @@ More breadth:
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **More schedulers and search spaces** beyond warmup+cosine and the default
-  Optuna recipe.
+- **Augmentation and architecture-aware search**: the recipe search now
+  covers schedule/warmup/grad-clip/label-smoothing; data-augmentation policies
+  and width/depth are the natural next frontier (a bigger, opt-in commitment
+  that would step beyond "the model is yours").
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history, and open or
 upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to prioritize
