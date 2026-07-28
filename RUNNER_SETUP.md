@@ -132,6 +132,15 @@ GPU OK: <your GPU name> (capability (..., ...))
 
 followed by the `cuda`-marked tests running. If you instead see "queued"
 forever, the labels don't match (re-run `./config.cmd` with `self-hosted,gpu`).
+
+You do not have to notice that yourself. The `cuda-watchdog` job in ci.yml
+watches every run and, if `test-cuda` is still queued after 10 minutes, posts a
+warning annotation and a run-summary note saying GPU coverage was zero. It
+warns rather than failing, because `test-cuda` is not a required check — change
+the `::warning::` line to `exit 1` if you would rather an offline runner block
+merges. (`timeout-minutes` on `test-cuda` cannot do this job: it only starts
+counting once a runner accepts the work, so a job nobody accepts never times
+out.)
 If the GPU sanity check fails, the runner is registered but torch can't see
 the GPU — check `CUDA_VISIBLE_DEVICES` isn't set in the service environment.
 
