@@ -25,5 +25,10 @@ docs/build/
 # Code-analysis tool output (generated, not part of the package)
 graphify-out/
 
-# Internal maintainer notes (kept out of the published repo)
-docs/internal/
+# Internal maintainer notes. architecture.md and release-process.md are tracked
+# (they describe the codebase and the release pipeline, and are worth having on
+# a fresh clone); these two stay local because they name this specific machine
+# and are operational runbooks rather than reference.
+docs/internal/NEXT_STEPS.md
+docs/internal/runner-start-stop.md
+docs/internal/slurm-validation.md
