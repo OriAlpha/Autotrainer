@@ -21,8 +21,10 @@ jobs:
         with:
           python-version: "3.11"
       - run: uv pip install ruff
-      - run: uv run ruff check src/ tests/
-      - run: uv run ruff format --check src/ tests/
+      # .github/scripts is release-critical (it writes the release notes) and
+      # was previously unlinted.
+      - run: uv run ruff check src/ tests/ .github/scripts/
+      - run: uv run ruff format --check src/ tests/ .github/scripts/
 
   test:
     runs-on: ubuntu-latest
@@ -161,6 +163,75 @@ jobs:
       - uses: actions/deploy-pages@v5
         id: deployment
 
+  # test-cuda runs on a self-hosted runner. When that box is offline the job
+  # sits "queued" indefinitely and GPU coverage silently drops to zero while the
+  # run still looks fine. `timeout-minutes` does not help: it only starts
+  # counting once a runner picks the job up, so a job nobody picks up is never
+  # timed out. This watchdog watches the current run and says so out loud.
+  #
+  # It annotates rather than failing, because test-cuda is deliberately not a
+  # required check - replace the `::warning::` line with `exit 1` to make a
+  # missing GPU runner hard-blocking.
+  cuda-watchdog:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # read this run's job list
+    steps:
+      - name: Warn if the GPU runner never picks up test-cuda
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$((SECONDS + 600))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            status=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
+              --jq '.jobs[] | select(.name=="test-cuda") | .status' 2>/dev/null || true)
+            case "$status" in
+              "")     echo "test-cuda is not part of this run - nothing to watch"; exit 0 ;;
+              queued) sleep 30 ;;
+              *)      echo "test-cuda is '$status' - a GPU runner picked it up"; exit 0 ;;
+            esac
+          done
+          echo "::warning title=GPU runner offline::test-cuda sat queued for 10 minutes; the self-hosted GPU runner did not pick it up, so nothing in this run exercised a real CUDA device. See RUNNER_SETUP.md."
+          {
+            echo "### :warning: No GPU coverage in this run"
+            echo
+            echo "\`test-cuda\` was still queued after 10 minutes, so the self-hosted"
+            echo "GPU runner is most likely offline. Nothing here touched a real CUDA"
+            echo "device. See [RUNNER_SETUP.md](RUNNER_SETUP.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Single source of truth for "what version is this ref, and is it a
+  # prerelease". The release job computes neither, because it is skipped on the
+  # manual publish paths - and being wrong there means an RC uploaded to
+  # production PyPI, where versions are immutable and therefore unfixable.
+  version-info:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+          if [ -z "$version" ]; then
+            echo "could not read version from pyproject.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Only an exact X.Y.Z goes to production PyPI. Anything with a PEP 440
+          # suffix (rc/a/b/.dev, and conservatively .post) is a prerelease. The
+          # bias is deliberate: mistaking a real release for a prerelease costs
+          # one re-run, the reverse burns a version number permanently.
+          if printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "$version is a stable release -> PyPI"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$version is a prerelease -> TestPyPI"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # Cut the GitHub Release automatically when main's version changes, so
   # shipping is "merge a version bump" rather than a manual step someone has to
   # remember (0.13.0 sat released-in-name-only on main until someone noticed).
@@ -173,7 +244,7 @@ jobs:
   # queued (runner offline) does not fail, it hangs the release indefinitely.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, typecheck, test-tf]
+    needs: [lint, test, typecheck, test-tf, version-info]
     # Two merges landing close together read the same version. If the second
     # run's tag check beats the first run's `gh release create`, it also
     # decides the version is new and then dies at 422. Serializing makes it
@@ -187,38 +258,49 @@ jobs:
       contents: write # create the tag and the release
     outputs:
       new: ${{ steps.check.outputs.new }}
-      version: ${{ steps.check.outputs.version }}
+    env:
+      VERSION: ${{ needs.version-info.outputs.version }}
+      PRERELEASE: ${{ needs.version-info.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # tags are what distinguish a new version from a shipped one
       - id: check
         run: |
-          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
-          if [ -z "$version" ]; then
-            echo "could not read version from pyproject.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-            echo "v$version is already tagged - nothing to release"
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is already tagged - nothing to release"
             echo "new=false" >> "$GITHUB_OUTPUT"
           else
-            echo "v$version is new - cutting a release"
+            echo "v$VERSION is new - cutting a release"
             echo "new=true" >> "$GITHUB_OUTPUT"
           fi
-      # Fails the job if the version has no CHANGELOG section, rather than
-      # shipping a release with empty notes.
+      # Fails the job if there are no notes to ship, rather than publishing a
+      # release with an empty body. A prerelease has no CHANGELOG section of its
+      # own - an RC ships whatever is currently unreleased - so it reads
+      # [Unreleased] instead, and still fails if that is empty too.
       - if: steps.check.outputs.new == 'true'
-        run: python .github/scripts/changelog_section.py "${{ steps.check.outputs.version }}" > release-notes.md
+        run: |
+          if [ "$PRERELEASE" = "true" ]; then
+            python .github/scripts/changelog_section.py "$VERSION" \
+              --fallback-unreleased > release-notes.md
+          else
+            python .github/scripts/changelog_section.py "$VERSION" > release-notes.md
+          fi
       - if: steps.check.outputs.new == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.check.outputs.version }}" \
-            --target "$GITHUB_SHA" \
-            --title "autotrainer ${{ steps.check.outputs.version }}" \
-            --notes-file release-notes.md
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release create "v$VERSION" --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "autotrainer $VERSION" \
+              --notes-file release-notes.md
+          else
+            gh release create "v$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "autotrainer $VERSION" \
+              --notes-file release-notes.md
+          fi
 
   # Three ways in: the release job cut a new version in THIS run (automatic), a
   # release was published by hand, or someone re-ran the workflow to retry an
@@ -239,14 +321,23 @@ jobs:
   # always() is needed because `release` is skipped on both manual paths and a
   # skipped dependency would skip this job too; the explicit result checks put
   # back the gating that always() switches off.
+  #
+  # Stable versions go to PyPI, prereleases to TestPyPI. Both ternaries below
+  # test for `== 'false'` rather than `== 'true'` so that ONLY an explicit
+  # "this is stable" reaches production - an empty or unexpected value routes
+  # to TestPyPI, which is recoverable, instead of burning a PyPI version, which
+  # is not. Trusted publishing is pinned to (workflow filename, environment
+  # name), so both `pypi` and `testpypi` environments need a publisher
+  # configured on their respective index for ci.yml.
   publish:
-    needs: [lint, test, typecheck, test-tf, release]
+    needs: [lint, test, typecheck, test-tf, version-info, release]
     if: >-
       always()
       && needs.lint.result == 'success'
       && needs.test.result == 'success'
       && needs.typecheck.result == 'success'
       && needs['test-tf'].result == 'success'
+      && needs['version-info'].result == 'success'
       && (
         (needs.release.result == 'success' && needs.release.outputs.new == 'true')
         || (
@@ -258,7 +349,8 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
-    environment: pypi
+    environment:
+      name: ${{ needs.version-info.outputs.prerelease == 'false' && 'pypi' || 'testpypi' }}
     permissions:
       id-token: write # trusted publishing, no API token needed
     steps:
@@ -268,3 +360,5 @@ jobs:
           python-version: "3.11"
       - run: uv pip install build && uv run python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ needs.version-info.outputs.prerelease == 'false' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}

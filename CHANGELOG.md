@@ -4,6 +4,30 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Added
+- **Prerelease channel.** A version that is not exactly `X.Y.Z` (an `rc`, `a`,
+  `b`, `.dev`, or `.post` suffix) is now published to TestPyPI and marked as a
+  prerelease on GitHub, instead of going to production PyPI. This exists so the
+  SLURM validation runbook can `pip install` and exercise a real wheel before
+  the version number is spent - PyPI versions are immutable, so validating
+  against a production release means any defect found costs a new version. The
+  routing tests for `== 'false'` rather than `== 'true'`, so only an explicit
+  "this is stable" reaches PyPI; anything unexpected goes to TestPyPI.
+- Release notes for a prerelease fall back to the `[Unreleased]` changelog
+  section, since an RC has no section of its own. An empty or missing section
+  is still a hard failure.
+- `cuda-watchdog` CI job. When the self-hosted GPU runner is offline,
+  `test-cuda` sits queued indefinitely and GPU coverage silently drops to zero
+  while the run still looks green - `timeout-minutes` does not help, because it
+  only starts counting once a runner accepts the job. The watchdog notices and
+  annotates the run.
+- `tests/test_docs.py`: checks that relative doc links and heading anchors
+  resolve, that everything in `__all__` is mentioned in the docs, and that no
+  message promises a version that has not shipped. Every one of these
+  corresponds to a real defect found by hand in this release.
+- `.github/scripts/` is now linted and format-checked in CI; it writes the
+  release notes and was previously unchecked.
+
 ### Fixed
 - The `TypeError` raised for the removed `tune(train_loader=...)`/`val_loader=`
   aliases said they "were removed in 1.0". 1.0 has not shipped - they were
