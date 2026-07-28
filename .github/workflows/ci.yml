@@ -5,6 +5,12 @@ on:
   pull_request:
   release:
     types: [published]
+  # Manual lever for the case the automation cannot cover: the release was
+  # created but the PyPI upload failed (registry down, trusted-publishing
+  # hiccup). Re-firing `release: published` for an already-published release
+  # means flipping it back to draft and out again; this is the plain re-run.
+  # Select the *tag*, not main - see the publish job.
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -160,9 +166,22 @@ jobs:
   # remember (0.13.0 sat released-in-name-only on main until someone noticed).
   # Every ordinary push to main reaches this job and exits at the check - the
   # tag already exists, so there is nothing to do.
+  #
+  # test-tf is release-blocking: tf is a supported extra, so shipping with its
+  # tests red ships a known-broken install path. test-cuda deliberately is NOT
+  # here - it targets the self-hosted runner, and a `needs` on a job that sits
+  # queued (runner offline) does not fail, it hangs the release indefinitely.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, typecheck]
+    needs: [lint, test, typecheck, test-tf]
+    # Two merges landing close together read the same version. If the second
+    # run's tag check beats the first run's `gh release create`, it also
+    # decides the version is new and then dies at 422. Serializing makes it
+    # take the clean "already tagged" no-op instead. Scoped to the job so the
+    # rest of CI still runs in parallel across pushes.
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the tag and the release
@@ -201,9 +220,9 @@ jobs:
             --title "autotrainer ${{ steps.check.outputs.version }}" \
             --notes-file release-notes.md
 
-  # Two ways in: the release job cut a new version in THIS run (automatic), or
-  # a release was published by hand (manual - still supported, and the way to
-  # retry an upload that failed after the release already exists).
+  # Three ways in: the release job cut a new version in THIS run (automatic), a
+  # release was published by hand, or someone re-ran the workflow to retry an
+  # upload that failed after the release already existed.
   #
   # The automatic path deliberately does NOT wait to be re-triggered by its own
   # release event. GitHub does not start workflow runs for events raised with
@@ -212,19 +231,31 @@ jobs:
   # the same run, via needs+outputs. Wiring it the obvious way instead would
   # create releases that silently never reach PyPI.
   #
-  # always() is needed because `release` is skipped on the manual path and a
+  # The workflow_dispatch path is restricted to tag refs. Dispatching from main
+  # would build whatever main happens to be now and upload it under the version
+  # in pyproject.toml - i.e. quietly ship post-release commits as the released
+  # version. Requiring a tag makes the retry reproduce the release it retries.
+  #
+  # always() is needed because `release` is skipped on both manual paths and a
   # skipped dependency would skip this job too; the explicit result checks put
   # back the gating that always() switches off.
   publish:
-    needs: [lint, test, typecheck, release]
+    needs: [lint, test, typecheck, test-tf, release]
     if: >-
       always()
       && needs.lint.result == 'success'
       && needs.test.result == 'success'
       && needs.typecheck.result == 'success'
+      && needs['test-tf'].result == 'success'
       && (
-        (github.event_name == 'release' && needs.release.result == 'skipped')
-        || (needs.release.result == 'success' && needs.release.outputs.new == 'true')
+        (needs.release.result == 'success' && needs.release.outputs.new == 'true')
+        || (
+          needs.release.result == 'skipped'
+          && (
+            github.event_name == 'release'
+            || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag')
+          )
+        )
       )
     runs-on: ubuntu-latest
     environment: pypi
