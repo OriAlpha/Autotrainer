@@ -1,9 +1,24 @@
 # autotrainer documentation
 
+## Guide
+
+Task-oriented walkthroughs. Start at whichever question you actually have:
+
+- [Getting throughput out of your GPUs](guide/gpu-optimization.md) — what
+  `prepare(optimize=True)` replaces, and `train_step()`.
+- [Training-loop helpers](guide/training-loop.md) — `set_epoch`, `zero_grad`,
+  `eval_mode`, `accumulate`, batch size, `find_lr`.
+- [Monitors](guide/monitors.md) — bottleneck, throughput, and training health.
+- [Scaling up](guide/scaling.md) — launching, `torch.compile`, FSDP, CPU
+  offload, SLURM.
+- [One-call training](guide/fit.md) — `fit()`, `metric=`, data checks,
+  surviving preemption.
+
 ## API reference
 
 A generated API reference for the `autotrainer` package is built with
-[pdoc](https://pdoc.dev). To build it locally:
+[pdoc](https://pdoc.dev). The published copy lives at
+<https://orialpha.github.io/Autotrainer/>. To build it locally:
 
 ```bash
 pip install -e ".[dev]"
@@ -18,9 +33,10 @@ The reference covers everything exported in `autotrainer.__all__`:
 - **Entry points:** `prepare`, `auto`, `tune`, `fit`, `find_lr`,
   `find_batch_size`, `scope`, `scale_batch_size`, `boost_params`.
 - **Training-loop helpers:** `train_step`, `accumulate`, `zero_grad`,
-  `eval_mode`, `train_mode`, `set_epoch`, `GradScaler`, `autocast_context`.
+  `eval_mode`, `train_mode`, `set_epoch`, `GradScaler`, `autocast_context`,
+  `augment_batch`.
 - **Rank-aware utilities:** `rank`, `is_main`, `print0`, `save0`, `barrier`.
-- **Monitors:** `ThroughputMonitor`, `BottleneckMonitor`.
+- **Monitors:** `ThroughputMonitor`, `BottleneckMonitor`, `TrainingMonitor`.
 - **SLURM helpers:** `configure_scratch`, `configure_nccl`, `node_scratch`.
 
 plus the per-framework backends. Everything else (submodules, `_`-prefixed
@@ -28,9 +44,11 @@ helpers) is internal - see the [public API policy](../CONTRIBUTING.md#public-api
 
 ## Other docs
 
-- [../README.md](../README.md) - quickstart, install, and SLURM usage.
+- [../README.md](../README.md) - quickstart, install, and how autotrainer
+  compares to the alternatives.
 - [../CHANGELOG.md](../CHANGELOG.md) - version history.
 - [../CONTRIBUTING.md](../CONTRIBUTING.md) - dev setup and PR guidelines.
+- [../RUNNER_SETUP.md](../RUNNER_SETUP.md) - self-hosted GPU CI runner setup.
 - [../.env.example](../.env.example) - every environment variable autotrainer
   reads, with comments.
 - [../examples/](../examples/) - runnable example scripts and SLURM `.sbatch`
