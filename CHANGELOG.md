@@ -4,6 +4,8 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.13.0] - 2026-07-28
 ### Added
 - **`metric=` on `tune()` and `fit()`: select on the number you actually care
   about.** The torch path could only ever optimize validation *loss* - it
