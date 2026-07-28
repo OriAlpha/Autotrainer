@@ -4,6 +4,21 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Fixed
+- The `TypeError` raised for the removed `tune(train_loader=...)`/`val_loader=`
+  aliases said they "were removed in 1.0". 1.0 has not shipped - they were
+  removed in 0.12. The message pointed users at a release that does not exist.
+
+### Changed
+- Documentation restructured. The README was 551 lines with 59% of it under a
+  single `## Use` heading nested four levels deep; it is now a ~220-line
+  entry point (pitch, install, quickstart, an entry-point table, and how
+  autotrainer differs from Lightning / Accelerate / Ray / Optuna), with the
+  reference material moved to `docs/guide/`. Also fixes two sections titled
+  "auto batch size" 244 lines apart covering different features, and a
+  paragraph that continued the quickstart 220 lines after it was interrupted.
+- `docs/README.md` claimed to list everything in `autotrainer.__all__` but
+  omitted `TrainingMonitor` (added 0.12) and `augment_batch` (added 0.13).
 
 ## [0.13.0] - 2026-07-28
 ### Added

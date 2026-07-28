@@ -7,26 +7,24 @@
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v0.json)](https://github.com/astral-sh/ruff)
 
 **Automatic distributed training and optimization for ML models.**
-Give it a model and data - it detects your hardware (local GPUs or a SLURM
+Give it a model and data — it detects your hardware (local GPUs or a SLURM
 cluster), picks the distribution strategy, and can infer the loss function,
 optimizer, learning rate, and schedule, or search for the best training
 hyperparameters.
 
 Supports **PyTorch** (DDP, SLURM multi-node), **TensorFlow/Keras**
 (Mirrored / MultiWorker strategies), **scikit-learn**, **XGBoost**, and
-**LightGBM** - all through one API.
+**LightGBM** — all through one API.
 
 ```python
 import autotrainer
 
-# Smart defaults: loss, optimizer, LR, and schedule inferred and printed
+# One line: distribution-ready, plus TF32 / cudnn.benchmark / workers / AMP.
+# Your lr, loss, schedule, and optimizer are never touched.
+model, loader, opt = autotrainer.prepare(model, loader, opt)
+
+# Or infer the recipe: loss, optimizer, LR, and schedule, all printed
 model, loader, opt, loss_fn, sched = autotrainer.auto(model, loader)
-
-# Or search for the best training recipe for YOUR model
-best_model, best_params, study = autotrainer.tune(model, train_loader, val_loader)
-
-# tune() also handles sklearn / XGBoost / LightGBM (curated default spaces)
-best_est, params, study = autotrainer.tune(XGBClassifier(), (X, y), (X_val, y_val))
 
 # Or fully hands-free: search the recipe, then train the winner to completion
 model, params, study = autotrainer.fit(model, train_loader, val_loader)
@@ -34,14 +32,11 @@ model, params, study = autotrainer.fit(model, train_loader, val_loader)
 
 ```bash
 python train.py                  # local: prepare() auto-distributes across GPUs
-autotrainer run train.py         # equivalent, explicit (same spawn machinery)
 srun autotrainer run train.py    # SLURM multi-node (srun starts the tasks)
 autotrainer doctor               # diagnose your environment first
 ```
 
 ## Install
-
-From PyPI:
 
 ```bash
 uv pip install autotrainer[torch]            # just PyTorch (recommended)
@@ -54,30 +49,13 @@ pip install autotrainer[torch]
 Only `psutil` is required by default; each ML framework is an opt-in extra
 (`torch`, `sklearn`, `tf`, `boosting`, `tune`). Install only what you use.
 
-## Install (dev mode)
+Setting up for development instead? See
+[CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
 
-Using `uv` (recommended):
+## Quickstart
 
-```bash
-uv venv
-# On Windows:
-.venv\Scripts\activate
-# On macOS/Linux:
-source .venv/bin/activate
-
-uv pip install -e ".[dev,torch,sklearn,tf,boosting,tune]"
-```
-
-Or using standard pip:
-
-```bash
-pip install -e ".[dev,torch,sklearn,tf,boosting,tune]"
-```
-
-## Use
-
-In your training script, add one line (plus `set_epoch` at each epoch start,
-so distributed shuffling gives every epoch a fresh order):
+Add one line to your training script, plus `set_epoch` at each epoch start so
+distributed shuffling gives every epoch a fresh order:
 
 ```python
 import autotrainer
@@ -88,422 +66,118 @@ for epoch in range(epochs):
     # ... your normal training loop
 ```
 
-### Want throughput, not magic? `prepare(..., optimize=True)` (the default)
+On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, sensible
+`num_workers` / `pin_memory` / `persistent_workers`, and AMP — **without
+touching your lr, loss, schedule, or optimizer**. It is a no-op on CPU, so the
+same script runs unchanged on a laptop and on an A100. Pass `optimize=False` to
+opt out, and see
+[Getting throughput out of your GPUs](docs/guide/gpu-optimization.md) for what
+that replaces.
 
-`prepare()` makes your model/loader distribution-ready and — by default on a
-GPU — also flips on the wins users forget: TF32, `cudnn.benchmark` for CNNs,
-sane `num_workers` / `pin_memory` / `persistent_workers` defaults on bare
-loaders, and AMP — **without touching your lr, loss, schedule, or optimizer
-choice**. It's a no-op on CPU (every flag gates on a visible CUDA device), so
-CPU-only scripts see no change. Pass `optimize=False` to opt out.
-
-#### Before: the boilerplate you write today to "use your GPUs well"
-
-None of this touches your recipe (lr, loss, schedule), yet you have to
-remember all of it every time — and forgetting any one of them silently
-leaves 2–3× on the table.
-
-```python
-import torch
-
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)   # your hyperparameter
-loss_fn = nn.CrossEntropyLoss()                             # your hyperparameter
-
-# Manual GPU optimization — ~10 lines of boilerplate:
-torch.backends.cuda.matmul.allow_tf32 = True               # ships off by default
-torch.backends.cudnn.allow_tf32 = True
-torch.backends.cudnn.benchmark = True                       # free win for CNNs
-loader = DataLoader(ds, batch_size=64, shuffle=True,
-                    num_workers=8, pin_memory=True,         # avoid GPU starvation
-                    persistent_workers=True)
-amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-scaler = torch.cuda.amp.GradScaler(enabled=amp_dtype == torch.float16)
-
-for epoch in range(epochs):
-    for xb, yb in loader:
-        with torch.cuda.amp.autocast(dtype=amp_dtype):
-            loss = loss_fn(model(xb), yb)
-        scaler.scale(loss).backward()
-        scaler.step(optimizer); scaler.update()
-```
-
-#### After: one line
-
-```python
-import autotrainer
-
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)   # your hyperparameter
-loss_fn = nn.CrossEntropyLoss()                             # your hyperparameter
-
-# ONE line detects hardware and sets TF32 / cudnn.benchmark / num_workers /
-# pin_memory / persistent_workers / AMP. lr, loss, schedule, optimizer untouched.
-# (optimize=True is the default on GPU; shown explicitly here for clarity.)
-model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
-
-scaler = autotrainer.GradScaler()   # no-op when bf16 is available
-for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)                    # reshuffles in DDP
-    for xb, yb in loader:
-        with autotrainer.autocast_context():                # bf16 if supported, else fp16
-            loss = loss_fn(model(xb), yb)
-        scaler.scale(loss).backward()
-        scaler.step(optimizer); scaler.update()
-```
-
-What changed: **one `prepare(...)` call (optimize is on by default) + two
-no-op-on-CPU helpers.** What didn't: your lr, your loss, your schedule, your
-optimizer. Same script runs unchanged on a laptop (everything degrades to
-no-ops) and on an A100.
-
-#### Even simpler: `train_step()` runs the whole step
-
-`prepare()` can't wrap *your* loop, so the AMP block above is the one thing
-you still hand-write. `train_step()` does it for you - forward under autocast,
-loss, scale/backward/step/update, then zero the grads - in one call, returning
-the (detached) loss for logging:
-
-```python
-model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
-scaler = autotrainer.GradScaler()          # no-op on CPU / bf16; omit to skip
-
-for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)
-    model.train()
-    for xb, yb in loader:
-        loss = autotrainer.train_step(model, loss_fn, xb, yb, optimizer, scaler=scaler)
-```
-
-Same contract: lr / loss / schedule / optimizer are yours; `train_step` only
-runs the forgettable, order-sensitive bookkeeping (backward stays outside
-autocast). Pass `autocast=False` to keep full precision, or omit `scaler` on
-CPU / bf16 GPUs.
-
-#### What it prints when it runs
-
-Nothing is silent — every speedup is named, the user is explicitly told their
-hyperparameters weren't touched, and when AMP is on `prepare()` points at
-`train_step()` (and still shows the manual form) so the loop is one call
-either way (the helpers are no-ops on CPU, so the snippet is safe verbatim):
-
-```
-[autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
-[autotrainer] DistributedSampler installed (shuffle=True) - call autotrainer.set_epoch(loader, epoch) ...
-[autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
-[autotrainer] optimize: AMP is on. Simplest - one call per step:
-    scaler = autotrainer.GradScaler()   # once, before the loop
-    loss = autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=scaler)
-  or wrap the step yourself:
-    with autotrainer.autocast_context():
-        out = model(x); loss = loss_fn(out, y)
-    scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
-```
-
-| | Manual | `prepare()` (optimize default) |
-|---|---|---|
-| Lines of "optimize my GPUs" boilerplate | ~10, hand-written, easy to forget | **1** |
-| Hyperparameters touched | none (correct) | none (correct) |
-| Works on CPU | guard every line yourself | automatic (all no-ops) |
-| Works on SLURM | you'd never write this path | same script, `srun autotrainer run` |
-| Knows what it did | silent | prints it |
-
-### Training-loop helpers (`zero_grad`, `eval_mode`, `accumulate`)
-
-The small things users forget *inside* the loop. None touch lr / loss /
-schedule / optimizer choice.
-
-```python
-import autotrainer
-
-for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)
-    model.train()
-    for xb, yb in loader:
-        with autotrainer.autocast_context():
-            loss = loss_fn(model(xb), yb)
-        scaler.scale(loss).backward()
-        scaler.step(opt)
-        scaler.update()
-        autotrainer.zero_grad(opt)            # set_to_none=True, saves memory
-
-    # eval_mode restores the prior train/eval state - kills the classic
-    # "forgot to flip back to train() after validation" silent bug.
-    with autotrainer.eval_mode(model):
-        val_loss = evaluate(model, val_loader)
-```
-
-**Gradient accumulation** when the effective batch is larger than the
-physical one — scales the step count, **not** the lr:
-
-```python
-# Effective batch = 4 micro-batches; opt steps once per 4 backwards.
-with autotrainer.accumulate(opt, steps=4, scaler=scaler) as acc:
-    for micro_xb, micro_yb in micro_batches:
-        with autotrainer.autocast_context():
-            loss = loss_fn(model(micro_xb), micro_yb) / 4
-        acc.backward(loss)
-```
-
-### Auto batch size
-
-```python
-# Grow batch size until OOM, back off one step. Pass loss_fn for an
-# accurate fwd+bwd measurement; without it the sweep is forward-only
-# (conservative). lr and schedule are NOT changed - pair with accumulate()
-# to scale the step to the new effective batch.
-model, loader, opt = autotrainer.prepare(
-    model, loader, opt, optimize=True, auto_bs=True, loss_fn=loss_fn
-)
-```
-
-### Dataloader bottleneck monitor
-
-The cheapest piece of the training-triage family. Sample per-step
-data-load vs compute time and get a plain-language warning when the loader
-is starving the GPU:
-
-```python
-mon = autotrainer.BottleneckMonitor(warmup=10)
-for xb, yb in loader:
-    with mon.data_time():
-        pass  # the wait for the next batch
-    with mon.step_time():
-        loss = loss_fn(model(xb), yb); loss.backward(); opt.step()
-    mon.tick()
-    if mon.should_report():
-        mon.report()   # -> "[autotrainer] bottleneck: dataloader is 78% of
-                       #     step time ... - raise num_workers / pin_memory / prefetch"
-```
-
-Opt-in; zero overhead when not constructed.
-
-### Training health monitor (triage)
-
-`BottleneckMonitor` and `ThroughputMonitor` answer *"is it fast?"*;
-`TrainingMonitor` answers *"is it healthy?"* — the silent numerical failures.
-Call `step()` once per optimizer step (after `backward()`, before
-`zero_grad()`) and it flags each problem **once**, in plain language, with the
-fix:
-
-```python
-mon = autotrainer.TrainingMonitor()
-for xb, yb in loader:
-    loss = loss_fn(model(xb), yb)
-    loss.backward()
-    mon.step(loss, model=model, optimizer=opt, scaler=scaler)
-    opt.step(); opt.zero_grad()
-mon.report()   # one-line all-clear, or a recap of what fired
-```
-
-It catches NaN/Inf loss (lr too high, or bad inputs), loss divergence, fp16
-gradient overflow (→ "switch to bf16"), and non-finite / spiking / vanishing
-gradients — e.g.:
-
-```
-[autotrainer] triage: gradient norm spiked to 4.1e+03 (128x the recent median)
-    - add gradient clipping (torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
-```
-
-Everything but `loss` is optional (pass `model` for gradient checks,
-`optimizer` for a concrete lr hint, `scaler` for fp16 overflow). Like the
-other monitors it only *observes* — it never touches your lr, loss, schedule,
-or optimizer. Opt-in; zero overhead when not constructed.
-
-Then launch. **`prepare()` auto-distributes** — on a multi-GPU box it spawns
-one worker per GPU the first time it's called, so a bare `python train.py`
-uses all visible GPUs with no launcher:
+Then launch. On a multi-GPU box `prepare()` spawns one worker per GPU the first
+time it's called, so a bare `python train.py` uses them all with no launcher:
 
 ```bash
-python train.py                   # local: prepare() auto-spawns per-GPU workers
+python train.py                   # local: auto-spawns per-GPU workers
 autotrainer run train.py          # equivalent, explicit (same spawn machinery)
 autotrainer info                  # show what was detected
 ```
 
-Set `prepare(..., auto_launch=False)` to opt out (e.g. you're managing
-processes yourself, or running under your own launcher). The auto-spawn only
-fires when all three hold: no `RANK` env var set (fresh parent, not a worker),
-not under SLURM, and ≥2 GPUs on one node — so it never double-spawns under
-`srun` or loops on already-launched workers.
+## Which entry point do I want?
 
-On SLURM (multi-node), the front door stays `srun autotrainer run` — SLURM
-itself starts one task per GPU across nodes, so auto-spawn is correctly
-skipped there:
+| You want | Call | Guide |
+|---|---|---|
+| My loop, but using the hardware properly | `prepare(model, loader, opt)` | [GPU optimization](docs/guide/gpu-optimization.md) |
+| The whole step written for me | `train_step(...)` | [GPU optimization](docs/guide/gpu-optimization.md#even-simpler-train_step-runs-the-whole-step) |
+| Loss / optimizer / LR / schedule inferred | `auto(model, loader)` | — |
+| The best recipe searched, then trained | `fit(model, train, val)` | [One-call training](docs/guide/fit.md) |
+| Just the search, not the final train | `tune(model, train, val)` | [One-call training](docs/guide/fit.md) |
+| A learning rate suggestion | `find_lr(model, loader, loss_fn)` | [Training loop](docs/guide/training-loop.md#finding-a-learning-rate) |
+| The largest batch size that fits | `find_batch_size(model, step_fn)` | [Training loop](docs/guide/training-loop.md#batch-size) |
+| To know if the loader is the bottleneck | `BottleneckMonitor()` | [Monitors](docs/guide/monitors.md) |
+| To know if training is going wrong | `TrainingMonitor()` | [Monitors](docs/guide/monitors.md) |
+| To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |
+| XGBoost/LightGBM params with sane threads | `boost_params(lib="xgboost")` | — |
+| TensorFlow strategy scope | `scope()`, `scale_batch_size(n)` | — |
 
-On SLURM, inside your sbatch script:
+Everything in `autotrainer.__all__` is public and stable; the rest is internal.
 
-```bash
-#SBATCH --nodes=2
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4
-srun autotrainer run train.py
-```
+## How this differs from the alternatives
 
-### `torch.compile` and FSDP
+Most tools in this space ask you to hand over your training loop, your launcher,
+or both. Autotrainer's bet is that you shouldn't have to give up either to use
+your hardware properly.
 
-Two more opt-ins on `prepare()`, both preserving the "don't touch
-hyperparameters" contract:
+| Tool | What it gives you | What you change to adopt it |
+|---|---|---|
+| `torch.distributed` + `torchrun` | The primitives | Write the DDP wrap, the sampler, the launcher flags — every time |
+| HF Accelerate | Device/precision/distribution abstraction | Restructure around `accelerator.*`; configure and use `accelerate launch` |
+| PyTorch Lightning | A full training framework | Move your code into a `LightningModule` + `Trainer` |
+| Optuna | Hyperparameter search | Write the objective and the loop it calls; distribution is yours |
+| Ray Train / Tune | Distributed execution + search | Adopt the Ray runtime and wrap your function in it |
+| **autotrainer** | **All of the above paths, on your existing loop** | **One line: `prepare(model, loader, opt)`** |
 
-```python
-# torch.compile: 1.5-2x on modern torch+GPU for many models. Compiled
-# BEFORE the DDP wrap (the documented-supported order; the reverse causes
-# graph breaks). On compile failure (dynamic shapes, missing Triton on
-# Windows) falls back to the uncompiled model with a warning.
-model, loader, opt = autotrainer.prepare(
-    model, loader, opt, optimize=True, compile=True
-)
+Concretely, four things are unusual here:
 
-# FSDP instead of DDP when the model is too large to replicate on every GPU.
-# Shards params/grads/optimizer state across ranks. use_orig_params=True so
-# your existing optimizer keeps working unchanged.
-model, loader, opt = autotrainer.prepare(
-    model, loader, opt, optimize=True, fsdp=True
-)
-```
+1. **Your loop stays yours.** `prepare()` returns the same three objects you
+   passed in. There is no base class to inherit, no trainer object to configure,
+   and no callback system to learn. Deleting the import leaves a working script.
+2. **Your hyperparameters are never touched silently.** lr, loss, schedule, and
+   optimizer choice are yours unless you explicitly call `auto()` or `fit()` to
+   have them inferred or searched. Everything `optimize=True` does — TF32,
+   `cudnn.benchmark`, workers, AMP — is throughput, not recipe. And it prints
+   every change it makes, so nothing is a surprise.
+3. **No launcher to configure.** `python train.py` spawns one worker per GPU on
+   its own. There is no config file to generate and no separate launch command,
+   and under SLURM the auto-spawn correctly stands down so `srun autotrainer
+   run` behaves.
+4. **Search and distribution are the same tool.** `fit()` runs an ASHA search
+   *split across your ranks* and then trains the winner distributed. Getting
+   that from Optuna + DDP means wiring a shared study and a launcher yourself.
 
-What it prints:
+It is also framework-plural: PyTorch, TensorFlow/Keras, scikit-learn, XGBoost,
+and LightGBM go through one API, where most of the tools above are PyTorch-only.
 
-```
-[autotrainer] optimize: TF32, torch.compile(mode=default), FSDP (hyperparameters untouched)
-```
+### Reach for something else when
 
-`compile_mode`: `default` | `reduce-overhead` (CUDA graphs, fastest for
-small models with static shapes) | `max-autotune` (kernel search, slow
-first compile). None of these flags touch lr / loss / schedule / optimizer.
-
-### CPU offload and SLURM scratch
-
-**CPU offload** pairs with FSDP for the case where the model OOMs *even
-when sharded across ranks* — move params to CPU, bring them to GPU only for
-the forward/backward:
-
-```python
-model, loader, opt = autotrainer.prepare(
-    model, loader, opt, optimize=True, fsdp=True, cpu_offload=True
-)
-```
-
-Trades throughput for memory headroom. Ignored with a warning on the DDP
-path or single-process (no FSDP = nothing to offload).
-
-**SLURM node-local scratch** — the classic HPC footgun is every rank
-writing to `$HOME` (NFS, slow, shared) instead of `$TMPDIR` (node-local,
-fast, auto-cleaned). One call at the top of your script wires the obvious
-env vars and warns when the scratch looks networked:
-
-```python
-import autotrainer
-autotrainer.configure_scratch()  # sets TORCHINDUCTOR_CACHE_DIR to $TMPDIR
-# ... your training script ...
-```
-
-Under SLURM this uses `$TMPDIR/autotrainer-<jobid>`; outside SLURM, the
-system temp dir. `node_scratch()` returns the path if you want to write
-your own checkpoints there too.
-
-## One-call training: fit()
-
-`fit()` is the whole pipeline in one call - give it a model and data, get
-back the best model it can produce on your hardware:
-
-```python
-model, params, study = autotrainer.fit(model, train_loader, val_loader, trials=30)
-```
-
-1. **Tune**: an ASHA (successive-halving) search over the training recipe -
-   lr, weight decay, optimizer, batch size, LR schedule + warmup, gradient
-   clipping, training length, (for classification) label smoothing, and (for
-   CNNs) augmentation strength - on short trials, with
-   the default space chosen from your model and its inferred loss. Most
-   candidates get a small budget and only survivors are promoted, so the wide
-   space stays cheap. Launched distributed, the trials are split across all
-   ranks via a shared journal-file study - one trial per process, every GPU
-   busy during the search.
-2. **Train**: the winning recipe is retrained from your model's original
-   init through `prepare()` - which auto-distributes it across every
-   GPU/node (a bare `python train.py` spawns one worker per GPU locally;
-   under SLURM, `srun autotrainer run` does the same across nodes) - with
-   the winning schedule, mixed precision, and early stopping on the val score.
-   The best epoch's weights are returned.
-
-### Select on the metric you care about
-
-Both phases select on validation loss by default. Loss is a proxy, and on
-classification it drifts from the goal exactly where it matters: a regularized
-recipe is less confident, so val cross-entropy can bottom out and start
-climbing from overconfidence while val accuracy is still improving - and a
-loss-driven `patience` stops there and hands back a less-accurate model. Name
-the number instead:
-
-```python
-model, params, study = autotrainer.fit(model, train, val, metric="accuracy")
-```
-
-`"accuracy"`, `"f1"` (macro - use it on imbalanced data), `"auc"`, `"r2"`, or
-your own `callable(model, loader) -> float` (add `direction="minimize"` if
-lower is better). It drives the search, the ASHA pruning, early stopping, and
-best-epoch selection. Training always uses the loss; this changes only what
-runs are *scored* by.
-
-Pass `test_loader=` to also get an honest held-out score the search never saw
-(printed and stored on `study.user_attrs["test_score"]`) - the number to trust
-once a wide search has been optimizing against your val set.
-
-### Data checks, before the compute
-
-`auto()` and `tune()` already peek at your batches to infer the loss, so they
-also check them for the problems that look like a bad recipe and aren't:
-
-```
-[autotrainer] tune: data check: class imbalance 19:1 in the 200 targets sampled -
-  the largest class is 95% of them, so a model that only ever predicts it scores
-  95% accuracy. Consider metric='f1' so the search doesn't reward that, and class
-  weights in your loss.
-[autotrainer] tune: data check: train and validation share 30 of the validation
-  set's 50 samples (same indices of the same dataset). The val score - and
-  everything the search picks from it - is optimistic by however much that leaks.
-```
-
-Also caught: un-normalized or raw 0-255 inputs, NaN/Inf in inputs or targets,
-and constant inputs or targets. They run *before* the LR range test and the
-first trial, so you hear about it before the allocation is spent, not after.
-Warnings only - nothing is changed for you. `sanity=False` turns them off.
-
-### Surviving preemption
-
-Pass `checkpoint="fit.ckpt"` to make it preemption-safe: the full training
-state is saved every epoch, and rerunning the same script resumes where it
-died (skipping the search) - ideal for requeued SLURM jobs. It also arms the
-signal watcher, so with
-
-```bash
-#SBATCH --signal=B:USR1@120
-```
-
-a preempted job stops at the next epoch boundary *after* its checkpoint is
-written, instead of losing the epoch it was in the middle of. The search is
-journaled to `fit.ckpt.study`, so a job preempted during phase 1 resumes with
-its completed trials rather than searching again. Delete both files to start
-fresh.
-
-For long searches under multi-process launches, raise the collective
-timeout with `AUTOTRAINER_TIMEOUT` (seconds) - see `.env.example`.
-
-## Optional: auto batch size
-
-```python
-best = autotrainer.find_batch_size(model, my_one_step_fn)
-```
+- **You're already happy on Lightning, Accelerate, or Ray.** Autotrainer doesn't
+  integrate with them — it's an alternative to that layer, not an addition. If
+  their abstractions already fit your work, switching buys you little.
+- **You need multi-node beyond SLURM**, or a scheduler-agnostic cluster
+  abstraction. Ray covers ground autotrainer doesn't.
+- **You need experiment tracking, model registries, or a UI.** This library
+  prints to stdout and returns objects; it is not a platform.
+- **You need architecture search.** Width/depth are deliberately out of scope —
+  the model is yours.
+- **You can't take pre-1.0 churn.** The public API has been frozen since 0.10,
+  but this is 0.x and multi-node SLURM validation is still the open item before
+  1.0 (see [Roadmap](#roadmap)).
 
 ## Documentation
 
-- [CHANGELOG](CHANGELOG.md) - version history.
-- [API reference](https://orialpha.github.io/Autotrainer/) - published from
-  CI on every push to main; build locally with `pdoc -o docs/build src/autotrainer`.
-- [Public API & deprecation policy](CONTRIBUTING.md#public-api-and-deprecation-policy) -
-  what `autotrainer.__all__` exports is stable; the rest is internal.
-- [Examples](examples/) - runnable scripts for each framework and SLURM
+**Guide**
+
+- [Getting throughput out of your GPUs](docs/guide/gpu-optimization.md) —
+  what `optimize=True` replaces, and `train_step()`.
+- [Training-loop helpers](docs/guide/training-loop.md) — `set_epoch`,
+  `zero_grad`, `eval_mode`, `accumulate`, batch size, `find_lr`.
+- [Monitors](docs/guide/monitors.md) — bottleneck, throughput, and training
+  health.
+- [Scaling up](docs/guide/scaling.md) — launching, `torch.compile`, FSDP, CPU
+  offload, SLURM.
+- [One-call training](docs/guide/fit.md) — `fit()`, `metric=`, data checks,
+  surviving preemption.
+
+**Reference**
+
+- [API reference](https://orialpha.github.io/Autotrainer/) — published from CI
+  on every push to main; build locally with `pdoc -o docs/build src/autotrainer`.
+- [Examples](examples/) — runnable scripts for each framework and SLURM
   `.sbatch` templates.
-- [Environment variables](.env.example) - every knob autotrainer reads.
-- [Contributing](CONTRIBUTING.md) | [Security policy](SECURITY.md) |
+- [Environment variables](.env.example) — every knob autotrainer reads.
+- [CHANGELOG](CHANGELOG.md) — version history.
+- [Public API & deprecation policy](CONTRIBUTING.md#public-api-and-deprecation-policy)
+  | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) |
   [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Roadmap
@@ -511,41 +185,37 @@ best = autotrainer.find_batch_size(model, my_one_step_fn)
 Toward 1.0:
 
 - **Stabilization**: the public API is frozen as of 0.10; 1.0 now only blocks
-  on real multi-node SLURM validation (the deprecated
-  `train_loader=`/`val_loader=` aliases have been removed).
+  on real multi-node SLURM validation.
 
-Understanding your training run (the theme after 1.0 - autotrainer should
+Understanding your training run (the theme after 1.0 — autotrainer should
 explain runs, not just launch them):
 
-- **Preflight estimation** (`doctor --profile`): dry-run a few batches,
-  then report projected training time, memory headroom, and cost per GPU
-  count - answer "how many GPUs do I actually need?" before burning an
-  allocation.
-- **Training cards**: every `fit()` emits a reproducibility card
-  (recipe, seeds, environment, val curve) and `replay` reruns it.
+- **Preflight estimation** (`doctor --profile`): dry-run a few batches, then
+  report projected training time, memory headroom, and cost per GPU count —
+  answer "how many GPUs do I actually need?" before burning an allocation.
+- **Training cards**: every `fit()` emits a reproducibility card (recipe,
+  seeds, environment, val curve) and `replay` reruns it.
 
 Deeper SLURM ergonomics:
 
-- **`autotrainer sbatch train.py --nodes 2 --time 4h`**: generate and
-  submit a correct sbatch script (no more `--ntasks-per-node` != GPUs
-  footguns).
-- **Automatic requeue**: `fit(checkpoint=...)` now catches the preemption
-  signal and stops cleanly on a written checkpoint, but resubmitting is still
-  yours to do (`--requeue`, or `scontrol requeue`). Issuing it from inside the
-  handler is the remaining step.
+- **`autotrainer sbatch train.py --nodes 2 --time 4h`**: generate and submit a
+  correct sbatch script (no more `--ntasks-per-node` != GPUs footguns).
+- **Automatic requeue**: `fit(checkpoint=...)` already stops cleanly on a
+  written checkpoint when preempted, but resubmitting is still yours to do
+  (`--requeue`, or `scontrol requeue`). Issuing it from inside the handler is
+  the remaining step.
 
 More breadth:
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **Richer augmentation policies**: the recipe search now covers a single
+- **Richer augmentation policies**: the recipe search covers a single
   `aug_strength` scalar over flip + cutout for CNNs. Label-mixing policies
-  (mixup/cutmix) and per-op RandAugment-style search are the next step - both
+  (mixup/cutmix) and per-op RandAugment-style search are the next step — both
   need to rewrite targets and the loss, so they are a larger change to the
   contract than a searchable scalar.
 - **Architecture-aware search**: width/depth remain out of scope (a bigger,
   opt-in commitment that would step beyond "the model is yours").
 
-See [CHANGELOG.md](CHANGELOG.md) for the full version history, and open or
-upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to prioritize
-these.
+Open or upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to
+prioritize these.

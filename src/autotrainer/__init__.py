@@ -171,7 +171,7 @@ def tune(model: Any, train: Any = None, val: Any = None, **kwargs: Any) -> tuple
     for old, new in (("train_loader", "train"), ("val_loader", "val")):
         if old in kwargs:
             raise TypeError(
-                f"tune() no longer accepts {old}=; it was removed in 1.0 "
+                f"tune() no longer accepts {old}=; it was removed in 0.12 "
                 f"(deprecated since 0.10). Use {new}= instead."
             )
     if train is None or val is None:

@@ -110,7 +110,7 @@ class TestTuneEstimator:
 
 class TestRemovedLoaderKwargs:
     """The ``train_loader=``/``val_loader=`` names were deprecated in 0.10
-    and removed in 1.0 (they were misleading for estimator inputs, which take
+    and removed in 0.12 (they were misleading for estimator inputs, which take
     arrays not loaders). They must now raise a clear TypeError pointing at the
     new names, not a cryptic downstream failure."""
 
