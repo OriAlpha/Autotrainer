@@ -155,9 +155,77 @@ jobs:
       - uses: actions/deploy-pages@v5
         id: deployment
 
-  publish:
-    if: github.event_name == 'release'
+  # Cut the GitHub Release automatically when main's version changes, so
+  # shipping is "merge a version bump" rather than a manual step someone has to
+  # remember (0.13.0 sat released-in-name-only on main until someone noticed).
+  # Every ordinary push to main reaches this job and exits at the check - the
+  # tag already exists, so there is nothing to do.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [lint, test, typecheck]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the release
+    outputs:
+      new: ${{ steps.check.outputs.new }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # tags are what distinguish a new version from a shipped one
+      - id: check
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)
+          if [ -z "$version" ]; then
+            echo "could not read version from pyproject.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged - nothing to release"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new - cutting a release"
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Fails the job if the version has no CHANGELOG section, rather than
+      # shipping a release with empty notes.
+      - if: steps.check.outputs.new == 'true'
+        run: python .github/scripts/changelog_section.py "${{ steps.check.outputs.version }}" > release-notes.md
+      - if: steps.check.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.check.outputs.version }}" \
+            --target "$GITHUB_SHA" \
+            --title "autotrainer ${{ steps.check.outputs.version }}" \
+            --notes-file release-notes.md
+
+  # Two ways in: the release job cut a new version in THIS run (automatic), or
+  # a release was published by hand (manual - still supported, and the way to
+  # retry an upload that failed after the release already exists).
+  #
+  # The automatic path deliberately does NOT wait to be re-triggered by its own
+  # release event. GitHub does not start workflow runs for events raised with
+  # GITHUB_TOKEN - a guard against workflows triggering themselves - so a
+  # release created above fires nothing. Publishing therefore has to happen in
+  # the same run, via needs+outputs. Wiring it the obvious way instead would
+  # create releases that silently never reach PyPI.
+  #
+  # always() is needed because `release` is skipped on the manual path and a
+  # skipped dependency would skip this job too; the explicit result checks put
+  # back the gating that always() switches off.
+  publish:
+    needs: [lint, test, typecheck, release]
+    if: >-
+      always()
+      && needs.lint.result == 'success'
+      && needs.test.result == 'success'
+      && needs.typecheck.result == 'success'
+      && (
+        (github.event_name == 'release' && needs.release.result == 'skipped')
+        || (needs.release.result == 'success' && needs.release.outputs.new == 'true')
+      )
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
