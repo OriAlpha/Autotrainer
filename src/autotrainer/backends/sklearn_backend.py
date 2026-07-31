@@ -47,4 +47,8 @@ def prepare(model: Any, n_jobs: int | None = None) -> Any:
         f"(workers={jobs}, source="
         f"{'SLURM' if os.environ.get('SLURM_CPUS_PER_TASK') else 'local cores'})"
     )
+
+    from ..summary import get_active_summary
+    get_active_summary()
+
     return model

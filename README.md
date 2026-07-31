@@ -55,7 +55,7 @@ Setting up for development instead? See
 ## Quickstart
 
 Add one line to your training script, plus `set_epoch` at each epoch start so
-distributed shuffling gives every epoch a fresh order:
+distributed shuffling gives every epoch a fresh order, and `finish()` at the end:
 
 ```python
 import autotrainer
@@ -64,6 +64,9 @@ model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 for epoch in range(epochs):
     autotrainer.set_epoch(loader, epoch)  # no-op when not distributed
     # ... your normal training loop
+
+# At the end: prints comprehensive training summary & cleans up process groups
+autotrainer.finish()
 ```
 
 On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, sensible
@@ -94,6 +97,7 @@ autotrainer info                  # show what was detected
 | Just the search, not the final train | `tune(model, train, val)` | [One-call training](docs/guide/fit.md) |
 | A learning rate suggestion | `find_lr(model, loader, loss_fn)` | [Training loop](docs/guide/training-loop.md#finding-a-learning-rate) |
 | The largest batch size that fits | `find_batch_size(model, step_fn)` | [Training loop](docs/guide/training-loop.md#batch-size) |
+| Post-training summary & metrics | `finish()`, `log_epoch()`, `step()` | [Training loop](docs/guide/training-loop.md#post-training-summary-finish-log_epoch-step-summarytracker) |
 | To know if the loader is the bottleneck | `BottleneckMonitor()` | [Monitors](docs/guide/monitors.md) |
 | To know if training is going wrong | `TrainingMonitor()` | [Monitors](docs/guide/monitors.md) |
 | To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |

@@ -37,6 +37,7 @@ __all__ = [
     "finish",
     "fit",
     "is_main",
+    "log_epoch",
     "node_scratch",
     "prepare",
     "print0",
@@ -45,6 +46,7 @@ __all__ = [
     "scale_batch_size",
     "scope",
     "set_epoch",
+    "step",
     "SummaryTracker",
     "ThroughputMonitor",
     "train_mode",
@@ -62,7 +64,7 @@ from .slurm import (
     configure_nccl,  # noqa: E402,F401
     node_scratch,
 )
-from .summary import SummaryTracker, finish  # noqa: E402,F401
+from .summary import SummaryTracker, finish, log_epoch, step  # noqa: E402,F401
 
 from .throughput import ThroughputMonitor  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401

@@ -88,6 +88,21 @@ lr = autotrainer.find_lr(model, loader, loss_fn)   # -> float
 It reports a suggestion; what you do with it is yours. If you'd rather have the
 whole recipe searched instead of just the lr, that's [`fit()`](fit.md).
 
+## Post-training summary (`finish`, `log_epoch`, `step`, `SummaryTracker`)
+
+At the end of your training script, call `autotrainer.finish()` to print a comprehensive training summary box (hardware topology, VRAM usage, optimizer, batch size, throughput, duration, and health diagnostic) managed by `SummaryTracker` and cleanly close distributed process groups across all supported frameworks.
+
+You can also record epoch metrics or step losses directly into the active summary tracker using `autotrainer.log_epoch` or `autotrainer.step`:
+
+```python
+# Log epoch metrics or step losses into the summary tracker
+autotrainer.log_epoch(train_loss=0.25, val_loss=0.30)
+autotrainer.step(loss=0.25)
+
+# Print summary box & clean up distributed process groups
+autotrainer.finish(checkpoint="best_model.pt")
+```
+
 ## Next
 
 - [Monitors](monitors.md) — is it fast? is it healthy?

@@ -183,6 +183,16 @@ def get_active_summary() -> SummaryTracker:
     return _ACTIVE_SUMMARY
 
 
+def step(loss: Any = None, batch_count: int = 1, model: Any | None = None, optimizer: Any | None = None) -> None:
+    """Record a step loss in the active summary tracker."""
+    get_active_summary().step(loss=loss, batch_count=batch_count, model=model, optimizer=optimizer)
+
+
+def log_epoch(train_loss: float, val_loss: float | None = None, val_acc: float | None = None) -> None:
+    """Record epoch metrics in the active summary tracker."""
+    get_active_summary().log_epoch(train_loss=train_loss, val_loss=val_loss, val_acc=val_acc)
+
+
 def _on_exit() -> None:
     """Auto-report summary and cleanup on exit if not manually reported."""
     finish()
@@ -194,9 +204,9 @@ def finish(checkpoint: str | Path | None = None) -> None:
     Usage:
         autotrainer.finish(checkpoint="best_model.pt")
     """
-    global _ACTIVE_SUMMARY
-    if _ACTIVE_SUMMARY is not None and not _ACTIVE_SUMMARY.reported:
-        _ACTIVE_SUMMARY.report(checkpoint=checkpoint)
+    summary = get_active_summary()
+    if not summary.reported:
+        summary.report(checkpoint=checkpoint)
 
     import torch
 

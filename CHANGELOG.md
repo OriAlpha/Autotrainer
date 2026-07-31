@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Added
+- **`autotrainer.finish()` summary across all backends.** `finish()` now automatically initializes/retrieves the active `SummaryTracker`, ensuring it prints the comprehensive post-training summary box (hardware topology, VRAM usage, optimizer, batch size, duration, throughput, and health diagnostics) and cleans up process groups across all supported frameworks (`torch`, `sklearn`, `xgboost`/`lightgbm`, and `tensorflow`/`keras`).
+- Top-level `autotrainer.log_epoch()` and `autotrainer.step()` functions exported in `__all__` for recording epoch metrics and step losses directly into the active summary.
 - **Prerelease channel.** A version that is not exactly `X.Y.Z` (an `rc`, `a`,
   `b`, `.dev`, or `.post` suffix) is now published to TestPyPI and marked as a
   prerelease on GitHub, instead of going to production PyPI. This exists so the
@@ -32,8 +34,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 - The `TypeError` raised for the removed `tune(train_loader=...)`/`val_loader=`
   aliases said they "were removed in 1.0". 1.0 has not shipped - they were
   removed in 0.12. The message pointed users at a release that does not exist.
+- Excluded yanked PyPI package `build==1.5.1` from `pyproject.toml` dev dependencies (`build!=1.5.1`) and updated `uv.lock`.
 
 ### Changed
+- Automatically register `get_active_summary()` when backend entry points (`prepare()` and `scope()`) are invoked.
 - Documentation restructured. The README was 551 lines with 59% of it under a
   single `## Use` heading nested four levels deep; it is now a ~220-line
   entry point (pitch, install, quickstart, an entry-point table, and how

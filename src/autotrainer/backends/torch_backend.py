@@ -587,6 +587,16 @@ def prepare(
             "    scaler.scale(loss).backward(); scaler.step(opt); scaler.update()"
         )
 
+    from ..summary import get_active_summary
+
+    summary = get_active_summary()
+    if optimizer is not None and summary.optimizer is None:
+        summary.optimizer = optimizer
+    if loss_fn is not None and summary.loss_fn is None:
+        summary.loss_fn = loss_fn
+    if dataloader is not None and hasattr(dataloader, "batch_size") and summary.batch_size is None:
+        summary.batch_size = getattr(dataloader, "batch_size", None)
+
     out = [model]
     if dataloader is not None:
         out.append(dataloader)
