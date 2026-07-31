@@ -38,15 +38,17 @@ autotrainer doctor               # diagnose your environment first
 ## Install
 
 ```bash
-uv pip install autotrainer[torch]            # just PyTorch (recommended)
-uv pip install autotrainer[torch,boosting]   # PyTorch + XGBoost/LightGBM
+uv pip install "autotrainer[torch]"            # PyTorch (recommended)
+uv pip install "autotrainer[torch,boosting]"   # PyTorch + XGBoost/LightGBM
+uv pip install "autotrainer[all]"              # Everything (PyTorch, TensorFlow, Sklearn, XGBoost, Optuna)
 
 # Or with standard pip:
-pip install autotrainer[torch]
+pip install "autotrainer[all]"
 ```
 
 Only `psutil` is required by default; each ML framework is an opt-in extra
-(`torch`, `sklearn`, `tf`, `boosting`, `tune`). Install only what you use.
+(`torch`, `sklearn`, `tf`, `boosting`, `tune`, `all`). Install only what you use.
+
 
 Setting up for development instead? See
 [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
