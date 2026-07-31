@@ -504,4 +504,13 @@ def auto(
             f"(assumes {epochs} epochs; pass epochs=N to change)"
         )
 
+    from .summary import get_active_summary
+
+    summary = get_active_summary()
+    summary.model = model
+    summary.optimizer = opt
+    summary.loss_fn = loss_fn
+    summary.scheduler = sched
+    summary.batch_size = getattr(dataloader, "batch_size", None)
+
     return model, dataloader, opt, loss_fn, sched

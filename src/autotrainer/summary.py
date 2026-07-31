@@ -25,16 +25,20 @@ class SummaryTracker:
     def __init__(
         self,
         *,
+        model: Any | None = None,
         total_samples: int | None = None,
         batch_size: int | None = None,
         optimizer: Any | None = None,
         loss_fn: Any | None = None,
+        scheduler: Any | None = None,
     ) -> None:
         self.start_time = time.time()
+        self.model = model
         self.total_samples = total_samples or 0
         self.batch_size = batch_size
         self.optimizer = optimizer
         self.loss_fn = loss_fn
+        self.scheduler = scheduler
 
         self.triage_mon = TrainingMonitor()
         self.train_losses: list[float] = []
@@ -52,6 +56,10 @@ class SummaryTracker:
     ) -> None:
         """Record a single step loss and increment sample counts."""
         self.step_count += 1
+        if model is not None:
+            self.model = model
+        if optimizer is not None:
+            self.optimizer = optimizer
         if self.batch_size:
             self.total_samples += self.batch_size * batch_count
         if loss is not None:
@@ -120,12 +128,29 @@ class SummaryTracker:
         total_samples = self.total_samples
         throughput = total_samples / elapsed if elapsed > 0 and total_samples > 0 else 0.0
 
-        # Optimizer & Loss name string
+        # Model parameter count
+        param_str = None
+        if self.model and hasattr(self.model, "parameters"):
+            try:
+                num_params = sum(p.numel() for p in self.model.parameters())
+                if num_params >= 1e9:
+                    param_str = f"{num_params:,} ({num_params / 1e9:.2f}B params)"
+                elif num_params >= 1e6:
+                    param_str = f"{num_params:,} ({num_params / 1e6:.2f}M params)"
+                elif num_params > 0:
+                    param_str = f"{num_params:,} ({num_params / 1e3:.2f}K params)"
+            except Exception:
+                pass
+
+        # Optimizer, LR & Loss name string
         opt_str = self.optimizer.__class__.__name__ if self.optimizer else "Standard"
         if self.optimizer and hasattr(self.optimizer, "param_groups"):
             lr = self.optimizer.param_groups[0].get("lr")
             if lr is not None:
-                opt_str += f" (lr={lr})"
+                lr_str = f"{lr:.2e}" if (lr < 1e-3 or lr > 1e4) else f"{lr:.4g}"
+                opt_str += f" (lr={lr_str})"
+
+        sched_str = self.scheduler.__class__.__name__ if self.scheduler else None
         loss_fn_str = self.loss_fn.__class__.__name__ if self.loss_fn else "Standard"
 
         print0("=" * 66)
@@ -142,7 +167,11 @@ class SummaryTracker:
         print0("")
 
         print0("  Recipe & Hyperparameters:")
+        if param_str:
+            print0(f"    - Model Parameters  : {param_str}")
         print0(f"    - Optimizer         : {opt_str}")
+        if sched_str:
+            print0(f"    - LR Schedule       : {sched_str}")
         if self.batch_size:
             print0(f"    - Batch Size        : {self.batch_size}")
         print0(f"    - Loss Function     : {loss_fn_str}")
