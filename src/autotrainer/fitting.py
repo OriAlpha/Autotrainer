@@ -476,6 +476,7 @@ def train(
     lr: float | None = None,
     loss_fn: Any | None = None,
     optimizer: Any | None = None,
+    patience: int | None = None,
     save_path: str | Any | None = None,
 ) -> Any:
     """One-line complete training loop.
@@ -508,13 +509,17 @@ def train(
     if hasattr(model, "fit") and not hasattr(model, "forward"):
 
         if type(model).__module__.startswith(("keras", "tensorflow")):
+            import tensorflow as tf
             from .backends.tf_backend import scale_batch_size
             bs = scale_batch_size(64)
+            callbacks = []
+            if patience is not None:
+                callbacks.append(tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True))
             if loader is not None:
                 if y is not None:
-                    model.fit(loader, y, batch_size=bs, epochs=epochs)
+                    model.fit(loader, y, batch_size=bs, epochs=epochs, callbacks=callbacks)
                 else:
-                    model.fit(loader, epochs=epochs)
+                    model.fit(loader, epochs=epochs, callbacks=callbacks)
             if save_path is not None:
                 model.save(save_path)
                 from .utils import print0
@@ -522,6 +527,7 @@ def train(
             from .summary import finish
             finish(checkpoint=save_path)
             return model
+
 
         from .backends.sklearn_backend import prepare as sklearn_prepare
         estimator = sklearn_prepare(model)

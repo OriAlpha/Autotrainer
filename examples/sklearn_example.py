@@ -21,10 +21,14 @@ def main() -> None:
     pipe = Pipeline([("scale", StandardScaler()), ("rf", RandomForestClassifier())])
     search = GridSearchCV(pipe, {"rf__n_estimators": [100, 200], "rf__max_depth": [None, 10]})
 
-    # ONE LINE: auto-configures n_jobs, fits the model, & saves to search_model.joblib!
+    # ONE LINE: auto-configures n_jobs across CPU cores/SLURM tasks, fits, & serializes!
+    #
+    # Supported options for scikit-learn in autotrainer.train():
+    #   - search                      : Any scikit-learn Estimator, Pipeline, or GridSearchCV
+    #   - X, y                        : Feature matrix and target labels
+    #   - save_path="search_model.joblib": Auto-saves model via joblib.dump()
     search = autotrainer.train(search, X, y, save_path="search_model.joblib")
     print("best score:", search.best_score_)
-
 
 
 if __name__ == "__main__":

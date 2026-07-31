@@ -13,7 +13,8 @@ import autotrainer
 
 
 def main() -> None:
-    with autotrainer.scope():  # picks the right tf.distribute strategy
+    # autotrainer.scope() picks MirroredStrategy (local multi-GPU) or MultiWorkerMirroredStrategy (SLURM)
+    with autotrainer.scope():
         model = tf.keras.Sequential(
             [
                 tf.keras.layers.Dense(128, activation="relu"),
@@ -30,6 +31,11 @@ def main() -> None:
     y = np.random.randint(0, 10, 2048)
 
     # 1-LINE EXECUTION: scales batch size per replica, runs training, & saves model.keras!
+    #
+    # Options for TensorFlow in autotrainer.train():
+    #   - epochs=3                    : Number of training epochs
+    #   - save_path="model.keras"     : Auto-saves model via model.save()
+    #   - patience=5                  : Injects EarlyStopping(restore_best_weights=True)
     autotrainer.train(model, X, y, epochs=3, save_path="model.keras")
 
 

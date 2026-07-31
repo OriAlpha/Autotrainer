@@ -22,6 +22,14 @@ def main() -> None:
     loss_fn = nn.CrossEntropyLoss()                           # YOUR loss choice
 
     # EXACTLY 1 LINE: Keeps your hyperparameters, turns on GPU hardware wins, runs AMP loop, & prints summary!
+    #
+    # Supported options in autotrainer.train():
+    #   - epochs=3                    : Number of training epochs
+    #   - optimizer=optimizer         : Custom optimizer instance
+    #   - loss_fn=loss_fn             : Custom loss function instance
+    #   - save_path="opt_model.pt"    : Auto-saves rank-0 checkpoint (.pt, .joblib, .keras, .json)
+    #   - patience=5                  : Early stopping patience
+    #   - lr=1e-3                     : Custom learning rate override
     autotrainer.train(model, loader, epochs=3, optimizer=optimizer, loss_fn=loss_fn, save_path="opt_model.pt")
 
 
