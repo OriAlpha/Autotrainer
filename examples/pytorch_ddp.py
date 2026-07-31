@@ -13,7 +13,7 @@ import autotrainer
 
 
 def main() -> None:
-    # Fake dataset (replace with your real one)
+    # 1. Dataset setup
     X = torch.randn(2048, 32)
     y = torch.randint(0, 10, (2048,))
     loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)
@@ -27,9 +27,8 @@ def main() -> None:
     device = next(model.parameters()).device
 
     for epoch in range(3):
-        if hasattr(loader.sampler, "set_epoch"):
-            loader.sampler.set_epoch(epoch)  # required for proper shuffling in DDP
         total = 0.0
+
         for xb, yb in loader:
             xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
@@ -38,6 +37,9 @@ def main() -> None:
             optimizer.step()
             total += loss.item()
         autotrainer.print0(f"epoch {epoch}: loss {total / len(loader):.4f}")
+
+    # One line at the end: prints full summary box and cleans up process groups!
+    autotrainer.finish()
 
 
 if __name__ == "__main__":

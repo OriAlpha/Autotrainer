@@ -34,6 +34,7 @@ __all__ = [
     "eval_mode",
     "find_batch_size",
     "find_lr",
+    "finish",
     "fit",
     "is_main",
     "node_scratch",
@@ -44,6 +45,7 @@ __all__ = [
     "scale_batch_size",
     "scope",
     "set_epoch",
+    "SummaryTracker",
     "ThroughputMonitor",
     "train_mode",
     "TrainingMonitor",
@@ -60,8 +62,11 @@ from .slurm import (
     configure_nccl,  # noqa: E402,F401
     node_scratch,
 )
+from .summary import SummaryTracker, finish  # noqa: E402,F401
+
 from .throughput import ThroughputMonitor  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401
+
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

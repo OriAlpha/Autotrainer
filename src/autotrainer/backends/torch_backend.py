@@ -152,6 +152,27 @@ def _loader_kwargs(dataloader: Any) -> dict[str, Any]:
     return kwargs
 
 
+class _AutoEpochDataLoader:
+    """DataLoader wrapper that automatically calls sampler.set_epoch(epoch) on iter()."""
+
+    def __init__(self, dataloader: Any) -> None:
+        self.dataloader = dataloader
+        self._epoch = 0
+
+    def __iter__(self) -> Any:
+        sampler = getattr(self.dataloader, "sampler", None)
+        if sampler is not None and hasattr(sampler, "set_epoch"):
+            sampler.set_epoch(self._epoch)
+            self._epoch += 1
+        return iter(self.dataloader)
+
+    def __len__(self) -> int:
+        return len(self.dataloader)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.dataloader, name)
+
+
 def _shard_loader(dataloader: Any, rank: int, world_size: int) -> Any:
     """Swap the loader's sampler for a DistributedSampler, keeping its settings."""
     import torch
@@ -180,15 +201,16 @@ def _shard_loader(dataloader: Any, rank: int, world_size: int) -> Any:
     if rank == 0:
         print(
             "[autotrainer] DistributedSampler installed (shuffle="
-            f"{shuffle}) - call autotrainer.set_epoch(loader, epoch) at the "
-            "start of every epoch so each epoch reshuffles"
+            f"{shuffle}) - epoch shuffling auto-managed"
         )
-    return DataLoader(
+    sharded = DataLoader(
         dataloader.dataset,
         batch_size=dataloader.batch_size,
         sampler=sampler,
         **_loader_kwargs(dataloader),
     )
+    return _AutoEpochDataLoader(sharded)
+
 
 
 def prepare(
