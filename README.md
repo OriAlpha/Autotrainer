@@ -106,6 +106,7 @@ autotrainer info                  # show what was detected
 
 | You want | Call | Guide |
 |---|---|---|
+| 1-line train, recipe infer, & model save across PyTorch/Sklearn/XGBoost/TF | `train(model, loader, save_path="model.pt")` | [Quickstart](#quickstart) |
 | My loop, but using the hardware properly | `prepare(model, loader, opt)` | [GPU optimization](docs/guide/gpu-optimization.md) |
 | The whole step written for me | `train_step(...)` | [GPU optimization](docs/guide/gpu-optimization.md#even-simpler-train_step-runs-the-whole-step) |
 | Loss / optimizer / LR / schedule inferred | `auto(model, loader)` | — |
@@ -119,6 +120,7 @@ autotrainer info                  # show what was detected
 | To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |
 | XGBoost/LightGBM params with sane threads | `boost_params(lib="xgboost")` | — |
 | TensorFlow strategy scope | `scope()`, `scale_batch_size(n)` | — |
+
 
 Everything in `autotrainer.__all__` is public and stable; the rest is internal.
 
