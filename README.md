@@ -19,15 +19,14 @@ Supports **PyTorch** (DDP, SLURM multi-node), **TensorFlow/Keras**
 ```python
 import autotrainer
 
-# One line: distribution-ready, plus TF32 / cudnn.benchmark / workers / AMP.
-# Your lr, loss, schedule, and optimizer are never touched.
+# 1-Line Full Train: infers recipe, hardware wins, saves model, & prints summary!
+autotrainer.train(model, loader, epochs=5, save_path="model.pt")
+
+# Or prepare your custom training loop (DDP + AMP + TF32 + DataLoader workers):
 model, loader, opt = autotrainer.prepare(model, loader, opt)
 
-# Or infer the recipe: loss, optimizer, LR, and schedule, all printed
-model, loader, opt, loss_fn, sched = autotrainer.auto(model, loader)
-
-# Or fully hands-free: search the recipe, then train the winner to completion
-model, params, study = autotrainer.fit(model, train_loader, val_loader)
+# Or hands-free search & retraining: searches recipe, then trains the winner
+model, params, study = autotrainer.fit(model, train_loader, val_loader, save_path="best_model.pt")
 ```
 
 ```bash
