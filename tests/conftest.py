@@ -45,6 +45,7 @@ CUDA_OPTIMIZE_SURFACE = frozenset(
         "is_bf16_supported",
         "get_device_name",
         "get_device_properties",
+        "max_memory_allocated",
         "max_memory_reserved",
         "max_memory_allocated",
         "empty_cache",
@@ -82,6 +83,7 @@ def pretend_cuda(monkeypatch):
             name=fakes.device_name, major=8, minor=0, total_memory=80 * 1024**3
         ),
     )
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _d=None: 10 * 1024**3)
     monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda _d=None: 10 * 1024**3)
     monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _d=None: 5 * 1024**3)
     monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)

@@ -10,7 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 - **Unified `autotrainer.train()` 1-Line API.** Single-function execution across PyTorch, Scikit-Learn, XGBoost, LightGBM, CatBoost, and TensorFlow/Keras. Automatically infers loss/optimizer/scheduler, configures thread/replica batch scaling, executes training, serializes model checkpoints, and reports performance summary.
 - **Model Checkpoint `save_path=` Parameter.** Added `save_path` parameter to `train()`, `fit()`, and `tune()`, enabling direct model serialization (`.pt`, `.joblib`, `.keras`, `.json`) without requiring separate `save0()` or `joblib.dump()` code lines.
 - **Automatic Summary & Process Group Cleanup.** `train()`, `fit()`, and `tune()` now automatically trigger `finish(checkpoint=save_path)` on exit, eliminating separate `autotrainer.finish()` calls.
-- **`autotrainer.finish(checkpoint=...)` & `SummaryTracker` API.** One-line post-training summary reporter and cleanup helper. Displays formatted summary box with cluster hardware, topology, VRAM usage %, training throughput (samples/sec), loss metrics, active optimizations, and health triage, then automatically destroys process groups.
+- **`autotrainer.finish(checkpoint=...)` & `SummaryTracker` API across all backends.** One-line post-training summary reporter and cleanup helper across all supported frameworks (`torch`, `sklearn`, `xgboost`/`lightgbm`, and `tensorflow`/`keras`). Displays formatted summary box with cluster hardware, topology, VRAM usage %, training throughput (samples/sec), loss metrics, active optimizations, and health triage, then automatically destroys process groups.
+- **Top-level `autotrainer.log_epoch()` and `autotrainer.step()` functions.** Exported in `__all__` for recording epoch metrics and step losses directly into the active summary.
 - **Auto-managed DDP Epoch Shuffling (`_AutoEpochDataLoader`).** `autotrainer.prepare()` now auto-wraps DataLoaders to advance `DistributedSampler.set_epoch(epoch)` automatically on every epoch loop iteration, eliminating the need for explicit `autotrainer.set_epoch()` calls.
 - **Dynamic Plain-English Optimizations Catalog.** Summary engine dynamically detects active optimizations across 25 supported methods (TF32, AMP, FlashAttention SDPA, cuDNN benchmark, DDP, FSDP, CPU parameter offloading, CUDA allocator tuning, DataLoader workers, SLURM scratch, etc.) and prints human-readable explanations.
 - **Internal Architecture Catalog.** Documented all 25 optimization methods and `summary.py` architecture in `docs/internal/architecture.md`.
@@ -43,9 +44,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 - The `TypeError` raised for the removed `tune(train_loader=...)`/`val_loader=`
   aliases said they "were removed in 1.0". 1.0 has not shipped - they were
   removed in 0.12. The message pointed users at a release that does not exist.
+- Excluded yanked PyPI package `build==1.5.1` from `pyproject.toml` dev dependencies (`build!=1.5.1`) and updated `uv.lock`.
 
 
 ### Changed
+- Automatically register `get_active_summary()` when backend entry points (`prepare()` and `scope()`) are invoked.
 - Documentation restructured. The README was 551 lines with 59% of it under a
   single `## Use` heading nested four levels deep; it is now a ~220-line
   entry point (pitch, install, quickstart, an entry-point table, and how
