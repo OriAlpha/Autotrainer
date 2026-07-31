@@ -140,6 +140,26 @@ class SummaryTracker:
         print0(f"    • Loss Function     : {loss_fn_str}")
         print0("")
 
+        # Active Optimizations
+        opts_list = []
+        if torch.cuda.is_available():
+            if torch.backends.cuda.matmul.allow_tf32:
+                opts_list.append("TF32 Precision (TensorFloat-32)")
+            if torch.backends.cudnn.benchmark:
+                opts_list.append("cuDNN Benchmark (Fast Convolutions)")
+        if torch.distributed.is_initialized():
+            ws = torch.distributed.get_world_size()
+            opts_list.append(f"DistributedDataParallel (DDP) [{ws} Ranks]")
+            opts_list.append("DistributedSampler (Epoch Auto-Shuffling)")
+        opts_list.append("DataLoader Pipeline (num_workers, pin_memory, persistent_workers)")
+
+        if opts_list:
+            print0("  Autotrainer Active Optimizations:")
+            for opt_item in opts_list:
+                print0(f"    • {opt_item}")
+            print0("")
+
+
         print0("  Performance & Speed:")
         print0(f"    • Total Duration    : {elapsed:.2f}s")
         if num_epochs > 0:
