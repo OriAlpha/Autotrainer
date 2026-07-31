@@ -50,7 +50,8 @@ helpers) is internal - see the [public API policy](../CONTRIBUTING.md#public-api
   compares to the alternatives.
 - [../CHANGELOG.md](../CHANGELOG.md) - version history.
 - [../CONTRIBUTING.md](../CONTRIBUTING.md) - dev setup and PR guidelines.
-- [../RUNNER_SETUP.md](../RUNNER_SETUP.md) - self-hosted GPU CI runner setup.
+- [internal/runner_setup.md](internal/runner_setup.md) - self-hosted GPU CI runner setup.
+
 - [../.env.example](../.env.example) - every environment variable autotrainer
   reads, with comments.
 - [../examples/](../examples/) - runnable example scripts and SLURM `.sbatch`

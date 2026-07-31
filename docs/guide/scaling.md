@@ -100,4 +100,5 @@ For long runs under multi-process launches, raise the collective timeout with
 
 - [One-call training](fit.md) — including surviving preemption on a requeued
   SLURM job.
-- [RUNNER_SETUP.md](../../RUNNER_SETUP.md) — self-hosted GPU CI runner setup.
+- [runner_setup.md](../internal/runner_setup.md) — self-hosted GPU CI runner setup.
+
