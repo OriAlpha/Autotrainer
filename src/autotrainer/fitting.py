@@ -492,7 +492,6 @@ def train(
         search = autotrainer.train(search, X, y)
     """
     if isinstance(model, dict) and loader is not None:
-
         import xgboost as xgb
         from .backends.boosting_backend import boost_params
         params = boost_params(model)
@@ -502,6 +501,8 @@ def train(
             booster.save_model(save_path)
             from .utils import print0
             print0(f"[autotrainer] saved XGBoost model to {save_path}")
+        from .summary import finish
+        finish(checkpoint=save_path)
         return booster
 
     if hasattr(model, "fit") and not hasattr(model, "forward"):
@@ -518,6 +519,8 @@ def train(
                 model.save(save_path)
                 from .utils import print0
                 print0(f"[autotrainer] saved TensorFlow model to {save_path}")
+            from .summary import finish
+            finish(checkpoint=save_path)
             return model
 
         from .backends.sklearn_backend import prepare as sklearn_prepare
@@ -532,7 +535,10 @@ def train(
             joblib.dump(estimator, save_path)
             from .utils import print0
             print0(f"[autotrainer] saved estimator to {save_path}")
+        from .summary import finish
+        finish(checkpoint=save_path)
         return estimator
+
 
 
 

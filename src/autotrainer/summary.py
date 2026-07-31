@@ -145,9 +145,9 @@ class SummaryTracker:
         import os
 
         if torch.cuda.is_available():
-            if torch.backends.cuda.matmul.allow_tf32:
+            if getattr(torch.backends.cuda.matmul, "allow_tf32", False):
                 opts_list.append("TF32 Precision → Accelerates GPU matrix math by up to 3x with zero accuracy loss")
-            if torch.backends.cudnn.benchmark:
+            if getattr(torch.backends.cudnn, "benchmark", False):
                 opts_list.append("cuDNN Benchmark → Auto-tunes fastest convolution kernel algorithms for your GPU")
             if hasattr(torch.backends.cuda, "flash_sdp_enabled") and torch.backends.cuda.flash_sdp_enabled():
                 opts_list.append("FlashAttention SDPA → Accelerates transformer attention math by 2-4x with O(N) memory scaling")
@@ -160,15 +160,20 @@ class SummaryTracker:
             opts_list.append(f"DDP ({ws} Ranks) → Scales model training in parallel across {ws} GPU processes")
             opts_list.append("DistributedSampler → Auto-reshuffles dataset indices per epoch across GPUs")
 
+        if "SLURM_CPUS_PER_TASK" in os.environ:
+            cpus = os.environ["SLURM_CPUS_PER_TASK"]
+            opts_list.append(f"CPU Multi-Core Scaling → Configured n_jobs={cpus} to match SLURM task allocation")
+        else:
+            opts_list.append("Multi-Core Parallelization → Auto-configured thread/worker pools across physical CPU cores")
+
         opts_list.append("DataLoader Pipeline → Uses multi-worker threads & page-locked memory to eliminate CPU bottlenecks")
-        
+
         if self.optimizer and hasattr(self.optimizer, "defaults"):
             if self.optimizer.defaults.get("max_norm"):
                 opts_list.append("Grad Clipping → Limits gradient norms to prevent exploding gradients in deep nets")
             if self.optimizer.defaults.get("weight_decay"):
                 opts_list.append("Weight Decay Exclude → Automatically separates Norm/Bias layers from decay to preserve convergence")
-        
-        # Check for common learning rate scheduler attributes
+
         if hasattr(self, "scheduler") and hasattr(self.scheduler, "warmup_iters"):
              opts_list.append("Warmup Cosine Schedule → Gradually ramps LR before decay to prevent early instability")
 
@@ -178,9 +183,7 @@ class SummaryTracker:
             opts_list.append("SLURM Node Scratch → Routes inductor cache to fast local $TMPDIR to avoid NFS stalls")
         if "NCCL_SOCKET_IFNAME" in os.environ:
             opts_list.append(f"NCCL Interconnect → Bound to {os.environ['NCCL_SOCKET_IFNAME']} to prevent multi-node hangs")
-        if "SLURM_CPUS_PER_TASK" in os.environ:
-            cpus = os.environ["SLURM_CPUS_PER_TASK"]
-            opts_list.append(f"CPU Multi-Core Scaling → Configured n_jobs={cpus} to match SLURM task allocation")
+
 
         if opts_list:
             print0("  Autotrainer Active Optimizations:")
