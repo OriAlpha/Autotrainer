@@ -13,12 +13,17 @@ OK, WARN, FAIL = "[ ok ]", "[warn]", "[FAIL]"
 
 
 def _check_frameworks(report: list[str]) -> None:
-    found = []
+    details = []
     for name in ("torch", "tensorflow", "sklearn", "xgboost", "lightgbm"):
         if importlib.util.find_spec(name) is not None:
-            found.append(name)
-    if found:
-        report.append(f"{OK} frameworks installed: {', '.join(found)}")
+            try:
+                mod = importlib.import_module(name)
+                ver = getattr(mod, "__version__", "installed")
+                details.append(f"{name} v{ver}")
+            except Exception:
+                details.append(name)
+    if details:
+        report.append(f"{OK} ML frameworks: {', '.join(details)}")
     else:
         report.append(
             f"{FAIL} no supported ML framework found "

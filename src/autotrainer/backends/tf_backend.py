@@ -78,6 +78,10 @@ def scope() -> Any:
         strategy = tf.distribute.get_strategy()
         print("[autotrainer] tf backend: default strategy (single device)")
 
+    from ..summary import get_active_summary
+
+    get_active_summary()
+
     return strategy.scope()
 
 

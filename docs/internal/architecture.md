@@ -201,7 +201,42 @@ observe-only. Same shape: `tick`/`stats`/`should_report`/`report`.
   `_warn` enforces fire-once-per-problem; `_grad_global_norm` is the hot path,
   called every step.
 
+### `summary.py` (258 LOC)
+
+`SummaryTracker` and `finish()`. Automatically captures duration, dataset throughput (samples/sec), GPU memory allocation %, node topology, initial vs final loss delta, validation metrics, active optimizations, and training health triage.
+
+#### Complete Catalog of Supported Optimization Methods (25 Features)
+
+| Category | Optimization Method | Detection / Implementation | Plain-English Summary Description |
+|---|---|---|---|
+| **Compute Acceleration** | TF32 Precision | `torch.backends.cuda.matmul.allow_tf32` | `Accelerates GPU matrix math by up to 3x with zero accuracy loss` |
+| | AMP Mixed Precision | `autocast_context()` / `GradScaler()` | `Cuts memory bandwidth usage in half using FP16/BF16 tensor ops` |
+| | `torch.compile()` | `torch.compile(model)` | `Fuses PyTorch operators into custom CUDA kernels (up to 2x speedup)` |
+| | cuDNN Benchmark | `torch.backends.cudnn.benchmark` | `Auto-tunes fastest convolution kernel algorithms for your GPU` |
+| | FlashAttention SDPA | `torch.backends.cuda.flash_sdp_enabled()` | `Accelerates transformer attention math by 2-4x with O(N) memory scaling` |
+| | Native BF16 Precision | `torch.cuda.is_bf16_supported()` | `Uses 16-bit brain floating point for higher numerical stability` |
+| **Data Pipeline** | DataLoader Pipeline | `build_loader_defaults` | `Uses multi-worker threads & page-locked memory to eliminate CPU bottlenecks` |
+| | Auto Batch Scaling | `find_batch_size()` | `Maximizes batch size to full GPU VRAM capacity without OOM` |
+| | Gradient Accumulation | `autotrainer.accumulate()` | `Simulates large effective batch sizes without memory overhead` |
+| | GPU Augmentation | `autotrainer.augment_batch()` | `Offloads heavy image transformations to CUDA` |
+| **Distributed & Multi-GPU** | DDP Parallel Training | `DistributedDataParallel` | `Scales model training in parallel across N GPU processes` |
+| | FSDP Model Sharding | `FullyShardedDataParallel` | `Shards model weights, gradients, and optimizer state across GPUs to prevent OOM` |
+| | FSDP CPU Offloading | `CPUOffload(offload_params=True)` | `Offloads sharded parameters to host CPU RAM during computation` |
+| | DDP Static Graph | `static_graph=True` | `Skips per-iteration autograd graph recording overhead` |
+| | DistributedSampler | `_shard_loader()` / `_AutoEpochDataLoader` | `Auto-reshuffles dataset indices per epoch across GPUs` |
+| | SLURM Node Scratch | `configure_scratch()` | `Routes inductor cache to fast local $TMPDIR to avoid NFS stalls` |
+| | NCCL Interconnect | `configure_nccl()` | `Bound to network interface to prevent multi-node hangs` |
+| | CUDA Allocator Tuning | `PYTORCH_CUDA_ALLOC_CONF` | `Configured expandable_segments to eliminate VRAM fragmentation OOMs` |
+| **Recipe & Hyperparameters** | Grad Norm Clipping | `optimizer.defaults['max_norm']` | `Limits gradient norms to prevent exploding gradients in deep nets` |
+| | Weight Decay Exclusion | `optimizer.defaults['weight_decay']` | `Automatically separates Norm/Bias layers from decay to preserve convergence` |
+| | Warmup Cosine Schedule | `_make_scheduler()` | `Gradually ramps LR before decay to prevent early instability` |
+| | LR Range Finder | `find_lr()` | `Sweeps learning rate to find optimal step size` |
+| | Optuna Recipe Search | `fit()` / `tune()` | `Auto-tunes hyperparameters with trial pruning` |
+| | TensorFlow Auto-Strategy | `scope()` | `Auto-selects MirroredStrategy & scales global batch size` |
+| | CPU Multi-Core Scaling | `SLURM_CPUS_PER_TASK` | `Configured n_jobs to match SLURM task allocation` |
+
 ---
+
 
 ## Layer 5 — Orchestration
 

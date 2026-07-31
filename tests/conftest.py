@@ -45,6 +45,7 @@ CUDA_OPTIMIZE_SURFACE = frozenset(
         "is_bf16_supported",
         "get_device_name",
         "get_device_properties",
+        "max_memory_allocated",
         "max_memory_reserved",
         "empty_cache",
         "synchronize",
@@ -81,9 +82,12 @@ def pretend_cuda(monkeypatch):
             name=fakes.device_name, major=8, minor=0, total_memory=80 * 1024**3
         ),
     )
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _d=None: 10 * 1024**3)
     monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda _d=None: 10 * 1024**3)
+    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _d=None: 5 * 1024**3)
     monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda _d=None: None)
+
     # Device placement is orthogonal to what the optimize tests check (flag
     # application + non-mutation of hyperparameters); keep tensors where they
     # are so "to(cuda)" becomes a no-op.

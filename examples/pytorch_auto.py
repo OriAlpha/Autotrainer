@@ -1,4 +1,4 @@
-"""Smart defaults: loss, optimizer, LR, and schedule inferred automatically.
+"""Smart defaults: 1-line execution for end-to-end training.
 Run: autotrainer run pytorch_auto.py
 
 The ``if __name__ == "__main__":`` guard is required on Windows/macOS-spawn:
@@ -18,27 +18,16 @@ def main() -> None:
     loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)
     model = nn.Sequential(nn.Linear(32, 128), nn.ReLU(), nn.Linear(128, 10))
 
-    # One call: infers CrossEntropyLoss, AdamW, LR (range test), warmup+cosine
-    model, loader, opt, loss_fn, sched = autotrainer.auto(model, loader, epochs=3)
-    device = next(model.parameters()).device
-    scaler = autotrainer.GradScaler()  # handles mixed-precision scaling automatically
-
-    # Explicit loop (rather than train_step) because a scheduler steps once per
-    # optimizer step - see pytorch_optimize.py for the one-call train_step form.
-    for epoch in range(3):
-        autotrainer.set_epoch(loader, epoch)  # reshuffles in DDP; no-op otherwise
-        for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
-            opt.zero_grad()
-            with autotrainer.autocast_context():  # mixed precision on GPU
-                loss = loss_fn(model(xb), yb)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            sched.step()
-        autotrainer.print0(f"epoch {epoch} done")  # prints once, not N times
-
-    autotrainer.save0(model.state_dict(), "model.pt")  # rank 0 saves
+    # EXACTLY 1 LINE: infers recipe, runs AMP loop, saves checkpoint, & prints summary!
+    #
+    # Supported kwargs for autotrainer.train():
+    #   - epochs=10                          : Number of training epochs
+    #   - save_path="model.pt"               : Auto-saves checkpoint (.pt, .joblib, .keras, .json)
+    #   - lr=1e-3                            : Custom learning rate (or None to auto-tune via LR range test)
+    #   - loss_fn=nn.CrossEntropyLoss()      : Custom loss function (or None to auto-infer from targets)
+    #   - optimizer=optim.AdamW(model.parameters()) : Custom optimizer (or None for AdamW default)
+    #   - patience=5                         : Early stopping patience (halts when loss stops improving)
+    autotrainer.train(model, loader, epochs=3, save_path="model.pt")
 
 
 if __name__ == "__main__":

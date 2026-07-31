@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 # The public API. Everything not listed here (submodules, _-prefixed
 # helpers) is internal and may change without a deprecation cycle.
@@ -34,8 +34,10 @@ __all__ = [
     "eval_mode",
     "find_batch_size",
     "find_lr",
+    "finish",
     "fit",
     "is_main",
+    "log_epoch",
     "node_scratch",
     "prepare",
     "print0",
@@ -44,7 +46,9 @@ __all__ = [
     "scale_batch_size",
     "scope",
     "set_epoch",
-    "ThroughputMonitor",
+    "step",
+    "SummaryTracker",
+    "train",
     "train_mode",
     "TrainingMonitor",
     "train_step",
@@ -54,12 +58,14 @@ __all__ = [
 
 from .augment import augment_batch  # noqa: E402,F401
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
+from .fitting import train  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
 from .slurm import (
     configure_nccl,  # noqa: E402,F401
     node_scratch,
 )
+from .summary import SummaryTracker, finish, log_epoch, step  # noqa: E402,F401
 from .throughput import ThroughputMonitor  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401

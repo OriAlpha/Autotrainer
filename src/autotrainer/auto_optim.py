@@ -139,6 +139,8 @@ def _infer_loss(model: Any, yb: Any, xb: Any) -> tuple[nn.Module, str, str]:
 def _make_loss(name: str, label_smoothing: float = 0.0) -> nn.Module:
     import torch.nn as nn
 
+    if not isinstance(name, str):
+        return name
     if name == "bce":
         return _bce_loss()
     if name == "cross_entropy":
@@ -501,5 +503,14 @@ def auto(
             f"[autotrainer] auto: schedule=warmup({warmup} steps)+cosine "
             f"(assumes {epochs} epochs; pass epochs=N to change)"
         )
+
+    from .summary import get_active_summary
+
+    summary = get_active_summary()
+    summary.model = model
+    summary.optimizer = opt
+    summary.loss_fn = loss_fn
+    summary.scheduler = sched
+    summary.batch_size = getattr(dataloader, "batch_size", None)
 
     return model, dataloader, opt, loss_fn, sched

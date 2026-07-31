@@ -1,8 +1,9 @@
-"""Minimal example: a tiny model on random data, launched via `autotrainer run`.
+"""Minimal DDP training script with custom model, optimizer, & loss function.
+Run: autotrainer run pytorch_ddp.py
 
 The ``if __name__ == "__main__":`` guard is required on Windows/macOS-spawn:
-``prepare()`` may set ``num_workers > 0``, and spawned DataLoader workers
-re-import this module - without the guard they'd re-run training.
+DataLoader workers re-import this module, and without the guard they'd
+re-run training instead of just loading data.
 """
 
 import torch
@@ -13,7 +14,6 @@ import autotrainer
 
 
 def main() -> None:
-    # Fake dataset (replace with your real one)
     X = torch.randn(2048, 32)
     y = torch.randint(0, 10, (2048,))
     loader = DataLoader(TensorDataset(X, y), batch_size=64, shuffle=True)
@@ -22,22 +22,16 @@ def main() -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = nn.CrossEntropyLoss()
 
-    # The one autotrainer line: handles device placement, DDP, distributed sampler.
-    model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
-    device = next(model.parameters()).device
-
-    for epoch in range(3):
-        if hasattr(loader.sampler, "set_epoch"):
-            loader.sampler.set_epoch(epoch)  # required for proper shuffling in DDP
-        total = 0.0
-        for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            loss = loss_fn(model(xb), yb)
-            loss.backward()
-            optimizer.step()
-            total += loss.item()
-        autotrainer.print0(f"epoch {epoch}: loss {total / len(loader):.4f}")
+    # EXACTLY 1 LINE: Handles DDP, device placement, AMP loop, checkpointing, & summary!
+    #
+    # Supported options in autotrainer.train():
+    #   - epochs=3                    : Number of training epochs
+    #   - optimizer=optimizer         : Custom optimizer instance
+    #   - loss_fn=loss_fn             : Custom loss function instance
+    #   - save_path="ddp_model.pt"    : Auto-saves rank-0 checkpoint (.pt, .joblib, .keras, .json)
+    #   - patience=5                  : Early stopping patience
+    #   - lr=1e-3                     : Custom learning rate override
+    autotrainer.train(model, loader, epochs=3, optimizer=optimizer, loss_fn=loss_fn, save_path="ddp_model.pt")
 
 
 if __name__ == "__main__":

@@ -129,12 +129,20 @@ def _run_script_inplace(script: str, script_args: list[str]) -> None:
 
 def launch(script: str, script_args: list[str]) -> int:
     env = detect()
+    print("=" * 66)
+    print("           AUTOTRAINER DISTRIBUTED LAUNCHER ENGINE             ")
+    print("=" * 66)
+
     print(
-        f"[autotrainer] mode={env.mode} nodes={env.nnodes} "
-        f"procs/node={env.nproc_per_node} world_size={env.world_size}"
+        f"  - Execution Mode     : {env.mode.upper()}\n"
+        f"  - Cluster Topology   : {env.nnodes} Node(s) | "
+        f"{env.nproc_per_node} Worker(s)/Node (World Size: {env.world_size})\n"
+        f"  - Master Rendezvous  : {env.master_addr}:{env.master_port}"
     )
+
     for note in env.notes:
-        print(f"[autotrainer] {note}")
+        print(f"  - Diagnostic Note    : {note}")
+    print("=" * 66)
 
     if env.mode == "slurm":
         # srun already gave us one process per task: translate and run.

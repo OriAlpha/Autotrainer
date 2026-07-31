@@ -7,4 +7,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=%x-%j.out
 
+# Activate your virtual environment if needed
+# source .venv/bin/activate
+
 srun autotrainer run pytorch_ddp.py

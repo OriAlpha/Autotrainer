@@ -46,6 +46,26 @@ jobs:
           path: coverage.xml
           if-no-files-found: ignore
 
+  test-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
+      - run: |
+          uv run python examples/pytorch_auto.py
+          uv run python examples/pytorch_fit.py
+          uv run python examples/pytorch_tune.py
+          uv run python examples/pytorch_ddp.py
+          uv run python examples/pytorch_optimize.py
+          uv run python examples/sklearn_example.py
+          uv run python examples/xgboost_example.py
+
+
+
+
   # GPU tests run on a self-hosted runner (your RTX 5070 box, registered with
   # the `self-hosted` and `gpu` labels). This is what catches the class of
   # CUDA-path bug that CPU CI cannot - the device_count() crash, the
@@ -244,7 +264,8 @@ jobs:
   # queued (runner offline) does not fail, it hangs the release indefinitely.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, typecheck, test-tf, version-info]
+    needs: [lint, test, test-examples, typecheck, test-tf, version-info]
+
     # Two merges landing close together read the same version. If the second
     # run's tag check beats the first run's `gh release create`, it also
     # decides the version is new and then dies at 422. Serializing makes it
@@ -330,14 +351,16 @@ jobs:
   # name), so both `pypi` and `testpypi` environments need a publisher
   # configured on their respective index for ci.yml.
   publish:
-    needs: [lint, test, typecheck, test-tf, version-info, release]
+    needs: [lint, test, test-examples, typecheck, test-tf, version-info, release]
     if: >-
       always()
       && needs.lint.result == 'success'
       && needs.test.result == 'success'
+      && needs['test-examples'].result == 'success'
       && needs.typecheck.result == 'success'
       && needs['test-tf'].result == 'success'
       && needs['version-info'].result == 'success'
+
       && (
         (needs.release.result == 'success' && needs.release.outputs.new == 'true')
         || (

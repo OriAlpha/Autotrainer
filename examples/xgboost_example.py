@@ -1,4 +1,4 @@
-"""XGBoost & LightGBM: auto thread count for both API styles.
+"""XGBoost & LightGBM: auto thread count and 1-line execution for both API styles.
 Run: python xgboost_example.py
 
 XGBoost/LightGBM parallelize with OpenMP threads (not Python processes), so
@@ -16,14 +16,16 @@ import autotrainer
 def main() -> None:
     X, y = make_classification(n_samples=5000, n_features=20)
 
-    # sklearn-style API
-    clf = autotrainer.prepare(XGBClassifier(n_estimators=100))
-    clf.fit(X, y)
+    # 1. Sklearn-style API: 1-line thread config, fit, & save!
+    # Options: autotrainer.train(estimator, X, y, save_path="model.json")
+    clf = autotrainer.train(XGBClassifier(n_estimators=100), X, y, save_path="xgb_sklearn.json")
     print("xgb sklearn-API accuracy:", clf.score(X, y))
 
-    # native API: get a params dict with nthread already set
-    params = autotrainer.boost_params({"max_depth": 6, "objective": "binary:logistic"})
-    booster = xgb.train(params, xgb.DMatrix(X, label=y), num_boost_round=50)
+    # 2. Native API: 1-line boost_params thread injection, train, & save!
+    # Options: autotrainer.train(params_dict, dmatrix, epochs=num_boost_round, save_path="model.json")
+    params = {"max_depth": 6, "objective": "binary:logistic"}
+    dtrain = xgb.DMatrix(X, label=y)
+    booster = autotrainer.train(params, dtrain, epochs=50, save_path="xgb_native.json")
     print("xgb native API trained,", booster.num_boosted_rounds(), "rounds")
 
 
