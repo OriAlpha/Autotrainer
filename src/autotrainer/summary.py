@@ -71,13 +71,17 @@ class SummaryTracker:
             return
         self.reported = True
 
-        import torch
+        try:
+            import torch
+            has_torch = True
+        except ImportError:
+            has_torch = False
 
         elapsed = time.time() - self.start_time
         num_epochs = len(self.train_losses)
 
         # Hardware & memory stats
-        if torch.cuda.is_available():
+        if has_torch and torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name(0)
             max_mem_mb = torch.cuda.max_memory_allocated() / (1024**2)
             total_vram_mb = torch.cuda.get_device_properties(0).total_memory / (1024**2)
@@ -88,7 +92,7 @@ class SummaryTracker:
 
         world_size = (
             torch.distributed.get_world_size()
-            if torch.distributed.is_initialized()
+            if has_torch and torch.distributed.is_initialized()
             else 1
         )
         env_info = detect()
@@ -126,101 +130,97 @@ class SummaryTracker:
         print0("               COMPREHENSIVE TRAINING SUMMARY             ")
         print0("=" * 66)
         print0("  Cluster & Hardware:")
-        print0(f"    • GPU Device        : {gpu_name}")
-        print0(f"    • Memory Usage      : {mem_str}")
+        print0(f"    - GPU Device        : {gpu_name}")
+        print0(f"    - Memory Usage      : {mem_str}")
         print0(
-            f"    • Topology          : {env_info.nnodes} Node(s) | {world_size} Worker Ranks (Mode: {env_info.mode})"
+            f"    - Topology          : {env_info.nnodes} Node(s) | {world_size} Worker Ranks (Mode: {env_info.mode})"
         )
+
         print0("")
 
         print0("  Recipe & Hyperparameters:")
-        print0(f"    • Optimizer         : {opt_str}")
+        print0(f"    - Optimizer         : {opt_str}")
         if self.batch_size:
-            print0(f"    • Batch Size        : {self.batch_size}")
-        print0(f"    • Loss Function     : {loss_fn_str}")
+            print0(f"    - Batch Size        : {self.batch_size}")
+        print0(f"    - Loss Function     : {loss_fn_str}")
         print0("")
 
         # Active Optimizations
         opts_list = []
         import os
 
-        if torch.cuda.is_available():
+        if has_torch and torch.cuda.is_available():
             if getattr(torch.backends.cuda.matmul, "allow_tf32", False):
-                opts_list.append("TF32 Precision → Accelerates GPU matrix math by up to 3x with zero accuracy loss")
+                opts_list.append("TF32 Precision -> Accelerates GPU matrix math by up to 3x with zero accuracy loss")
             if getattr(torch.backends.cudnn, "benchmark", False):
-                opts_list.append("cuDNN Benchmark → Auto-tunes fastest convolution kernel algorithms for your GPU")
+                opts_list.append("cuDNN Benchmark -> Auto-tunes fastest convolution kernel algorithms for your GPU")
             if hasattr(torch.backends.cuda, "flash_sdp_enabled") and torch.backends.cuda.flash_sdp_enabled():
-                opts_list.append("FlashAttention SDPA → Accelerates transformer attention math by 2-4x with O(N) memory scaling")
+                opts_list.append("FlashAttention SDPA -> Accelerates transformer attention math by 2-4x with O(N) memory scaling")
             if torch.cuda.is_bf16_supported():
-                opts_list.append("Native BF16 Precision → Uses 16-bit brain floating point for higher numerical stability")
-            opts_list.append("AMP Mixed Precision → Cuts memory bandwidth usage in half using FP16/BF16 tensor ops")
+                opts_list.append("Native BF16 Precision -> Uses 16-bit brain floating point for higher numerical stability")
+            opts_list.append("AMP Mixed Precision -> Cuts memory bandwidth usage in half using FP16/BF16 tensor ops")
 
-        if torch.distributed.is_initialized():
+        if has_torch and torch.distributed.is_initialized():
             ws = torch.distributed.get_world_size()
-            opts_list.append(f"DDP ({ws} Ranks) → Scales model training in parallel across {ws} GPU processes")
-            opts_list.append("DistributedSampler → Auto-reshuffles dataset indices per epoch across GPUs")
+            opts_list.append(f"DDP ({ws} Ranks) -> Scales model training in parallel across {ws} GPU processes")
+            opts_list.append("DistributedSampler -> Auto-reshuffles dataset indices per epoch across GPUs")
 
         if "SLURM_CPUS_PER_TASK" in os.environ:
             cpus = os.environ["SLURM_CPUS_PER_TASK"]
-            opts_list.append(f"CPU Multi-Core Scaling → Configured n_jobs={cpus} to match SLURM task allocation")
+            opts_list.append(f"CPU Multi-Core Scaling -> Configured n_jobs={cpus} to match SLURM task allocation")
         else:
-            opts_list.append("Multi-Core Parallelization → Auto-configured thread/worker pools across physical CPU cores")
+            opts_list.append("Multi-Core Parallelization -> Auto-configured thread/worker pools across physical CPU cores")
 
-        opts_list.append("DataLoader Pipeline → Uses multi-worker threads & page-locked memory to eliminate CPU bottlenecks")
+        opts_list.append("DataLoader Pipeline -> Uses multi-worker threads & page-locked memory to eliminate CPU bottlenecks")
 
         if self.optimizer and hasattr(self.optimizer, "defaults"):
             if self.optimizer.defaults.get("max_norm"):
-                opts_list.append("Grad Clipping → Limits gradient norms to prevent exploding gradients in deep nets")
+                opts_list.append("Grad Clipping -> Limits gradient norms to prevent exploding gradients in deep nets")
             if self.optimizer.defaults.get("weight_decay"):
-                opts_list.append("Weight Decay Exclude → Automatically separates Norm/Bias layers from decay to preserve convergence")
+                opts_list.append("Weight Decay Exclude -> Automatically separates Norm/Bias layers from decay to preserve convergence")
 
         if hasattr(self, "scheduler") and hasattr(self.scheduler, "warmup_iters"):
-             opts_list.append("Warmup Cosine Schedule → Gradually ramps LR before decay to prevent early instability")
+             opts_list.append("Warmup Cosine Schedule -> Gradually ramps LR before decay to prevent early instability")
 
         if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
-            opts_list.append(f"CUDA Allocator Tuning → Configured ({os.environ['PYTORCH_CUDA_ALLOC_CONF']}) to eliminate VRAM fragmentation OOMs")
+            opts_list.append(f"CUDA Allocator Tuning -> Configured ({os.environ['PYTORCH_CUDA_ALLOC_CONF']}) to eliminate VRAM fragmentation OOMs")
         if "SLURM_JOB_ID" in os.environ:
-            opts_list.append("SLURM Node Scratch → Routes inductor cache to fast local $TMPDIR to avoid NFS stalls")
+            opts_list.append("SLURM Node Scratch -> Routes inductor cache to fast local $TMPDIR to avoid NFS stalls")
         if "NCCL_SOCKET_IFNAME" in os.environ:
-            opts_list.append(f"NCCL Interconnect → Bound to {os.environ['NCCL_SOCKET_IFNAME']} to prevent multi-node hangs")
+            opts_list.append(f"NCCL Interconnect -> Bound to {os.environ['NCCL_SOCKET_IFNAME']} to prevent multi-node hangs")
 
 
         if opts_list:
             print0("  Autotrainer Active Optimizations:")
             for opt_item in opts_list:
-                print0(f"    • {opt_item}")
+                print0(f"    - {opt_item}")
             print0("")
 
-
-
-
-
-
         print0("  Performance & Speed:")
-        print0(f"    • Total Duration    : {elapsed:.2f}s")
+        print0(f"    - Total Duration    : {elapsed:.2f}s")
         if num_epochs > 0:
-            print0(f"    • Avg Epoch Speed   : {elapsed / num_epochs:.2f}s / epoch")
+            print0(f"    - Avg Epoch Speed   : {elapsed / num_epochs:.2f}s / epoch")
         if total_samples > 0:
-            print0(f"    • Total Dataset     : {total_samples:,} samples processed")
-            print0(f"    • Throughput        : {throughput:,.2f} samples/sec")
+            print0(f"    - Total Dataset     : {total_samples:,} samples processed")
+            print0(f"    - Throughput        : {throughput:,.2f} samples/sec")
         print0("")
 
         if init_loss is not None and final_loss is not None:
             print0("  Loss & Metrics:")
-            print0(f"    • Initial Train Loss: {init_loss:.4f}")
+            print0(f"    - Initial Train Loss: {init_loss:.4f}")
             pct_str = f"  ({loss_diff_pct:+.2f}%)" if loss_diff_pct is not None else ""
-            print0(f"    • Final Train Loss  : {final_loss:.4f}{pct_str}")
+            print0(f"    - Final Train Loss  : {final_loss:.4f}{pct_str}")
             if self.val_losses:
                 best_val_loss = min(self.val_losses)
-                print0(f"    • Best Val Loss     : {best_val_loss:.4f}")
+                print0(f"    - Best Val Loss     : {best_val_loss:.4f}")
             if self.val_accs:
-                print0(f"    • Final Val Acc     : {self.val_accs[-1]:.1f}%")
+                print0(f"    - Final Val Acc     : {self.val_accs[-1]:.1f}%")
             print0("")
 
         if checkpoint:
             ckpt_path = Path(checkpoint).resolve()
             print0("  Artifacts & Checkpoint:")
-            print0(f"    • Saved Model       : {ckpt_path} (Rank-0 save)")
+            print0(f"    - Saved Model       : {ckpt_path} (Rank-0 save)")
             print0("")
 
         print0("  Autotrainer Health Diagnostic:")
@@ -264,7 +264,11 @@ def finish(checkpoint: str | Path | None = None) -> None:
     if not summary.reported:
         summary.report(checkpoint=checkpoint)
 
-    import torch
+    try:
+        import torch
 
-    if torch.distributed.is_initialized():
-        torch.distributed.destroy_process_group()
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+    except ImportError:
+        pass
+

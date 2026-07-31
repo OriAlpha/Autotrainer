@@ -186,12 +186,14 @@ def tune(
     storage: Any = None,
     study_name: str | None = None,
     pruner: Any = None,
+    lr_scaling: str = "auto",
     save_path: str | Any | None = None,
     metric: Any = "loss",
     direction: str = "auto",
     resume: bool = False,
     sanity: bool = True,
 ) -> tuple[Any, dict[str, Any], Any]:
+
 
     """Search training hyperparameters for the user's model.
 

@@ -547,7 +547,8 @@ def train(
     from .utils import print0, save0
 
 
-    model, loader, opt, loss_fn, sched = auto(model, loader, epochs=epochs, lr=lr, loss_fn=loss_fn, optimizer=optimizer)
+    model, loader, opt, loss_fn, sched = auto(model, loader, epochs=epochs, lr=lr, loss=loss_fn, optimizer=optimizer)
+
     device = next(model.parameters()).device
     summary = get_active_summary()
     summary.batch_size = getattr(loader, "batch_size", None)

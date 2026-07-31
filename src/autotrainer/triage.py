@@ -256,20 +256,24 @@ class TrainingMonitor:
                 "dead units, lr too low, or a detached graph",
             )
 
-    def report(self) -> str:
-        """Print a formatted closing summary bullet point."""
+    def report(self) -> str | None:
+        """Print a one-line closing summary and return it.
+
+        An all-clear when nothing fired, otherwise a count of the distinct
+        problems already reported (the details were printed as they happened).
+        """
         from .utils import print0
 
         if not self._messages:
             if self._ticks == 0:
-                msg = "    • Status            : HEALTHY (Completed successfully; no anomalies detected)"
-            else:
-                msg = f"    • Status            : HEALTHY (No loss/gradient issues detected over {self._ticks} steps)"
+                return None
+            msg = f"[autotrainer] triage: no issues detected over {self._ticks} steps"
         else:
             msg = (
-                f"    • Status            : WARNING ({len(self._messages)} issue(s) flagged over "
-                f"{self._ticks} steps - see details above)"
+                f"[autotrainer] triage: {len(self._messages)} issue(s) flagged over "
+                f"{self._ticks} steps (see the messages above)"
             )
         print0(msg)
         return msg
+
 
