@@ -64,7 +64,6 @@ def fit(
     seed: int = 0,
     verbose: bool = True,
     lr_scaling: str = "auto",
-
     metric: Any = "loss",
     direction: str = "auto",
 ) -> tuple[Any, dict[str, Any], Any]:
@@ -458,13 +457,14 @@ def fit(
             )
     if save_path is not None:
         from .utils import save0
+
         save0(final.state_dict(), save_path)
 
     from .summary import finish
+
     finish(checkpoint=save_path or checkpoint)
 
     return final, best_params, study
-
 
 
 def train(
@@ -494,27 +494,33 @@ def train(
     """
     if isinstance(model, dict) and loader is not None:
         import xgboost as xgb
+
         from .backends.boosting_backend import boost_params
+
         params = boost_params(model)
         num_rounds = epochs or 50
         booster = xgb.train(params, loader, num_boost_round=num_rounds)
         if save_path is not None:
             booster.save_model(save_path)
             from .utils import print0
+
             print0(f"[autotrainer] saved XGBoost model to {save_path}")
         from .summary import finish
+
         finish(checkpoint=save_path)
         return booster
 
     if hasattr(model, "fit") and not hasattr(model, "forward"):
-
         if type(model).__module__.startswith(("keras", "tensorflow")):
             import tensorflow as tf
+
             from .backends.tf_backend import scale_batch_size
+
             bs = scale_batch_size(64)
             callbacks = []
             if patience is not None:
-                callbacks.append(tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True))
+                es = tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True)
+                callbacks.append(es)
             if loader is not None:
                 if y is not None:
                     model.fit(loader, y, batch_size=bs, epochs=epochs, callbacks=callbacks)
@@ -523,13 +529,15 @@ def train(
             if save_path is not None:
                 model.save(save_path)
                 from .utils import print0
+
                 print0(f"[autotrainer] saved TensorFlow model to {save_path}")
             from .summary import finish
+
             finish(checkpoint=save_path)
             return model
 
-
         from .backends.sklearn_backend import prepare as sklearn_prepare
+
         estimator = sklearn_prepare(model)
         if loader is not None:
             if y is not None:
@@ -538,22 +546,23 @@ def train(
                 estimator.fit(loader)
         if save_path is not None:
             import joblib
+
             joblib.dump(estimator, save_path)
             from .utils import print0
+
             print0(f"[autotrainer] saved estimator to {save_path}")
         from .summary import finish
+
         finish(checkpoint=save_path)
         return estimator
-
-
-
 
     from .auto_optim import auto
     from .summary import finish, get_active_summary
     from .utils import print0, save0
 
-
-    model, loader, opt, loss_fn, sched = auto(model, loader, epochs=epochs, lr=lr, loss=loss_fn, optimizer=optimizer)
+    model, loader, opt, loss_fn, sched = auto(
+        model, loader, epochs=epochs, lr=lr, loss=loss_fn, optimizer=optimizer
+    )
 
     device = next(model.parameters()).device
     summary = get_active_summary()
@@ -562,6 +571,7 @@ def train(
     summary.loss_fn = loss_fn
 
     import torch
+
     scaler = torch.amp.GradScaler("cuda") if torch.cuda.is_available() else None
 
     for epoch in range(epochs):
@@ -595,5 +605,3 @@ def train(
 
     finish(checkpoint=save_path)
     return model
-
-

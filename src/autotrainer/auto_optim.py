@@ -142,7 +142,6 @@ def _make_loss(name: str, label_smoothing: float = 0.0) -> nn.Module:
     if not isinstance(name, str):
         return name
     if name == "bce":
-
         return _bce_loss()
     if name == "cross_entropy":
         # label_smoothing is a classification-only regularizer and a tunable

@@ -212,7 +212,6 @@ def _shard_loader(dataloader: Any, rank: int, world_size: int) -> Any:
     return _AutoEpochDataLoader(sharded)
 
 
-
 def prepare(
     model: Any,
     dataloader: Any = None,

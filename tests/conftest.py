@@ -47,7 +47,6 @@ CUDA_OPTIMIZE_SURFACE = frozenset(
         "get_device_properties",
         "max_memory_allocated",
         "max_memory_reserved",
-        "max_memory_allocated",
         "empty_cache",
         "synchronize",
     }

@@ -58,8 +58,7 @@ __all__ = [
 
 from .augment import augment_batch  # noqa: E402,F401
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
-from .fitting import fit, train  # noqa: E402,F401
-
+from .fitting import train  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
 from .slurm import (
@@ -67,10 +66,8 @@ from .slurm import (
     node_scratch,
 )
 from .summary import SummaryTracker, finish, log_epoch, step  # noqa: E402,F401
-
 from .throughput import ThroughputMonitor  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401
-
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

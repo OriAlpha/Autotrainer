@@ -43,7 +43,13 @@ class SummaryTracker:
         self.step_count = 0
         self.reported = False
 
-    def step(self, loss: Any = None, batch_count: int = 1, model: Any | None = None, optimizer: Any | None = None) -> None:
+    def step(
+        self,
+        loss: Any = None,
+        batch_count: int = 1,
+        model: Any | None = None,
+        optimizer: Any | None = None,
+    ) -> None:
         """Record a single step loss and increment sample counts."""
         self.step_count += 1
         if self.batch_size:
@@ -73,6 +79,7 @@ class SummaryTracker:
 
         try:
             import torch
+
             has_torch = True
         except ImportError:
             has_torch = False
@@ -111,20 +118,12 @@ class SummaryTracker:
         throughput = total_samples / elapsed if elapsed > 0 and total_samples > 0 else 0.0
 
         # Optimizer & Loss name string
-        opt_str = (
-            self.optimizer.__class__.__name__
-            if self.optimizer
-            else "Standard"
-        )
+        opt_str = self.optimizer.__class__.__name__ if self.optimizer else "Standard"
         if self.optimizer and hasattr(self.optimizer, "param_groups"):
             lr = self.optimizer.param_groups[0].get("lr")
             if lr is not None:
                 opt_str += f" (lr={lr})"
-        loss_fn_str = (
-            self.loss_fn.__class__.__name__
-            if self.loss_fn
-            else "Standard"
-        )
+        loss_fn_str = self.loss_fn.__class__.__name__ if self.loss_fn else "Standard"
 
         print0("=" * 66)
         print0("               COMPREHENSIVE TRAINING SUMMARY             ")
@@ -151,44 +150,78 @@ class SummaryTracker:
 
         if has_torch and torch.cuda.is_available():
             if getattr(torch.backends.cuda.matmul, "allow_tf32", False):
-                opts_list.append("TF32 Precision -> Accelerates GPU matrix math by up to 3x with zero accuracy loss")
+                opts_list.append(
+                    "TF32 Precision -> Accelerates GPU matrix math by up to 3x with zero accuracy loss"
+                )
             if getattr(torch.backends.cudnn, "benchmark", False):
-                opts_list.append("cuDNN Benchmark -> Auto-tunes fastest convolution kernel algorithms for your GPU")
-            if hasattr(torch.backends.cuda, "flash_sdp_enabled") and torch.backends.cuda.flash_sdp_enabled():
-                opts_list.append("FlashAttention SDPA -> Accelerates transformer attention math by 2-4x with O(N) memory scaling")
+                opts_list.append(
+                    "cuDNN Benchmark -> Auto-tunes fastest convolution algorithms for your GPU"
+                )
+            if (
+                hasattr(torch.backends.cuda, "flash_sdp_enabled")
+                and torch.backends.cuda.flash_sdp_enabled()
+            ):
+                opts_list.append(
+                    "FlashAttention SDPA -> Accelerates attention math by 2-4x with O(N) memory scaling"
+                )
             if torch.cuda.is_bf16_supported():
-                opts_list.append("Native BF16 Precision -> Uses 16-bit brain floating point for higher numerical stability")
-            opts_list.append("AMP Mixed Precision -> Cuts memory bandwidth usage in half using FP16/BF16 tensor ops")
+                opts_list.append(
+                    "Native BF16 Precision -> Uses 16-bit brain float for higher stability"
+                )
+            opts_list.append(
+                "AMP Mixed Precision -> Cuts memory bandwidth usage in half using FP16/BF16 tensor ops"
+            )
 
         if has_torch and torch.distributed.is_initialized():
             ws = torch.distributed.get_world_size()
-            opts_list.append(f"DDP ({ws} Ranks) -> Scales model training in parallel across {ws} GPU processes")
-            opts_list.append("DistributedSampler -> Auto-reshuffles dataset indices per epoch across GPUs")
+            opts_list.append(
+                f"DDP ({ws} Ranks) -> Scales model training in parallel across {ws} GPU processes"
+            )
+            opts_list.append(
+                "DistributedSampler -> Auto-reshuffles dataset indices per epoch across GPUs"
+            )
 
         if "SLURM_CPUS_PER_TASK" in os.environ:
             cpus = os.environ["SLURM_CPUS_PER_TASK"]
-            opts_list.append(f"CPU Multi-Core Scaling -> Configured n_jobs={cpus} to match SLURM task allocation")
+            opts_list.append(
+                f"CPU Multi-Core Scaling -> Configured n_jobs={cpus} to match SLURM task allocation"
+            )
         else:
-            opts_list.append("Multi-Core Parallelization -> Auto-configured thread/worker pools across physical CPU cores")
+            opts_list.append(
+                "Multi-Core Parallelization -> Auto-configured worker pools across physical CPU cores"
+            )
 
-        opts_list.append("DataLoader Pipeline -> Uses multi-worker threads & page-locked memory to eliminate CPU bottlenecks")
+        opts_list.append(
+            "DataLoader Pipeline -> Uses multi-worker threads & page-locked memory for DataLoader"
+        )
 
         if self.optimizer and hasattr(self.optimizer, "defaults"):
             if self.optimizer.defaults.get("max_norm"):
-                opts_list.append("Grad Clipping -> Limits gradient norms to prevent exploding gradients in deep nets")
+                opts_list.append(
+                    "Grad Clipping -> Limits gradient norms to prevent exploding gradients"
+                )
             if self.optimizer.defaults.get("weight_decay"):
-                opts_list.append("Weight Decay Exclude -> Automatically separates Norm/Bias layers from decay to preserve convergence")
+                opts_list.append(
+                    "Weight Decay Exclude -> Separates Norm/Bias layers from decay to preserve convergence"
+                )
 
         if hasattr(self, "scheduler") and hasattr(self.scheduler, "warmup_iters"):
-             opts_list.append("Warmup Cosine Schedule -> Gradually ramps LR before decay to prevent early instability")
+            opts_list.append(
+                "Warmup Cosine Schedule -> Gradually ramps LR before decay to prevent instability"
+            )
 
         if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
-            opts_list.append(f"CUDA Allocator Tuning -> Configured ({os.environ['PYTORCH_CUDA_ALLOC_CONF']}) to eliminate VRAM fragmentation OOMs")
+            alloc_conf = os.environ["PYTORCH_CUDA_ALLOC_CONF"]
+            opts_list.append(
+                f"CUDA Allocator Tuning -> Configured ({alloc_conf}) to eliminate VRAM fragmentation OOMs"
+            )
         if "SLURM_JOB_ID" in os.environ:
-            opts_list.append("SLURM Node Scratch -> Routes inductor cache to fast local $TMPDIR to avoid NFS stalls")
+            opts_list.append(
+                "SLURM Node Scratch -> Routes inductor cache to fast local $TMPDIR to avoid NFS stalls"
+            )
         if "NCCL_SOCKET_IFNAME" in os.environ:
-            opts_list.append(f"NCCL Interconnect -> Bound to {os.environ['NCCL_SOCKET_IFNAME']} to prevent multi-node hangs")
-
+            ifname = os.environ["NCCL_SOCKET_IFNAME"]
+            opts_list.append(f"NCCL Interconnect -> Bound to {ifname} to prevent multi-node hangs")
 
         if opts_list:
             print0("  Autotrainer Active Optimizations:")
@@ -239,12 +272,21 @@ def get_active_summary() -> SummaryTracker:
     return _ACTIVE_SUMMARY
 
 
-def step(loss: Any = None, batch_count: int = 1, model: Any | None = None, optimizer: Any | None = None) -> None:
+def step(
+    loss: Any = None,
+    batch_count: int = 1,
+    model: Any | None = None,
+    optimizer: Any | None = None,
+) -> None:
     """Record a step loss in the active summary tracker."""
     get_active_summary().step(loss=loss, batch_count=batch_count, model=model, optimizer=optimizer)
 
 
-def log_epoch(train_loss: float, val_loss: float | None = None, val_acc: float | None = None) -> None:
+def log_epoch(
+    train_loss: float,
+    val_loss: float | None = None,
+    val_acc: float | None = None,
+) -> None:
     """Record epoch metrics in the active summary tracker."""
     get_active_summary().log_epoch(train_loss=train_loss, val_loss=val_loss, val_acc=val_acc)
 
@@ -271,4 +313,3 @@ def finish(checkpoint: str | Path | None = None) -> None:
             torch.distributed.destroy_process_group()
     except ImportError:
         pass
-

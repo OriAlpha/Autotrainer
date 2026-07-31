@@ -48,13 +48,17 @@ def print0(*args: Any, **kwargs: Any) -> None:
             print(*args, **kwargs)
         except UnicodeEncodeError:
             import sys
+
             enc = sys.stdout.encoding or "utf-8"
             safe_args = [
-                str(arg).replace("→", "->").replace("•", "-").encode(enc, errors="replace").decode(enc)
+                str(arg)
+                .replace("→", "->")
+                .replace("•", "-")
+                .encode(enc, errors="replace")
+                .decode(enc)
                 for arg in args
             ]
             print(*safe_args, **kwargs)
-
 
 
 def save0(obj: Any, path: str) -> None:

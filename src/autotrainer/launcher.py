@@ -135,13 +135,14 @@ def launch(script: str, script_args: list[str]) -> int:
 
     print(
         f"  - Execution Mode     : {env.mode.upper()}\n"
-        f"  - Cluster Topology   : {env.nnodes} Node(s) | {env.nproc_per_node} Worker(s)/Node (World Size: {env.world_size})\n"
+        f"  - Cluster Topology   : {env.nnodes} Node(s) | "
+        f"{env.nproc_per_node} Worker(s)/Node (World Size: {env.world_size})\n"
         f"  - Master Rendezvous  : {env.master_addr}:{env.master_port}"
     )
+
     for note in env.notes:
         print(f"  - Diagnostic Note    : {note}")
     print("=" * 66)
-
 
     if env.mode == "slurm":
         # srun already gave us one process per task: translate and run.

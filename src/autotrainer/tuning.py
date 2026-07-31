@@ -193,8 +193,6 @@ def tune(
     resume: bool = False,
     sanity: bool = True,
 ) -> tuple[Any, dict[str, Any], Any]:
-
-
     """Search training hyperparameters for the user's model.
 
     Searches over the training *recipe* only (lr, weight decay, optimizer,
@@ -451,10 +449,11 @@ def tune(
 
     if save_path is not None:
         from .utils import save0
+
         save0(best_model.state_dict(), save_path)
 
     from .summary import finish
+
     finish(checkpoint=save_path)
 
     return best_model, best_params, study
-

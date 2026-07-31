@@ -1,6 +1,5 @@
 """Tests for autotrainer.SummaryTracker and finish()."""
 
-import os
 import torch
 import torch.nn as nn
 

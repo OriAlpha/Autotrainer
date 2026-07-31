@@ -275,5 +275,3 @@ class TrainingMonitor:
             )
         print0(msg)
         return msg
-
-

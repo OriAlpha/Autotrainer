@@ -49,6 +49,7 @@ def prepare(model: Any, n_jobs: int | None = None) -> Any:
     )
 
     from ..summary import get_active_summary
+
     get_active_summary()
 
     return model

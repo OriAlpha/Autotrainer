@@ -31,7 +31,6 @@ def _check_frameworks(report: list[str]) -> None:
         )
 
 
-
 def _check_gpu(report: list[str]) -> None:
     try:
         import torch
