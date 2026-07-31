@@ -55,11 +55,25 @@ Setting up for development instead? See
 
 ## Quickstart
 
-Add one line to your training script, plus `set_epoch` at each epoch start so
-distributed shuffling gives every epoch a fresh order, and `finish()` at the end:
+### 1-Line Complete Training (Easiest)
+
+Infers loss/optimizer/schedule, applies hardware acceleration, trains for $N$ epochs, saves the model checkpoint, and prints the performance summary:
+
 
 ```python
 import autotrainer
+
+# 1 Line: trains model, saves checkpoint, and prints performance summary!
+model = autotrainer.train(model, loader, epochs=5, save_path="model.pt")
+```
+
+### Custom Training Loop with `prepare()`
+
+Or wrap your existing PyTorch training loop to auto-enable hardware acceleration (DDP, AMP, TF32, DataLoader thread pools) without altering your recipe:
+
+```python
+import autotrainer
+
 model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 for epoch in range(epochs):
@@ -69,6 +83,7 @@ for epoch in range(epochs):
 # At the end: prints comprehensive training summary & cleans up process groups
 autotrainer.finish()
 ```
+
 
 On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, sensible
 `num_workers` / `pin_memory` / `persistent_workers`, and AMP — **without
