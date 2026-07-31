@@ -31,8 +31,10 @@ def _sync_from_rank0(payload: list[Any], distributed: bool) -> list[Any]:
     if distributed:
         import torch.distributed as dist
 
-        dist.broadcast_object_list(payload, src=0)
+        if dist.is_initialized():
+            dist.broadcast_object_list(payload, src=0)
     return payload
+
 
 
 def _journal_storage(path: str) -> Any:

@@ -58,6 +58,9 @@ def _run_two_ranks(
             CUDA_VISIBLE_DEVICES="",  # CPU-gloo: don't touch the GPU
         )
         env.update(extra_env or {})
+        src_path = str(Path(__file__).resolve().parent.parent / "src")
+        env["PYTHONPATH"] = f"{src_path}{os.pathsep}{env.get('PYTHONPATH', '')}"
+
         procs.append(
             subprocess.Popen(
                 [sys.executable, "-c", script],
