@@ -24,8 +24,18 @@ def main() -> None:
 
     sub.add_parser("info", help="Show detected environment and exit")
     sub.add_parser("doctor", help="Diagnose the environment for common problems")
+    sub.add_parser("suhas", help="Display Autotrainer creator credits")
+    sub.add_parser("credits", help="Display Autotrainer creator credits")
 
     args = parser.parse_args()
+
+    if args.command in ("suhas", "credits"):
+        print("=" * 66)
+        print("  Autotrainer Core Architecture")
+        print("  Designed & Built by Suhas Goravale Siddaramu (OriAlpha)")
+        print("  GitHub: https://github.com/OriAlpha/Autotrainer")
+        print("=" * 66)
+        return
 
     if args.command == "doctor":
         from .doctor import run_doctor
