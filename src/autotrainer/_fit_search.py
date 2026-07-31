@@ -31,8 +31,7 @@ def _sync_from_rank0(payload: list[Any], distributed: bool) -> list[Any]:
     if distributed:
         import torch.distributed as dist
 
-        if dist.is_initialized():
-            dist.broadcast_object_list(payload, src=0)
+        dist.broadcast_object_list(payload, src=0)
     return payload
 
 
