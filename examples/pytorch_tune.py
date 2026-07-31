@@ -27,9 +27,11 @@ def main() -> None:
         val,
         trials=20,  # ASHA search over the recipe (lr, wd, opt, batch, schedule, ...)
         epochs_per_trial=3,
+        save_path="best_model.pt",
     )
     print("Best params:", best_params)
-    torch.save(best_model.state_dict(), "best_model.pt")
+
+
 
 
 if __name__ == "__main__":

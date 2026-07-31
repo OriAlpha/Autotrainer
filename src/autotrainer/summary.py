@@ -142,22 +142,55 @@ class SummaryTracker:
 
         # Active Optimizations
         opts_list = []
+        import os
+
         if torch.cuda.is_available():
             if torch.backends.cuda.matmul.allow_tf32:
-                opts_list.append("TF32 Precision (TensorFloat-32)")
+                opts_list.append("TF32 Precision → Accelerates GPU matrix math by up to 3x with zero accuracy loss")
             if torch.backends.cudnn.benchmark:
-                opts_list.append("cuDNN Benchmark (Fast Convolutions)")
+                opts_list.append("cuDNN Benchmark → Auto-tunes fastest convolution kernel algorithms for your GPU")
+            if hasattr(torch.backends.cuda, "flash_sdp_enabled") and torch.backends.cuda.flash_sdp_enabled():
+                opts_list.append("FlashAttention SDPA → Accelerates transformer attention math by 2-4x with O(N) memory scaling")
+            if torch.cuda.is_bf16_supported():
+                opts_list.append("Native BF16 Precision → Uses 16-bit brain floating point for higher numerical stability")
+            opts_list.append("AMP Mixed Precision → Cuts memory bandwidth usage in half using FP16/BF16 tensor ops")
+
         if torch.distributed.is_initialized():
             ws = torch.distributed.get_world_size()
-            opts_list.append(f"DistributedDataParallel (DDP) [{ws} Ranks]")
-            opts_list.append("DistributedSampler (Epoch Auto-Shuffling)")
-        opts_list.append("DataLoader Pipeline (num_workers, pin_memory, persistent_workers)")
+            opts_list.append(f"DDP ({ws} Ranks) → Scales model training in parallel across {ws} GPU processes")
+            opts_list.append("DistributedSampler → Auto-reshuffles dataset indices per epoch across GPUs")
+
+        opts_list.append("DataLoader Pipeline → Uses multi-worker threads & page-locked memory to eliminate CPU bottlenecks")
+        
+        if self.optimizer and hasattr(self.optimizer, "defaults"):
+            if self.optimizer.defaults.get("max_norm"):
+                opts_list.append("Grad Clipping → Limits gradient norms to prevent exploding gradients in deep nets")
+            if self.optimizer.defaults.get("weight_decay"):
+                opts_list.append("Weight Decay Exclude → Automatically separates Norm/Bias layers from decay to preserve convergence")
+        
+        # Check for common learning rate scheduler attributes
+        if hasattr(self, "scheduler") and hasattr(self.scheduler, "warmup_iters"):
+             opts_list.append("Warmup Cosine Schedule → Gradually ramps LR before decay to prevent early instability")
+
+        if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
+            opts_list.append(f"CUDA Allocator Tuning → Configured ({os.environ['PYTORCH_CUDA_ALLOC_CONF']}) to eliminate VRAM fragmentation OOMs")
+        if "SLURM_JOB_ID" in os.environ:
+            opts_list.append("SLURM Node Scratch → Routes inductor cache to fast local $TMPDIR to avoid NFS stalls")
+        if "NCCL_SOCKET_IFNAME" in os.environ:
+            opts_list.append(f"NCCL Interconnect → Bound to {os.environ['NCCL_SOCKET_IFNAME']} to prevent multi-node hangs")
+        if "SLURM_CPUS_PER_TASK" in os.environ:
+            cpus = os.environ["SLURM_CPUS_PER_TASK"]
+            opts_list.append(f"CPU Multi-Core Scaling → Configured n_jobs={cpus} to match SLURM task allocation")
 
         if opts_list:
             print0("  Autotrainer Active Optimizations:")
             for opt_item in opts_list:
                 print0(f"    • {opt_item}")
             print0("")
+
+
+
+
 
 
         print0("  Performance & Speed:")

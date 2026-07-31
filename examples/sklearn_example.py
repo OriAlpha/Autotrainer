@@ -1,4 +1,4 @@
-"""scikit-learn: auto n_jobs (respects SLURM_CPUS_PER_TASK on clusters).
+"""scikit-learn: auto n_jobs and 1-line execution.
 Run: python sklearn_example.py
 
 The ``if __name__ == "__main__":`` guard is required on Windows/macOS-spawn:
@@ -18,13 +18,13 @@ import autotrainer
 def main() -> None:
     X, y = make_classification(n_samples=5000, n_features=20)
 
-    # Works on plain estimators and on nested ones (pipeline inside grid search)
     pipe = Pipeline([("scale", StandardScaler()), ("rf", RandomForestClassifier())])
     search = GridSearchCV(pipe, {"rf__n_estimators": [100, 200], "rf__max_depth": [None, 10]})
-    search = autotrainer.prepare(search)  # n_jobs set everywhere it applies
 
-    search.fit(X, y)
+    # ONE LINE: auto-configures n_jobs, fits the model, & saves to search_model.joblib!
+    search = autotrainer.train(search, X, y, save_path="search_model.joblib")
     print("best score:", search.best_score_)
+
 
 
 if __name__ == "__main__":

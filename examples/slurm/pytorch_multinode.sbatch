@@ -7,9 +7,11 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=%x-%j.out
 
-# Optional sanity check - fails fast if the environment is broken
-autotrainer doctor
+# Activate your virtual environment if needed
+# source .venv/bin/activate
 
-# srun spawns one process per task across all nodes; autotrainer reads the
-# SLURM env vars to derive ranks and the rendezvous address automatically.
+# Optional sanity check - fails fast if the environment is broken
+srun autotrainer doctor
+
+# Launch multi-node training
 srun autotrainer run pytorch_auto.py

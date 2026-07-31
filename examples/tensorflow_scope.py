@@ -26,10 +26,11 @@ def main() -> None:
             metrics=["accuracy"],
         )
 
-    bs = autotrainer.scale_batch_size(64)  # per-replica 64 -> global batch
     X = np.random.randn(2048, 32).astype("float32")
     y = np.random.randint(0, 10, 2048)
-    model.fit(X, y, batch_size=bs, epochs=3)
+
+    # 1-LINE EXECUTION: scales batch size per replica, runs training, & saves model.keras!
+    autotrainer.train(model, X, y, epochs=3, save_path="model.keras")
 
 
 if __name__ == "__main__":

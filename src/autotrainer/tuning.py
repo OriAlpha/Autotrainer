@@ -186,12 +186,13 @@ def tune(
     storage: Any = None,
     study_name: str | None = None,
     pruner: Any = None,
-    lr_scaling: str = "auto",
+    save_path: str | Any | None = None,
     metric: Any = "loss",
     direction: str = "auto",
     resume: bool = False,
     sanity: bool = True,
 ) -> tuple[Any, dict[str, Any], Any]:
+
     """Search training hyperparameters for the user's model.
 
     Searches over the training *recipe* only (lr, weight decay, optimizer,
@@ -445,4 +446,13 @@ def tune(
             f"[autotrainer] tune: best {label} {best_value:.4f} "
             f"with {best_params} ({pruned}/{trials} trials pruned early)"
         )
+
+    if save_path is not None:
+        from .utils import save0
+        save0(best_model.state_dict(), save_path)
+
+    from .summary import finish
+    finish(checkpoint=save_path)
+
     return best_model, best_params, study
+

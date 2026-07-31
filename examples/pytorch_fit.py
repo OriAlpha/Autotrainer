@@ -40,10 +40,11 @@ def main() -> None:
         epochs=20,
         patience=4,
         metric="accuracy",
-        checkpoint="fit.ckpt",
+        save_path="fit_model.pt",
     )
     print("Winning recipe:", params)
-    autotrainer.save0(model.state_dict(), "fit_model.pt")  # rank-0-only save
+
+
 
 
 if __name__ == "__main__":

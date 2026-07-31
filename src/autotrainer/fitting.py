@@ -58,11 +58,13 @@ def fit(
     loss: str | None = None,
     patience: int = 5,
     min_delta: float = 0.0,
+    save_path: str | Any | None = None,
     checkpoint: str | None = None,
     study_storage: str | None = None,
     seed: int = 0,
     verbose: bool = True,
     lr_scaling: str = "auto",
+
     metric: Any = "loss",
     direction: str = "auto",
 ) -> tuple[Any, dict[str, Any], Any]:
@@ -454,4 +456,131 @@ def fit(
                 f"(val_{metric_label}={best_val:.4f} guided selection; "
                 "test is the honest estimate)"
             )
+    if save_path is not None:
+        from .utils import save0
+        save0(final.state_dict(), save_path)
+
+    from .summary import finish
+    finish(checkpoint=save_path or checkpoint)
+
     return final, best_params, study
+
+
+
+def train(
+    model: Any,
+    loader: Any = None,
+    y: Any = None,
+    *,
+    epochs: int = 10,
+    lr: float | None = None,
+    loss_fn: Any | None = None,
+    optimizer: Any | None = None,
+    save_path: str | Any | None = None,
+) -> Any:
+    """One-line complete training loop.
+
+    Infers loss function, optimizer, LR schedule, and mixed precision scaling,
+    runs all training epochs, prints the performance summary, optionally saves the model,
+    and returns the trained model. Supports PyTorch, Scikit-Learn, and XGBoost models.
+
+    Usage:
+        # PyTorch:
+        model = autotrainer.train(model, loader, epochs=5, save_path="model.pt")
+
+        # Scikit-Learn / XGBoost:
+        search = autotrainer.train(search, X, y)
+    """
+    if isinstance(model, dict) and loader is not None:
+
+        import xgboost as xgb
+        from .backends.boosting_backend import boost_params
+        params = boost_params(model)
+        num_rounds = epochs or 50
+        booster = xgb.train(params, loader, num_boost_round=num_rounds)
+        if save_path is not None:
+            booster.save_model(save_path)
+            from .utils import print0
+            print0(f"[autotrainer] saved XGBoost model to {save_path}")
+        return booster
+
+    if hasattr(model, "fit") and not hasattr(model, "forward"):
+
+        if type(model).__module__.startswith(("keras", "tensorflow")):
+            from .backends.tf_backend import scale_batch_size
+            bs = scale_batch_size(64)
+            if loader is not None:
+                if y is not None:
+                    model.fit(loader, y, batch_size=bs, epochs=epochs)
+                else:
+                    model.fit(loader, epochs=epochs)
+            if save_path is not None:
+                model.save(save_path)
+                from .utils import print0
+                print0(f"[autotrainer] saved TensorFlow model to {save_path}")
+            return model
+
+        from .backends.sklearn_backend import prepare as sklearn_prepare
+        estimator = sklearn_prepare(model)
+        if loader is not None:
+            if y is not None:
+                estimator.fit(loader, y)
+            else:
+                estimator.fit(loader)
+        if save_path is not None:
+            import joblib
+            joblib.dump(estimator, save_path)
+            from .utils import print0
+            print0(f"[autotrainer] saved estimator to {save_path}")
+        return estimator
+
+
+
+    from .auto_optim import auto
+    from .summary import finish, get_active_summary
+    from .utils import print0, save0
+
+
+    model, loader, opt, loss_fn, sched = auto(model, loader, epochs=epochs, lr=lr, loss_fn=loss_fn, optimizer=optimizer)
+    device = next(model.parameters()).device
+    summary = get_active_summary()
+    summary.batch_size = getattr(loader, "batch_size", None)
+    summary.optimizer = opt
+    summary.loss_fn = loss_fn
+
+    import torch
+    scaler = torch.amp.GradScaler("cuda") if torch.cuda.is_available() else None
+
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0.0
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            opt.zero_grad()
+            if scaler is not None:
+                with torch.amp.autocast("cuda"):
+                    out = model(xb)
+                    loss = loss_fn(out, yb)
+                scaler.scale(loss).backward()
+                scaler.step(opt)
+                scaler.update()
+            else:
+                out = model(xb)
+                loss = loss_fn(out, yb)
+                loss.backward()
+                opt.step()
+            total_loss += loss.item()
+            summary.step(loss=loss.item())
+        if sched is not None:
+            sched.step()
+        epoch_loss = total_loss / max(len(loader), 1)
+        summary.log_epoch(train_loss=epoch_loss)
+        print0(f"epoch {epoch + 1}/{epochs}: loss {epoch_loss:.4f}")
+
+    if save_path is not None:
+        save0(model.state_dict(), save_path)
+
+    finish(checkpoint=save_path)
+    return model
+
+

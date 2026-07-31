@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 # The public API. Everything not listed here (submodules, _-prefixed
 # helpers) is internal and may change without a deprecation cycle.
@@ -46,7 +46,7 @@ __all__ = [
     "scope",
     "set_epoch",
     "SummaryTracker",
-    "ThroughputMonitor",
+    "train",
     "train_mode",
     "TrainingMonitor",
     "train_step",
@@ -56,6 +56,8 @@ __all__ = [
 
 from .augment import augment_batch  # noqa: E402,F401
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
+from .fitting import fit, train  # noqa: E402,F401
+
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
 from .slurm import (
