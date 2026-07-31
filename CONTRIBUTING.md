@@ -65,7 +65,8 @@ than failed - that's expected, not a problem.
 The `test-cuda` CI job runs only the `cuda`-marked subset on a self-hosted
 GPU runner (`runs-on: [self-hosted, gpu]`). It's **not required** for merge
 (no branch-protection rule includes it), so PRs don't block if the runner is
-offline. See [`RUNNER_SETUP.md`](RUNNER_SETUP.md) for one-time runner
+offline. See [`docs/internal/runner_setup.md`](docs/internal/runner_setup.md) for one-time runner
+
 registration. If you add CUDA-dependent behavior, mark the test `@pytest.mark.cuda`
 and gate it with `skipif(not _has_cuda())` so it skips cleanly on CPU.
 

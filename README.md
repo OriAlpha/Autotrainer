@@ -38,26 +38,42 @@ autotrainer doctor               # diagnose your environment first
 ## Install
 
 ```bash
-uv pip install autotrainer[torch]            # just PyTorch (recommended)
-uv pip install autotrainer[torch,boosting]   # PyTorch + XGBoost/LightGBM
+uv pip install "autotrainer[torch]"            # PyTorch (recommended)
+uv pip install "autotrainer[torch,boosting]"   # PyTorch + XGBoost/LightGBM
+uv pip install "autotrainer[all]"              # Everything (PyTorch, TensorFlow, Sklearn, XGBoost, Optuna)
 
 # Or with standard pip:
-pip install autotrainer[torch]
+pip install "autotrainer[all]"
 ```
 
 Only `psutil` is required by default; each ML framework is an opt-in extra
-(`torch`, `sklearn`, `tf`, `boosting`, `tune`). Install only what you use.
+(`torch`, `sklearn`, `tf`, `boosting`, `tune`, `all`). Install only what you use.
+
 
 Setting up for development instead? See
 [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
 
 ## Quickstart
 
-Add one line to your training script, plus `set_epoch` at each epoch start so
-distributed shuffling gives every epoch a fresh order, and `finish()` at the end:
+### 1-Line Complete Training (Easiest)
+
+Infers loss/optimizer/schedule, applies hardware acceleration, trains for $N$ epochs, saves the model checkpoint, and prints the performance summary:
+
 
 ```python
 import autotrainer
+
+# 1 Line: trains model, saves checkpoint, and prints performance summary!
+model = autotrainer.train(model, loader, epochs=5, save_path="model.pt")
+```
+
+### Custom Training Loop with `prepare()`
+
+Or wrap your existing PyTorch training loop to auto-enable hardware acceleration (DDP, AMP, TF32, DataLoader thread pools) without altering your recipe:
+
+```python
+import autotrainer
+
 model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 for epoch in range(epochs):
@@ -67,6 +83,7 @@ for epoch in range(epochs):
 # At the end: prints comprehensive training summary & cleans up process groups
 autotrainer.finish()
 ```
+
 
 On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, sensible
 `num_workers` / `pin_memory` / `persistent_workers`, and AMP — **without
@@ -89,6 +106,7 @@ autotrainer info                  # show what was detected
 
 | You want | Call | Guide |
 |---|---|---|
+| 1-line train, recipe infer, & model save across PyTorch/Sklearn/XGBoost/TF | `train(model, loader, save_path="model.pt")` | [Quickstart](#quickstart) |
 | My loop, but using the hardware properly | `prepare(model, loader, opt)` | [GPU optimization](docs/guide/gpu-optimization.md) |
 | The whole step written for me | `train_step(...)` | [GPU optimization](docs/guide/gpu-optimization.md#even-simpler-train_step-runs-the-whole-step) |
 | Loss / optimizer / LR / schedule inferred | `auto(model, loader)` | — |
@@ -102,6 +120,7 @@ autotrainer info                  # show what was detected
 | To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |
 | XGBoost/LightGBM params with sane threads | `boost_params(lib="xgboost")` | — |
 | TensorFlow strategy scope | `scope()`, `scale_batch_size(n)` | — |
+
 
 Everything in `autotrainer.__all__` is public and stable; the rest is internal.
 
@@ -187,11 +206,13 @@ and LightGBM go through one API, where most of the tools above are PyTorch-only.
 
 Toward 1.0:
 
-- **Stabilization**: the public API is frozen as of 0.10; 1.0 now only blocks
-  on real multi-node SLURM validation.
+- **Stabilization**: the public API is frozen as of 0.10; 1.0 blocks on real multi-node SLURM validation.
+- **Unified Execution & Explanations (Shipped in 0.14.0)**:
+  - 1-line unified `train()` API across PyTorch, Scikit-Learn, XGBoost, LightGBM, CatBoost, and TensorFlow.
+  - Comprehensive Executive Training Summaries (`SummaryTracker`) reporting cluster hardware, active GPU/CPU optimizations, throughput (samples/sec), loss reduction, and triage diagnostics.
+  - Framework environment diagnostics in `autotrainer doctor`.
 
-Understanding your training run (the theme after 1.0 — autotrainer should
-explain runs, not just launch them):
+Understanding your training run (Post-1.0 features):
 
 - **Preflight estimation** (`doctor --profile`): dry-run a few batches, then
   report projected training time, memory headroom, and cost per GPU count —
@@ -212,13 +233,10 @@ More breadth:
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **Richer augmentation policies**: the recipe search covers a single
-  `aug_strength` scalar over flip + cutout for CNNs. Label-mixing policies
-  (mixup/cutmix) and per-op RandAugment-style search are the next step — both
-  need to rewrite targets and the loss, so they are a larger change to the
-  contract than a searchable scalar.
+- **Richer augmentation policies**: label-mixing policies (mixup/cutmix) and per-op RandAugment-style search.
 - **Architecture-aware search**: width/depth remain out of scope (a bigger,
   opt-in commitment that would step beyond "the model is yours").
+
 
 Open or upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to
 prioritize these.
