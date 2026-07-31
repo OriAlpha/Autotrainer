@@ -148,6 +148,33 @@ class SummaryTracker:
         print0(f"    - Loss Function     : {loss_fn_str}")
         print0("")
 
+        print0("  Performance & Speed:")
+        print0(f"    - Total Duration    : {elapsed:.2f}s")
+        if num_epochs > 0:
+            print0(f"    - Avg Epoch Speed   : {elapsed / num_epochs:.2f}s / epoch")
+        if total_samples > 0:
+            print0(f"    - Total Dataset     : {total_samples:,} samples processed")
+            print0(f"    - Throughput        : {throughput:,.2f} samples/sec")
+        print0("")
+
+        if init_loss is not None and final_loss is not None:
+            print0("  Loss & Metrics:")
+            print0(f"    - Initial Train Loss: {init_loss:.4f}")
+            pct_str = f"  ({loss_diff_pct:+.2f}%)" if loss_diff_pct is not None else ""
+            print0(f"    - Final Train Loss  : {final_loss:.4f}{pct_str}")
+            if self.val_losses:
+                best_val_loss = min(self.val_losses)
+                print0(f"    - Best Val Loss     : {best_val_loss:.4f}")
+            if self.val_accs:
+                print0(f"    - Final Val Acc     : {self.val_accs[-1]:.1f}%")
+            print0("")
+
+        if checkpoint:
+            ckpt_path = Path(checkpoint).resolve()
+            print0("  Artifacts & Checkpoint:")
+            print0(f"    - Saved Model       : {ckpt_path} (Rank-0 save)")
+            print0("")
+
         # Active Optimizations
         opts_list = []
         import os
@@ -231,33 +258,6 @@ class SummaryTracker:
             print0("  Autotrainer Active Optimizations:")
             for opt_item in opts_list:
                 print0(f"    - {opt_item}")
-            print0("")
-
-        print0("  Performance & Speed:")
-        print0(f"    - Total Duration    : {elapsed:.2f}s")
-        if num_epochs > 0:
-            print0(f"    - Avg Epoch Speed   : {elapsed / num_epochs:.2f}s / epoch")
-        if total_samples > 0:
-            print0(f"    - Total Dataset     : {total_samples:,} samples processed")
-            print0(f"    - Throughput        : {throughput:,.2f} samples/sec")
-        print0("")
-
-        if init_loss is not None and final_loss is not None:
-            print0("  Loss & Metrics:")
-            print0(f"    - Initial Train Loss: {init_loss:.4f}")
-            pct_str = f"  ({loss_diff_pct:+.2f}%)" if loss_diff_pct is not None else ""
-            print0(f"    - Final Train Loss  : {final_loss:.4f}{pct_str}")
-            if self.val_losses:
-                best_val_loss = min(self.val_losses)
-                print0(f"    - Best Val Loss     : {best_val_loss:.4f}")
-            if self.val_accs:
-                print0(f"    - Final Val Acc     : {self.val_accs[-1]:.1f}%")
-            print0("")
-
-        if checkpoint:
-            ckpt_path = Path(checkpoint).resolve()
-            print0("  Artifacts & Checkpoint:")
-            print0(f"    - Saved Model       : {ckpt_path} (Rank-0 save)")
             print0("")
 
         print0("  Autotrainer Health Diagnostic:")
