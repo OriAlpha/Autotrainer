@@ -297,11 +297,11 @@ def log_epoch(
 
 def _on_exit() -> None:
     """Auto-report summary and cleanup on exit if not manually reported."""
-    finish()
+    finish(cleanup_dist=True)
 
 
-def finish(checkpoint: str | Path | None = None) -> None:
-    """One-line helper to print summary and clean up distributed process groups.
+def finish(checkpoint: str | Path | None = None, cleanup_dist: bool = False) -> None:
+    """One-line helper to print summary and optionally clean up distributed process groups.
 
     Usage:
         autotrainer.finish(checkpoint="best_model.pt")
@@ -310,10 +310,12 @@ def finish(checkpoint: str | Path | None = None) -> None:
     if not summary.reported:
         summary.report(checkpoint=checkpoint)
 
-    try:
-        import torch
+    if cleanup_dist:
+        try:
+            import torch
 
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-    except ImportError:
-        pass
+            if torch.distributed.is_initialized():
+                torch.distributed.destroy_process_group()
+        except ImportError:
+            pass
+
