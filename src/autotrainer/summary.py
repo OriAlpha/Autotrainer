@@ -92,7 +92,10 @@ class SummaryTracker:
             gpu_name = torch.cuda.get_device_name(0)
             max_mem_mb = torch.cuda.max_memory_allocated() / (1024**2)
             total_vram_mb = torch.cuda.get_device_properties(0).total_memory / (1024**2)
-            mem_str = f"{max_mem_mb:.1f} MB / {total_vram_mb:.0f} MB ({max_mem_mb / total_vram_mb * 100:.1f}%)"
+            mem_str = (
+                f"{max_mem_mb:.1f} MB / {total_vram_mb:.0f} MB "
+                f"({max_mem_mb / total_vram_mb * 100:.1f}%)"
+            )
         else:
             gpu_name = "CPU"
             mem_str = "N/A"
@@ -132,7 +135,8 @@ class SummaryTracker:
         print0(f"    - GPU Device        : {gpu_name}")
         print0(f"    - Memory Usage      : {mem_str}")
         print0(
-            f"    - Topology          : {env_info.nnodes} Node(s) | {world_size} Worker Ranks (Mode: {env_info.mode})"
+            f"    - Topology          : {env_info.nnodes} Node(s) | "  # noqa: E501
+            f"{world_size} Worker Ranks (Mode: {env_info.mode})"
         )
 
         print0("")
@@ -151,7 +155,7 @@ class SummaryTracker:
         if has_torch and torch.cuda.is_available():
             if getattr(torch.backends.cuda.matmul, "allow_tf32", False):
                 opts_list.append(
-                    "TF32 Precision -> Accelerates GPU matrix math by up to 3x with zero accuracy loss"
+                    "TF32 Precision -> Accelerates GPU matrix math by up to 3x with zero accuracy loss"  # noqa: E501
                 )
             if getattr(torch.backends.cudnn, "benchmark", False):
                 opts_list.append(
@@ -162,14 +166,14 @@ class SummaryTracker:
                 and torch.backends.cuda.flash_sdp_enabled()
             ):
                 opts_list.append(
-                    "FlashAttention SDPA -> Accelerates attention math by 2-4x with O(N) memory scaling"
+                    "FlashAttention SDPA -> Accelerates attention math by 2-4x with O(N) memory scaling"  # noqa: E501
                 )
             if torch.cuda.is_bf16_supported():
                 opts_list.append(
                     "Native BF16 Precision -> Uses 16-bit brain float for higher stability"
                 )
             opts_list.append(
-                "AMP Mixed Precision -> Cuts memory bandwidth usage in half using FP16/BF16 tensor ops"
+                "AMP Mixed Precision -> Cuts memory bandwidth usage in half using FP16/BF16 tensor ops"  # noqa: E501
             )
 
         if has_torch and torch.distributed.is_initialized():
@@ -188,7 +192,7 @@ class SummaryTracker:
             )
         else:
             opts_list.append(
-                "Multi-Core Parallelization -> Auto-configured worker pools across physical CPU cores"
+                "Multi-Core Parallelization -> Auto-configured worker pools across physical CPU cores"  # noqa: E501
             )
 
         opts_list.append(
@@ -202,7 +206,7 @@ class SummaryTracker:
                 )
             if self.optimizer.defaults.get("weight_decay"):
                 opts_list.append(
-                    "Weight Decay Exclude -> Separates Norm/Bias layers from decay to preserve convergence"
+                    "Weight Decay Exclude -> Separates Norm/Bias layers from decay to preserve convergence"  # noqa: E501
                 )
 
         if hasattr(self, "scheduler") and hasattr(self.scheduler, "warmup_iters"):
@@ -213,11 +217,11 @@ class SummaryTracker:
         if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
             alloc_conf = os.environ["PYTORCH_CUDA_ALLOC_CONF"]
             opts_list.append(
-                f"CUDA Allocator Tuning -> Configured ({alloc_conf}) to eliminate VRAM fragmentation OOMs"
+                f"CUDA Allocator Tuning -> Configured ({alloc_conf}) to eliminate VRAM fragmentation OOMs"  # noqa: E501
             )
         if "SLURM_JOB_ID" in os.environ:
             opts_list.append(
-                "SLURM Node Scratch -> Routes inductor cache to fast local $TMPDIR to avoid NFS stalls"
+                "SLURM Node Scratch -> Routes inductor cache to fast local $TMPDIR to avoid NFS stalls"  # noqa: E501
             )
         if "NCCL_SOCKET_IFNAME" in os.environ:
             ifname = os.environ["NCCL_SOCKET_IFNAME"]

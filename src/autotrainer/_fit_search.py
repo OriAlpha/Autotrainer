@@ -36,7 +36,6 @@ def _sync_from_rank0(payload: list[Any], distributed: bool) -> list[Any]:
     return payload
 
 
-
 def _journal_storage(path: str) -> Any:
     """File-based Optuna storage that is safe on shared/NFS filesystems.
 

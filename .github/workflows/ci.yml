@@ -60,8 +60,9 @@ jobs:
           uv run python examples/pytorch_tune.py
           uv run python examples/pytorch_ddp.py
           uv run python examples/pytorch_optimize.py
-          uv run python examples/sklearn_example.py
-          uv run python examples/xgboost_example.py
+          uv run python examples/sklearn.py
+          uv run python examples/xgboost.py
+
 
 
   # GPU tests run on a self-hosted runner (your RTX 5070 box, registered with

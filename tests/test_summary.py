@@ -1,9 +1,9 @@
-"""Tests for autotrainer.SummaryTracker and finish()."""
+import pytest
 
-import torch
-import torch.nn as nn
+torch = pytest.importorskip("torch")
+import torch.nn as nn  # noqa: E402
 
-import autotrainer
+import autotrainer  # noqa: E402
 
 
 def test_summary_tracker_basic(capsys):
