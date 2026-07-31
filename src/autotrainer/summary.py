@@ -318,4 +318,3 @@ def finish(checkpoint: str | Path | None = None, cleanup_dist: bool = False) -> 
                 torch.distributed.destroy_process_group()
         except ImportError:
             pass
-
