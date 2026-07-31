@@ -44,7 +44,9 @@ boosting = ["xgboost>=2.0", "lightgbm>=4.0"]
 tune = ["optuna>=3.0"]
 all = ["torch>=2.0", "scikit-learn>=1.3", "tensorflow>=2.13", "xgboost>=2.0", "lightgbm>=4.0", "optuna>=3.0"]
 suhas = ["psutil"]
+suhas-goravale-siddaramu = ["psutil"]
 dev = ["pytest", "pytest-cov>=4.1", "ruff", "mypy>=1.8", "pdoc>=14", "build!=1.5.1", "twine"]
+
 
 
 
