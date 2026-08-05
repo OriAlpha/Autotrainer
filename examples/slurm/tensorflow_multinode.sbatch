@@ -14,4 +14,4 @@
 srun autotrainer doctor
 
 # Launch TensorFlow multi-node training (TF_CONFIG generated automatically)
-srun autotrainer run examples/tensorflow.py
+srun autotrainer run examples/tensorflow_example.py

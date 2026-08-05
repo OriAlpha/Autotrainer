@@ -13,5 +13,5 @@
 autotrainer doctor
 
 # Launch CPU training (thread parallelism, no launcher needed)
-python examples/sklearn.py
-python examples/xgboost.py
+python examples/sklearn_example.py
+python examples/xgboost_example.py

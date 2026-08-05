@@ -1,5 +1,5 @@
 """scikit-learn: auto n_jobs and 1-line execution.
-Run: python sklearn.py
+Run: python sklearn_example.py
 
 The ``if __name__ == "__main__":`` guard is required on Windows/macOS-spawn:
 n_jobs parallelism uses joblib/loky, which re-imports this module in each

@@ -1,5 +1,5 @@
 """XGBoost & LightGBM: auto thread count and 1-line execution for both API styles.
-Run: python xgboost.py
+Run: python xgboost_example.py
 
 XGBoost/LightGBM parallelize with OpenMP threads (not Python processes), so
 the guard isn't strictly required here - it's kept for consistency with the

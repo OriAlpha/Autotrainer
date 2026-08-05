@@ -92,8 +92,8 @@ Autotrainer handles CPU parallelism based on the backend framework:
   #SBATCH --nodes=1
   #SBATCH --ntasks=1
   #SBATCH --cpus-per-task=16
-  python examples/sklearn.py
-  python examples/xgboost.py
+  python examples/sklearn_example.py
+  python examples/xgboost_example.py
   ```
 
 ## SLURM node-local scratch
