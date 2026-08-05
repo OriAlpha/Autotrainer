@@ -5,6 +5,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-08-05
+### Fixed
+- **`prepare()` auto-launch no longer kills notebook kernels.** Auto-launch
+  re-executes `sys.argv` once per GPU and exits the parent, but only checked
+  `RANK`, `SLURM_JOB_ID` and `detect()`. In a notebook on a multi-GPU box
+  `argv[0]` is the kernel launcher, so it spawned N launchers and killed the
+  kernel mid-cell with nothing to diagnose; `python -m pkg` was re-executed as
+  a bare file path, losing the package context. It now requires a plain
+  `python script.py` invocation and explains itself when it stands down.
+- **The summary reports what autotrainer did, not what it guessed.** The
+  "Active Optimizations" list was derived from global torch flags and env
+  vars, which cannot distinguish a setting autotrainer made from one the user
+  made. It claimed a multi-worker pinned-memory DataLoader pipeline for
+  loaders left at `num_workers=0`; a "Weight Decay Exclude" norm/bias
+  param-group split that autotrainer has never performed, for any nonzero
+  `weight_decay`; "Grad Clipping" from `optimizer.defaults["max_norm"]`, which
+  no torch optimizer defines; "SLURM Node Scratch" from `SLURM_JOB_ID` rather
+  than from `configure_scratch()` running; and FlashAttention/bf16, which are
+  a torch default and a hardware capability. `prepare()`, `configure_nccl()`
+  and `configure_scratch()` now record what they applied, and the report
+  renders **Autotrainer Applied** from that record alone. Facts observed but
+  not caused move to a new **Environment Detected** section. `weight_decay`
+  now appears on the optimizer recipe line, reported rather than claimed.
+- **`atexit` no longer destroys the process group.** Teardown ran during
+  interpreter shutdown, which is unreliable and duplicates torch's own
+  cleanup; the exit hook now only prints. Explicit
+  `finish(cleanup_dist=True)` is unchanged.
+- **A second run in one process gets its own summary.** `finish()` now
+  releases the global tracker, instead of leaving a reported tracker that
+  silently suppressed the next run's summary. `fit()` still emits one summary
+  for the whole run rather than reporting the search and dropping the final
+  training.
+- **`train()` reports its LR schedule.** The scheduler inferred by `auto()`
+  was never handed to the summary, so the `LR Schedule` line was blank on the
+  one path that always has one.
+- **`train()` dispatches by framework.** Routing probed for `.fit` / `.forward`
+  attributes, so any object with a `fit()` method was sent to the sklearn
+  backend and everything else fell through to the PyTorch path, failing deep
+  inside it. It now uses the same module-prefix rule as `prepare()` and
+  `tune()`, raises a clear `TypeError` for models it cannot route, and sends
+  boosting estimators to the boosting backend's thread config.
+
 ## [0.14.0] - 2026-07-31
 ### Added
 - **Unified `autotrainer.train()` 1-Line API.** Single-function execution across PyTorch, Scikit-Learn, XGBoost, LightGBM, CatBoost, and TensorFlow/Keras. Automatically infers loss/optimizer/scheduler, configures thread/replica batch scaling, executes training, serializes model checkpoints, and reports performance summary.

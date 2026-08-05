@@ -239,3 +239,48 @@ def GradScaler(*args: Any, **kwargs: Any) -> Any:
     if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
         return torch.amp.GradScaler("cuda", *args, enabled=enabled, **kwargs)
     return torch.cuda.amp.GradScaler(*args, enabled=enabled, **kwargs)
+
+
+def is_torch_module(model: Any) -> bool:
+    """True for ``torch.nn.Module`` instances (False when torch isn't installed)."""
+    try:
+        import torch
+
+        return isinstance(model, torch.nn.Module)
+    except ImportError:
+        return False
+
+
+def is_sklearn_estimator(model: Any) -> bool:
+    """True for sklearn-API estimators (False when sklearn isn't installed).
+
+    Note XGBoost/LightGBM's sklearn-API classes subclass ``BaseEstimator`` too,
+    so callers that route those elsewhere must check them *first*.
+    """
+    try:
+        from sklearn.base import BaseEstimator
+
+        return isinstance(model, BaseEstimator)
+    except ImportError:
+        return False
+
+
+def framework_of(model: Any) -> str:
+    """Classify a model by framework, the same way across every entry point.
+
+    Returns one of ``"torch"``, ``"tf"``, ``"boosting"``, ``"sklearn"``, or
+    ``"unknown"``. Dispatch is by ``type(model).__module__`` prefix with an
+    isinstance fallback, so a subclass defined in user code still routes
+    correctly. Order matters: XGBoost/LightGBM are checked before sklearn
+    because their sklearn-API models would otherwise be misrouted.
+    """
+    mod = type(model).__module__ or ""
+    if mod.startswith("torch") or is_torch_module(model):
+        return "torch"
+    if mod.startswith(("keras", "tensorflow")):
+        return "tf"
+    if mod.startswith(("xgboost", "lightgbm")):
+        return "boosting"
+    if mod.startswith("sklearn") or is_sklearn_estimator(model):
+        return "sklearn"
+    return "unknown"
