@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.14.0"
+__version__ = "0.14.1"
 
 # The public API. Everything not listed here (submodules, _-prefixed
 # helpers) is internal and may change without a deprecation cycle.

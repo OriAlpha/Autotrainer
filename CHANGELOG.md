@@ -4,6 +4,8 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.14.1] - 2026-08-05
 ### Fixed
 - **`prepare()` auto-launch no longer kills notebook kernels.** Auto-launch
   re-executes `sys.argv` once per GPU and exits the parent, but only checked
