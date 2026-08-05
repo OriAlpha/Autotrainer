@@ -10,4 +10,8 @@
 # Activate your virtual environment if needed
 # source .venv/bin/activate
 
+# Optional sanity check - fails fast if the environment is broken
+srun autotrainer doctor
+
+# Launch single-node multi-GPU training
 srun autotrainer run examples/pytorch_ddp.py
