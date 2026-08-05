@@ -1,6 +1,6 @@
 """TensorFlow: create the model INSIDE autotrainer.scope().
-Run: autotrainer run tensorflow_scope.py
-SLURM multi-node: srun autotrainer run tensorflow_scope.py (TF_CONFIG auto-generated)
+Run: autotrainer run tensorflow.py
+SLURM multi-node: srun autotrainer run tensorflow.py (TF_CONFIG auto-generated)
 
 The ``if __name__ == "__main__":`` guard keeps this consistent with the other
 examples and safe under process-spawning launchers.
