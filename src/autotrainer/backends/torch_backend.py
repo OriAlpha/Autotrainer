@@ -8,6 +8,7 @@ model in DDP, and swaps the DataLoader's sampler for a DistributedSampler.
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 
@@ -53,13 +54,67 @@ def _ensure_process_group() -> bool:
     return True
 
 
+def _is_relaunchable_script() -> bool:
+    """True when this process was started as a plain ``python train.py``.
+
+    Auto-launch works by re-executing ``sys.argv`` in one child process per
+    GPU, which only makes sense when ``argv[0]`` is a script file that reruns
+    the user's training code top-to-bottom. Three invocations break that
+    assumption, and all of them are silent disasters if we spawn anyway:
+
+    * **Notebooks / IPython kernels.** ``argv[0]`` is the kernel launcher, so
+      we would spawn N copies of *the launcher* and then ``sys.exit`` - the
+      user's kernel dies mid-cell with no diagnosable message.
+    * **``python -m pkg``.** ``argv[0]`` is a real ``.py`` file, but
+      re-executing that path directly drops the package context, so
+      package-relative imports in the module break. ``__main__.__spec__`` is
+      a ModuleSpec here and ``None`` for a plain script - that is the
+      documented way to tell the two apart.
+    * **REPL / ``exec`` / embedded hosts.** No ``__main__.__file__`` at all,
+      or one that doesn't match ``argv[0]``.
+
+    Note this guard never fires on the ``autotrainer run`` path: that sets
+    ``RANK`` before running the script, so condition 1 of
+    :func:`_maybe_auto_launch` short-circuits first.
+    """
+    import __main__
+
+    script = sys.argv[0] if sys.argv else ""
+    if not script or not script.endswith(".py") or not os.path.isfile(script):
+        return False
+
+    # `python -m pkg` leaves a real .py in argv[0]; __spec__ distinguishes it.
+    if getattr(__main__, "__spec__", None) is not None:
+        return False
+
+    # Some Jupyter front-ends start the kernel by path rather than `-m`, which
+    # slips past the __spec__ check. A live IPython shell is the giveaway.
+    ipython = sys.modules.get("IPython")
+    if ipython is not None:
+        try:
+            if ipython.get_ipython() is not None:
+                return False
+        except AttributeError:
+            pass
+
+    # Finally: argv[0] must actually be the module being executed, not some
+    # bootstrapper that went on to run something else.
+    main_file = getattr(__main__, "__file__", None)
+    if not isinstance(main_file, str):
+        return False
+    try:
+        return os.path.samefile(main_file, script)
+    except OSError:
+        return os.path.abspath(main_file) == os.path.abspath(script)
+
+
 def _maybe_auto_launch() -> None:
     """If this is a fresh parent process on a multi-GPU box, spawn one worker
     per GPU and exit - so a bare ``python train.py`` distributes across all
     visible GPUs without the user invoking ``autotrainer run``.
 
     This is called at the very top of ``prepare()``. It spawns ONLY when all
-    three hold:
+    four hold:
 
     1. No ``RANK``/``WORLD_SIZE`` env var is set - we're a fresh parent, not a
        worker that the launcher (or a prior auto-launch) already spawned. The
@@ -68,6 +123,9 @@ def _maybe_auto_launch() -> None:
        one task per GPU, so self-spawning here would double-spawn. The SLURM
        front door stays ``srun autotrainer run train.py``.
     3. ``detect()`` reports ``local_multi_gpu`` (>= 2 GPUs on this one box).
+    4. :func:`_is_relaunchable_script` - this process is a plain
+       ``python train.py``, so re-executing ``sys.argv`` reruns the training
+       script rather than a notebook kernel or a module bootstrapper.
 
     When it fires, the parent process re-executes ``sys.argv`` once per GPU via
     :func:`autotrainer.launcher._spawn_local_workers` (each child pinned to its
@@ -81,8 +139,6 @@ def _maybe_auto_launch() -> None:
     This is opt-out: ``prepare(..., auto_launch=False)`` skips the call
     entirely (for users managing their own process spawning).
     """
-    import sys
-
     # Condition 1: already a worker (launched by autotrainer run, srun, or a
     # prior auto-launch) - never re-spawn.
     if os.environ.get("RANK") is not None or os.environ.get("WORLD_SIZE") is not None:
@@ -99,6 +155,20 @@ def _maybe_auto_launch() -> None:
     # Condition 3: only self-spawn for local multi-GPU. Single-GPU and SLURM
     # modes are handled by the normal prepare() path / srun respectively.
     if env.mode != "local_multi_gpu":
+        return
+
+    # Condition 4: re-executing argv only reruns the training script when we
+    # were started as one. Checked after detect() so the explanation only
+    # prints on the boxes where it actually costs the user something.
+    if not _is_relaunchable_script():
+        print0(
+            f"[autotrainer] auto-launch: skipped - {env.nproc_per_node} GPUs are "
+            "available, but this process was not started as `python <script>.py` "
+            "(notebook, REPL, or `python -m`), so re-executing it per GPU would "
+            "spawn the wrong thing. Continuing on a single device. For multi-GPU, "
+            "run your training as a script (`autotrainer run train.py`); pass "
+            "prepare(..., auto_launch=False) to silence this."
+        )
         return
 
     print0(
@@ -390,7 +460,13 @@ def prepare(
         if dataloader is not None:
             # Shard (and validate) BEFORE any collective op: if this rank
             # raised after init, the others would hang in the process group.
+            unsharded = dataloader
             dataloader = _shard_loader(dataloader, rank, world_size)
+            if dataloader is not unsharded:
+                # _shard_loader returns the input untouched when the user
+                # already installed a DistributedSampler - only claim the
+                # sampler in the summary when we were the one to install it.
+                applied["sampler"] = "distributed"
         _ensure_process_group()
         if fsdp:
             # FSDP shards params/grads/optim state across ranks - the path
@@ -589,6 +665,10 @@ def prepare(
     from ..summary import get_active_summary
 
     summary = get_active_summary()
+    # Hand the summary the same record `summarize()` just printed from, so the
+    # post-training "Applied" section reports what actually happened here
+    # instead of re-deriving it from torch globals and env vars later.
+    summary.record_applied(applied, amp=bool(amp and use_cuda))
     if optimizer is not None and summary.optimizer is None:
         summary.optimizer = optimizer
     if loss_fn is not None and summary.loss_fn is None:

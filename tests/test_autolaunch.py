@@ -110,6 +110,131 @@ class TestMaybeAutoLaunchNoSpawn:
         spawn_called.assert_not_called()
 
 
+class TestMaybeAutoLaunchNeedsARelaunchableScript:
+    """Condition 4: auto-launch re-executes ``sys.argv``, which only reruns
+    the user's training code when we were started as ``python train.py``.
+
+    In a notebook, ``argv[0]`` is the kernel launcher - spawning it per GPU and
+    then ``sys.exit``-ing kills the kernel mid-cell with nothing to go on. All
+    of these must stand down (and say why) instead.
+    """
+
+    def _multi_gpu_box(self, monkeypatch):
+        monkeypatch.delenv("RANK", raising=False)
+        monkeypatch.delenv("WORLD_SIZE", raising=False)
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr(
+            "autotrainer.detect.detect",
+            lambda: Environment(mode="local_multi_gpu", nproc_per_node=2, gpus=2),
+        )
+        spawn_called = MagicMock()
+        monkeypatch.setattr("autotrainer.launcher._spawn_local_workers", spawn_called)
+        return spawn_called
+
+    def test_does_not_spawn_under_python_dash_m(self, monkeypatch, tmp_path, capsys):
+        """``python -m pkg`` leaves a real .py in argv[0], but re-executing
+        that path drops the package context. __main__.__spec__ tells them
+        apart: a ModuleSpec for -m, None for a plain script."""
+        import __main__
+
+        script = tmp_path / "mod.py"
+        script.write_text("")
+        spawn_called = self._multi_gpu_box(monkeypatch)
+        monkeypatch.setattr("sys.argv", [str(script)])
+        monkeypatch.setattr(__main__, "__file__", str(script), raising=False)
+        monkeypatch.setattr(__main__, "__spec__", object(), raising=False)
+
+        _maybe_auto_launch()
+
+        spawn_called.assert_not_called()
+        assert "auto-launch: skipped" in capsys.readouterr().out
+
+    def test_does_not_spawn_inside_a_notebook(self, monkeypatch, tmp_path, capsys):
+        """Front-ends that start the kernel by path rather than -m slip past
+        the __spec__ check; a live IPython shell is the giveaway."""
+        import sys as _sys
+        import types
+
+        import __main__
+
+        script = tmp_path / "ipykernel_launcher.py"
+        script.write_text("")
+        spawn_called = self._multi_gpu_box(monkeypatch)
+        monkeypatch.setattr("sys.argv", [str(script)])
+        monkeypatch.setattr(__main__, "__file__", str(script), raising=False)
+        monkeypatch.setattr(__main__, "__spec__", None, raising=False)
+
+        fake_ipython = types.ModuleType("IPython")
+        fake_ipython.get_ipython = lambda: object()  # a live shell
+        monkeypatch.setitem(_sys.modules, "IPython", fake_ipython)
+
+        _maybe_auto_launch()
+
+        spawn_called.assert_not_called()
+        assert "auto-launch: skipped" in capsys.readouterr().out
+
+    def test_does_not_spawn_from_a_repl(self, monkeypatch, capsys):
+        """An interactive interpreter has argv[0] == '' and no __main__.__file__."""
+        spawn_called = self._multi_gpu_box(monkeypatch)
+        monkeypatch.setattr("sys.argv", [""])
+
+        _maybe_auto_launch()
+
+        spawn_called.assert_not_called()
+        assert "auto-launch: skipped" in capsys.readouterr().out
+
+    def test_does_not_spawn_when_argv0_is_not_the_running_module(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """A bootstrapper that went on to run something else: argv[0] is a
+        real .py, but it is not what __main__ actually is."""
+        import __main__
+
+        bootstrap = tmp_path / "bootstrap.py"
+        bootstrap.write_text("")
+        actual = tmp_path / "actual.py"
+        actual.write_text("")
+        spawn_called = self._multi_gpu_box(monkeypatch)
+        monkeypatch.setattr("sys.argv", [str(bootstrap)])
+        monkeypatch.setattr(__main__, "__file__", str(actual), raising=False)
+        monkeypatch.setattr(__main__, "__spec__", None, raising=False)
+
+        _maybe_auto_launch()
+
+        spawn_called.assert_not_called()
+        assert "auto-launch: skipped" in capsys.readouterr().out
+
+    def test_still_spawns_for_a_plain_script(self, monkeypatch, tmp_path):
+        """The guard must not break the case it exists to protect:
+        ``python train.py`` on a multi-GPU box still auto-launches."""
+        import sys as _sys
+
+        import __main__
+
+        script = tmp_path / "train.py"
+        script.write_text("")
+        monkeypatch.delenv("RANK", raising=False)
+        monkeypatch.delenv("WORLD_SIZE", raising=False)
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        monkeypatch.setattr(
+            "autotrainer.detect.detect",
+            lambda: Environment(mode="local_multi_gpu", nproc_per_node=2, gpus=2),
+        )
+        monkeypatch.setattr("sys.argv", [str(script)])
+        monkeypatch.setattr(__main__, "__file__", str(script), raising=False)
+        monkeypatch.setattr(__main__, "__spec__", None, raising=False)
+        monkeypatch.delitem(_sys.modules, "IPython", raising=False)
+
+        procs = _fake_worker_procs(2)
+        monkeypatch.setattr("autotrainer.launcher.subprocess.Popen", lambda *a, **kw: next(procs))
+        monkeypatch.setattr("autotrainer.launcher.time.sleep", lambda *_: None)
+
+        with pytest.raises(SystemExit) as exc_info:
+            _maybe_auto_launch()
+        assert exc_info.value.code == 0
+
+
 class TestMaybeAutoLaunchSpawns:
     """When all three conditions hold, auto-launch spawns N workers (one per
     GPU) and the parent exits. We assert on the spawn call, the per-child env,
@@ -125,6 +250,11 @@ class TestMaybeAutoLaunchSpawns:
         monkeypatch.setattr(
             "autotrainer.detect.detect",
             lambda: Environment(mode="local_multi_gpu", nproc_per_node=nproc, gpus=nproc),
+        )
+        # Condition 4 has its own tests above; these use a synthetic argv[0]
+        # that isn't a real file, so satisfy the guard directly.
+        monkeypatch.setattr(
+            "autotrainer.backends.torch_backend._is_relaunchable_script", lambda: True
         )
         # _spawn_local_workers calls subprocess.Popen and time.sleep; stub
         # both so no real process spawns and the poll loop doesn't block.
@@ -173,6 +303,9 @@ class TestMaybeAutoLaunchSpawns:
         monkeypatch.setattr(
             "autotrainer.detect.detect",
             lambda: Environment(mode="local_multi_gpu", nproc_per_node=2, gpus=2),
+        )
+        monkeypatch.setattr(
+            "autotrainer.backends.torch_backend._is_relaunchable_script", lambda: True
         )
         dead = MagicMock()
         dead.poll.return_value = 7  # worker crashed

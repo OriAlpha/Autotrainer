@@ -1,4 +1,20 @@
-"""Modular post-training summary, automatic tracking, and metrics reporting."""
+"""Modular post-training summary, automatic tracking, and metrics reporting.
+
+Two ways in, and they are separate on purpose:
+
+* The module-level helpers (:func:`step`, :func:`log_epoch`, :func:`finish`)
+  drive one process-global tracker, created on first use. This is the
+  one-liner path the README documents, and what ``prepare()`` / ``fit()`` /
+  ``train()`` feed into.
+* :class:`SummaryTracker` instances are standalone - construct one and call
+  its own ``step`` / ``log_epoch`` / ``report``. The module-level helpers do
+  not see it, which is what you want when tracking two runs at once.
+
+:func:`finish` releases the global tracker when it is done, so a second run
+in the same process (a notebook, a test suite, ``fit()`` then ``train()``)
+starts from a clean one instead of inheriting the finished run's losses,
+timings and applied-optimization record.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +29,9 @@ from .utils import print0
 
 _ACTIVE_SUMMARY: SummaryTracker | None = None
 _ATEXIT_REGISTERED = False
+# Set once any report has been emitted, so a bare second finish() (or the
+# atexit hook after an explicit finish()) doesn't print an empty second box.
+_REPORT_EMITTED = False
 
 
 class SummaryTracker:
@@ -20,6 +39,10 @@ class SummaryTracker:
 
     Tracks duration, throughput, hardware topology, VRAM usage, initial vs final loss,
     validation metrics, and runs automated training health triage.
+
+    Instances are independent of the process-global tracker that
+    :func:`step` / :func:`log_epoch` / :func:`finish` operate on; call this
+    object's own methods to drive it.
     """
 
     def __init__(
@@ -46,6 +69,19 @@ class SummaryTracker:
         self.val_accs: list[float] = []
         self.step_count = 0
         self.reported = False
+        # What autotrainer actually changed, keyed the same way as the dict
+        # ``torch_backend.prepare()`` builds. The report renders the "Applied"
+        # section straight from this rather than re-deriving it from global
+        # torch flags or env vars, which cannot tell "autotrainer set this"
+        # from "the user set this" - and so used to claim credit for both.
+        self.applied: dict[str, Any] = {}
+
+    def record_applied(self, applied: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        """Merge in optimizations autotrainer applied. Callers are the code
+        that performed them (``prepare()``, ``configure_nccl()``, ...)."""
+        if applied:
+            self.applied.update(applied)
+        self.applied.update(kwargs)
 
     def step(
         self,
@@ -145,10 +181,20 @@ class SummaryTracker:
         # Optimizer, LR & Loss name string
         opt_str = self.optimizer.__class__.__name__ if self.optimizer else "Standard"
         if self.optimizer and hasattr(self.optimizer, "param_groups"):
-            lr = self.optimizer.param_groups[0].get("lr")
+            group = self.optimizer.param_groups[0]
+            bits = []
+            lr = group.get("lr")
             if lr is not None:
                 lr_str = f"{lr:.2e}" if (lr < 1e-3 or lr > 1e4) else f"{lr:.4g}"
-                opt_str += f" (lr={lr_str})"
+                bits.append(f"lr={lr_str}")
+            # Reported, not claimed: this is the user's setting. (The old
+            # "Weight Decay Exclude" optimization line asserted a norm/bias
+            # param-group split that autotrainer does not do.)
+            wd = group.get("weight_decay")
+            if wd:
+                bits.append(f"weight_decay={wd:g}")
+            if bits:
+                opt_str += f" ({', '.join(bits)})"
 
         sched_str = self.scheduler.__class__.__name__ if self.scheduler else None
         loss_fn_str = self.loss_fn.__class__.__name__ if self.loss_fn else "Standard"
@@ -204,94 +250,115 @@ class SummaryTracker:
             print0(f"    - Saved Model       : {ckpt_path} (Rank-0 save)")
             print0("")
 
-        # Active Optimizations
-        opts_list = []
-        import os
+        applied_lines = self._applied_lines(world_size)
+        if applied_lines:
+            print0("  Autotrainer Applied:")
+            for line in applied_lines:
+                print0(f"    - {line}")
+            print0("")
 
-        if has_torch and torch.cuda.is_available():
-            if getattr(torch.backends.cuda.matmul, "allow_tf32", False):
-                opts_list.append(
-                    "TF32 Precision -> Accelerates GPU matrix math by up to 3x with zero accuracy loss"  # noqa: E501
-                )
-            if getattr(torch.backends.cudnn, "benchmark", False):
-                opts_list.append(
-                    "cuDNN Benchmark -> Auto-tunes fastest convolution algorithms for your GPU"
-                )
-            if (
-                hasattr(torch.backends.cuda, "flash_sdp_enabled")
-                and torch.backends.cuda.flash_sdp_enabled()
-            ):
-                opts_list.append(
-                    "FlashAttention SDPA -> Accelerates attention math by 2-4x with O(N) memory scaling"  # noqa: E501
-                )
-            if torch.cuda.is_bf16_supported():
-                opts_list.append(
-                    "Native BF16 Precision -> Uses 16-bit brain float for higher stability"
-                )
-            opts_list.append(
-                "AMP Mixed Precision -> Cuts memory bandwidth usage in half using FP16/BF16 tensor ops"  # noqa: E501
-            )
-
-        if has_torch and torch.distributed.is_initialized():
-            ws = torch.distributed.get_world_size()
-            opts_list.append(
-                f"DDP ({ws} Ranks) -> Scales model training in parallel across {ws} GPU processes"
-            )
-            opts_list.append(
-                "DistributedSampler -> Auto-reshuffles dataset indices per epoch across GPUs"
-            )
-
-        if "SLURM_CPUS_PER_TASK" in os.environ:
-            cpus = os.environ["SLURM_CPUS_PER_TASK"]
-            opts_list.append(
-                f"CPU Multi-Core Scaling -> Configured n_jobs={cpus} to match SLURM task allocation"
-            )
-        else:
-            opts_list.append(
-                "Multi-Core Parallelization -> Auto-configured worker pools across physical CPU cores"  # noqa: E501
-            )
-
-        opts_list.append(
-            "DataLoader Pipeline -> Uses multi-worker threads & page-locked memory for DataLoader"
-        )
-
-        if self.optimizer and hasattr(self.optimizer, "defaults"):
-            if self.optimizer.defaults.get("max_norm"):
-                opts_list.append(
-                    "Grad Clipping -> Limits gradient norms to prevent exploding gradients"
-                )
-            if self.optimizer.defaults.get("weight_decay"):
-                opts_list.append(
-                    "Weight Decay Exclude -> Separates Norm/Bias layers from decay to preserve convergence"  # noqa: E501
-                )
-
-        if hasattr(self, "scheduler") and hasattr(self.scheduler, "warmup_iters"):
-            opts_list.append(
-                "Warmup Cosine Schedule -> Gradually ramps LR before decay to prevent instability"
-            )
-
-        if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
-            alloc_conf = os.environ["PYTORCH_CUDA_ALLOC_CONF"]
-            opts_list.append(
-                f"CUDA Allocator Tuning -> Configured ({alloc_conf}) to eliminate VRAM fragmentation OOMs"  # noqa: E501
-            )
-        if "SLURM_JOB_ID" in os.environ:
-            opts_list.append(
-                "SLURM Node Scratch -> Routes inductor cache to fast local $TMPDIR to avoid NFS stalls"  # noqa: E501
-            )
-        if "NCCL_SOCKET_IFNAME" in os.environ:
-            ifname = os.environ["NCCL_SOCKET_IFNAME"]
-            opts_list.append(f"NCCL Interconnect -> Bound to {ifname} to prevent multi-node hangs")
-
-        if opts_list:
-            print0("  Autotrainer Active Optimizations:")
-            for opt_item in opts_list:
-                print0(f"    - {opt_item}")
+        detected_lines = self._detected_lines(has_torch)
+        if detected_lines:
+            print0("  Environment Detected:")
+            for line in detected_lines:
+                print0(f"    - {line}")
             print0("")
 
         print0("  Autotrainer Health Diagnostic:")
         self.triage_mon.report()
         print0("=" * 66)
+
+    def _applied_lines(self, world_size: int) -> list[str]:
+        """Render the "Applied" section from :attr:`applied` and nothing else.
+
+        Every line here corresponds to a change autotrainer made on this run,
+        recorded by the code that made it. Deliberately reads no
+        ``torch.backends`` globals and no env vars: those are equally true
+        when the *user* set them, and inferring from them is how this section
+        used to report a DataLoader pipeline for loaders with
+        ``num_workers=0``, and a "Weight Decay Exclude" param-group split that
+        autotrainer has never performed.
+        """
+        a = self.applied
+        lines: list[str] = []
+
+        if a.get("tf32"):
+            lines.append("TF32 matmul -> on (fp32 matmuls routed to Ampere+ tensor cores)")
+        if a.get("cudnn_benchmark"):
+            lines.append("cuDNN benchmark -> on (autotunes conv algorithms; conv layers found)")
+        if a.get("amp"):
+            lines.append("AMP -> on (bf16 where supported, else fp16 + GradScaler)")
+        if a.get("compile"):
+            lines.append(f"torch.compile -> mode={a['compile']}")
+
+        loader_bits = []
+        if a.get("num_workers") is not None:
+            loader_bits.append(f"num_workers={a['num_workers']} (was 0)")
+        if a.get("pin_memory"):
+            loader_bits.append("pin_memory")
+        if a.get("persistent_workers"):
+            loader_bits.append("persistent_workers")
+        if loader_bits:
+            lines.append(f"DataLoader -> {', '.join(loader_bits)}")
+        if a.get("batch_size"):
+            old_bs, new_bs = a["batch_size"]
+            lines.append(
+                f"Batch size -> {old_bs} to {new_bs} (auto_bs sweep; lr and schedule unchanged)"
+            )
+
+        wrap = a.get("wrap")
+        if wrap == "ddp":
+            lines.append(f"DDP -> model replicated across {world_size} ranks")
+        elif wrap == "fsdp":
+            lines.append(f"FSDP -> params/grads/optimizer state sharded across {world_size} ranks")
+        if a.get("ddp_opts"):
+            lines.append(f"DDP options -> {', '.join(a['ddp_opts'])}")
+        if a.get("cpu_offload"):
+            lines.append("FSDP CPU offload -> params held on CPU between fwd/bwd")
+        if a.get("sampler") == "distributed":
+            lines.append("DistributedSampler -> installed (each rank sees a disjoint shard)")
+
+        if a.get("nccl_ifname"):
+            lines.append(f"NCCL_SOCKET_IFNAME -> set to {a['nccl_ifname']} (was unset)")
+        if a.get("node_scratch"):
+            lines.append(f"Node scratch -> temp/cache dirs pointed at {a['node_scratch']}")
+
+        return lines
+
+    def _detected_lines(self, has_torch: bool) -> list[str]:
+        """Environment facts observed but *not* caused by autotrainer.
+
+        Useful when diagnosing a slow run, which is why they are still shown -
+        but in their own section, so nothing here reads as something
+        autotrainer did. Anything autotrainer actually set is recorded in
+        :attr:`applied` and reported above instead; the env-var entries below
+        are skipped when that is the case.
+        """
+        import os
+
+        lines: list[str] = []
+
+        if has_torch:
+            import torch
+
+            if torch.cuda.is_available():
+                if torch.cuda.is_bf16_supported():
+                    lines.append("bf16 -> supported by this GPU")
+                if getattr(torch.backends.cuda, "flash_sdp_enabled", None) and (
+                    torch.backends.cuda.flash_sdp_enabled()
+                ):
+                    lines.append("Flash SDPA -> available (torch default; not set by autotrainer)")
+
+        if "SLURM_CPUS_PER_TASK" in os.environ:
+            lines.append(f"SLURM_CPUS_PER_TASK={os.environ['SLURM_CPUS_PER_TASK']}")
+        if "PYTORCH_CUDA_ALLOC_CONF" in os.environ:
+            lines.append(f"PYTORCH_CUDA_ALLOC_CONF={os.environ['PYTORCH_CUDA_ALLOC_CONF']}")
+        if "NCCL_SOCKET_IFNAME" in os.environ and not self.applied.get("nccl_ifname"):
+            lines.append(
+                f"NCCL_SOCKET_IFNAME={os.environ['NCCL_SOCKET_IFNAME']} (preset; left alone)"
+            )
+
+        return lines
 
 
 def get_active_summary() -> SummaryTracker:
@@ -325,19 +392,47 @@ def log_epoch(
 
 
 def _on_exit() -> None:
-    """Auto-report summary and cleanup on exit if not manually reported."""
-    finish(cleanup_dist=True)
+    """Print the summary at interpreter exit if the user never called finish().
+
+    Deliberately does NOT tear down the process group. ``destroy_process_group``
+    during interpreter shutdown is unreliable - module globals are being torn
+    down underneath NCCL, and torch registers its own cleanup anyway - so a
+    hang or a spurious traceback here would be the last thing the user sees.
+    Explicit ``finish(cleanup_dist=True)`` remains the way to ask for teardown.
+
+    Reports only an existing, unreported tracker: after finish() the global is
+    cleared, and creating a fresh one here would print an empty second box.
+    """
+    if _ACTIVE_SUMMARY is not None and not _ACTIVE_SUMMARY.reported:
+        _ACTIVE_SUMMARY.report()
 
 
 def finish(checkpoint: str | Path | None = None, cleanup_dist: bool = False) -> None:
-    """One-line helper to print summary and optionally clean up distributed process groups.
+    """Print the training summary, and optionally tear down process groups.
 
     Usage:
         autotrainer.finish(checkpoint="best_model.pt")
+
+    Args:
+        checkpoint: path to report as the saved artifact, if any.
+        cleanup_dist: also call ``destroy_process_group()``. Default ``False``
+            so ``fit()`` / ``tune()`` pipelines that call finish() between
+            phases keep their process group alive.
+
+    Releases the process-global tracker on the way out, so the next run in
+    this process starts fresh rather than reusing a reported tracker (which
+    would silently suppress its summary).
     """
-    summary = get_active_summary()
-    if not summary.reported:
+    global _ACTIVE_SUMMARY, _REPORT_EMITTED
+
+    summary = _ACTIVE_SUMMARY
+    if summary is None and not _REPORT_EMITTED:
+        # Nothing tracked yet and nothing reported yet: an explicit finish()
+        # should still print, so materialize a tracker for it.
+        summary = get_active_summary()
+    if summary is not None and not summary.reported:
         summary.report(checkpoint=checkpoint)
+        _REPORT_EMITTED = True
 
     if cleanup_dist:
         try:
@@ -347,3 +442,5 @@ def finish(checkpoint: str | Path | None = None, cleanup_dist: bool = False) -> 
                 torch.distributed.destroy_process_group()
         except ImportError:
             pass
+
+    _ACTIVE_SUMMARY = None
