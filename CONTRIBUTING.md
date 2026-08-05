@@ -33,8 +33,10 @@ export UV_CACHE_DIR=/tmp/$USER-uv-cache
 
 uv venv /tmp/$USER-venv
 source /tmp/$USER-venv/bin/activate
+
 # Install all
 uv pip install --link-mode=copy -e ".[all,dev]" 
+
 # Everything EXCEPT TensorFlow + Dev tools (Recommended default for dev setup
 uv pip install --link-mode=copy -e ".[dev,torch,sklearn,boosting,tune]"
 
