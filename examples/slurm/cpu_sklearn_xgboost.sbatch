@@ -6,6 +6,12 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=%x-%j.out
 
-# No launcher needed - thread parallelism, not process parallelism
-python sklearn_example.py
-python xgboost_example.py
+# Activate your virtual environment if needed
+# source .venv/bin/activate
+
+# Optional sanity check - fails fast if the environment is broken
+autotrainer doctor
+
+# Launch CPU training (thread parallelism, no launcher needed)
+python examples/sklearn_example.py
+python examples/xgboost_example.py

@@ -14,4 +14,4 @@
 srun autotrainer doctor
 
 # Launch multi-node training
-srun autotrainer run pytorch_auto.py
+srun autotrainer run examples/pytorch_auto.py

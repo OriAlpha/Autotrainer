@@ -49,6 +49,7 @@ pip install "autotrainer[all]"
 Only `psutil` is required by default; each ML framework is an opt-in extra
 (`torch`, `sklearn`, `tf`, `boosting`, `tune`, `all`). Install only what you use.
 
+> **Tip for HPC / SLURM Clusters**: On shared network file systems (NFS/Lustre), speed up installation by routing the `uv` cache to local node storage (`export UV_CACHE_DIR=/tmp/$USER-uv-cache`) and passing `--link-mode=copy` (or creating `.venv` in `/tmp`).
 
 Setting up for development instead? See
 [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).

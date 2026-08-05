@@ -73,12 +73,12 @@ jobs:
   # by running on a real GPU, not by CPU CI.
   #
   # IMPORTANT: until a runner with the `self-hosted,gpu` labels is registered
-  # (see RUNNER_SETUP.md), this job shows as "queued" and never runs. That is
+  # (see docs/runner-setup.md), this job shows as "queued" and never runs. That is
   # intentional - it surfaces "you haven't finished setup" rather than
   # silently skipping GPU coverage. The job is NOT required (no branch
   # protection rule includes it), so it does not block merges.
   #
-  # Runner setup (one-time): see RUNNER_SETUP.md.
+  # Runner setup (one-time): see docs/runner-setup.md.
   test-cuda:
     runs-on: [self-hosted, gpu]
     # Cap the job's *execution* time. This does NOT cover the "queued
@@ -212,13 +212,13 @@ jobs:
               *)      echo "test-cuda is '$status' - a GPU runner picked it up"; exit 0 ;;
             esac
           done
-          echo "::warning title=GPU runner offline::test-cuda sat queued for 10 minutes; the self-hosted GPU runner did not pick it up, so nothing in this run exercised a real CUDA device. See RUNNER_SETUP.md."
+          echo "::warning title=GPU runner offline::test-cuda sat queued for 10 minutes; the self-hosted GPU runner did not pick it up, so nothing in this run exercised a real CUDA device. See docs/runner-setup.md."
           {
             echo "### :warning: No GPU coverage in this run"
             echo
             echo "\`test-cuda\` was still queued after 10 minutes, so the self-hosted"
             echo "GPU runner is most likely offline. Nothing here touched a real CUDA"
-            echo "device. See [RUNNER_SETUP.md](RUNNER_SETUP.md)."
+            echo "device. See [docs/runner-setup.md](docs/runner-setup.md)."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Single source of truth for "what version is this ref, and is it a

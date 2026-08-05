@@ -23,6 +23,28 @@ pip install -e ".[dev,torch,sklearn,boosting,tune]"
 The `tf` extra is optional and heavy - install it only when working on
 TensorFlow code paths.
 
+### Fast Installation on HPC / SLURM Clusters
+
+On shared network file systems (NFS/Lustre), installing packages with `uv` can be slow due to file linking warnings and network I/O. To optimize speed:
+
+```bash
+# Set cache to local node storage (/tmp) and use copy link mode
+export UV_CACHE_DIR=/tmp/$USER-uv-cache
+
+uv venv /tmp/$USER-venv
+source /tmp/$USER-venv/bin/activate
+
+# Install all
+uv pip install --link-mode=copy -e ".[all,dev]" 
+
+# Everything EXCEPT TensorFlow + Dev tools (Recommended default for dev setup
+uv pip install --link-mode=copy -e ".[dev,torch,sklearn,boosting,tune]"
+
+# (Optional) For fastest performance, create .venv on local node storage:
+uv venv /tmp/$USER-venv
+source /tmp/$USER-venv/bin/activate
+```
+
 ## Before opening a PR
 
 All contributions go through pull requests: **branch off `main`, push, open a
@@ -65,7 +87,7 @@ than failed - that's expected, not a problem.
 The `test-cuda` CI job runs only the `cuda`-marked subset on a self-hosted
 GPU runner (`runs-on: [self-hosted, gpu]`). It's **not required** for merge
 (no branch-protection rule includes it), so PRs don't block if the runner is
-offline. See [`docs/internal/runner_setup.md`](docs/internal/runner_setup.md) for one-time runner
+offline. See [`docs/runner-setup.md`](docs/runner-setup.md) for one-time runner
 
 registration. If you add CUDA-dependent behavior, mark the test `@pytest.mark.cuda`
 and gate it with `skipif(not _has_cuda())` so it skips cleanly on CPU.

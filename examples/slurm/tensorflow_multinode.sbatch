@@ -7,5 +7,11 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=%x-%j.out
 
-# autotrainer generates TF_CONFIG from the SLURM node list automatically
-srun autotrainer run tensorflow_scope.py
+# Activate your virtual environment if needed
+# source .venv/bin/activate
+
+# Optional sanity check - fails fast if the environment is broken
+srun autotrainer doctor
+
+# Launch TensorFlow multi-node training (TF_CONFIG generated automatically)
+srun autotrainer run examples/tensorflow_example.py
