@@ -266,6 +266,11 @@ def fit(
                 storage=search_storage,
                 study_name="autotrainer-fit" if search_storage is not None else None,
                 resume=search_storage is not None,
+                # Phase 1 of a fit(); the summary belongs to the whole run and
+                # is emitted by fit()'s own finish() once the winner is
+                # trained. Without this, tune() would report (and release) the
+                # tracker mid-pipeline and fit() would summarize only phase 2.
+                _emit_summary=False,
             )
         else:
             import os
@@ -491,15 +496,30 @@ def train(
 
         # Scikit-Learn / XGBoost:
         search = autotrainer.train(search, X, y)
+
+    Note ``epochs`` means passes over the data for PyTorch and Keras, and
+    ``num_boost_round`` for the native-XGBoost path (a params dict + DMatrix),
+    where there are no epochs to make passes over.
     """
-    if isinstance(model, dict) and loader is not None:
+    from .utils import framework_of
+
+    # Routed the same way as prepare() and tune(): by module prefix with an
+    # isinstance fallback, rather than by probing for `.fit` / `.forward`
+    # attributes - duck-typing here misroutes anything that happens to define
+    # a fit() method, and silently picked the sklearn path for it.
+    if isinstance(model, dict):
+        # Native XGBoost API: a params dict plus a DMatrix, not an estimator.
+        if loader is None:
+            raise TypeError(
+                "train(): a params dict is the native-XGBoost path and needs a "
+                "DMatrix as the second argument."
+            )
         import xgboost as xgb
 
         from .backends.boosting_backend import boost_params
 
         params = boost_params(model)
-        num_rounds = epochs or 50
-        booster = xgb.train(params, loader, num_boost_round=num_rounds)
+        booster = xgb.train(params, loader, num_boost_round=epochs)
         if save_path is not None:
             booster.save_model(save_path)
             from .utils import print0
@@ -510,35 +530,42 @@ def train(
         finish(checkpoint=save_path)
         return booster
 
-    if hasattr(model, "fit") and not hasattr(model, "forward"):
-        if type(model).__module__.startswith(("keras", "tensorflow")):
-            import tensorflow as tf
+    framework = framework_of(model)
 
-            from .backends.tf_backend import scale_batch_size
+    if framework == "tf":
+        import tensorflow as tf
 
-            bs = scale_batch_size(64)
-            callbacks = []
-            if patience is not None:
-                es = tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True)
-                callbacks.append(es)
-            if loader is not None:
-                if y is not None:
-                    model.fit(loader, y, batch_size=bs, epochs=epochs, callbacks=callbacks)
-                else:
-                    model.fit(loader, epochs=epochs, callbacks=callbacks)
-            if save_path is not None:
-                model.save(save_path)
-                from .utils import print0
+        from .backends.tf_backend import scale_batch_size
 
-                print0(f"[autotrainer] saved TensorFlow model to {save_path}")
-            from .summary import finish
+        bs = scale_batch_size(64)
+        callbacks = []
+        if patience is not None:
+            es = tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True)
+            callbacks.append(es)
+        if loader is not None:
+            if y is not None:
+                model.fit(loader, y, batch_size=bs, epochs=epochs, callbacks=callbacks)
+            else:
+                model.fit(loader, epochs=epochs, callbacks=callbacks)
+        if save_path is not None:
+            model.save(save_path)
+            from .utils import print0
 
-            finish(checkpoint=save_path)
-            return model
+            print0(f"[autotrainer] saved TensorFlow model to {save_path}")
+        from .summary import finish
 
-        from .backends.sklearn_backend import prepare as sklearn_prepare
+        finish(checkpoint=save_path)
+        return model
 
-        estimator = sklearn_prepare(model)
+    if framework in ("sklearn", "boosting"):
+        # Boosting estimators get the boosting backend's thread config rather
+        # than joblib's n_jobs handling, matching how prepare() routes them.
+        if framework == "boosting":
+            from .backends.boosting_backend import prepare as estimator_prepare
+        else:
+            from .backends.sklearn_backend import prepare as estimator_prepare
+
+        estimator = estimator_prepare(model)
         if loader is not None:
             if y is not None:
                 estimator.fit(loader, y)
@@ -556,6 +583,13 @@ def train(
         finish(checkpoint=save_path)
         return estimator
 
+    if framework != "torch":
+        raise TypeError(
+            f"train() supports PyTorch modules, Keras models, sklearn-API "
+            f"estimators (incl. XGBoost/LightGBM), and native-XGBoost params "
+            f"dicts; got {type(model)!r}."
+        )
+
     from .auto_optim import auto
     from .summary import finish, get_active_summary
     from .utils import print0, save0
@@ -569,6 +603,9 @@ def train(
     summary.batch_size = getattr(loader, "batch_size", None)
     summary.optimizer = opt
     summary.loss_fn = loss_fn
+    # auto() infers the schedule; without this the summary's "LR Schedule"
+    # line stays blank on the one path that always has a scheduler.
+    summary.scheduler = sched
 
     import torch
 

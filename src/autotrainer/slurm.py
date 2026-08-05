@@ -94,6 +94,12 @@ def apply(warn: bool = True) -> Path:
     # torch.compile / inductor cache - the main thing that should NOT hit NFS.
     os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", str(scratch / "inductor"))
 
+    # Recorded here rather than inferred from SLURM_JOB_ID at report time:
+    # being inside a SLURM job says nothing about whether this call was made.
+    from .summary import get_active_summary
+
+    get_active_summary().record_applied(node_scratch=str(scratch))
+
     if warn:
         # Warn about TMPDIR itself, since that's what node_scratch() used.
         base = os.environ.get("TMPDIR") or tempfile.gettempdir()
@@ -191,6 +197,11 @@ def configure_nccl(*, debug: bool = False) -> str | None:
             os.environ.setdefault("NCCL_DEBUG", "INFO")
         if is_slurm():
             print0(f"[autotrainer] slurm: NCCL_SOCKET_IFNAME={iface} (set if unset)")
+        # Record it here, where we know we were the ones who set it. The
+        # summary can't tell a value we chose from one the user exported.
+        from .summary import get_active_summary
+
+        get_active_summary().record_applied(nccl_ifname=iface)
         return iface
 
     # Detection failed. If the user asked for debug output, surface why

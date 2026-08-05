@@ -79,6 +79,15 @@ from .utils import (  # noqa: E402,F401
     set_epoch,
 )
 
+# Single source of truth for framework dispatch, shared with fitting.train()
+# so every entry point classifies a model the same way.
+from .utils import (  # noqa: E402,F401
+    is_sklearn_estimator as _is_sklearn_estimator,
+)
+from .utils import (  # noqa: E402,F401
+    is_torch_module as _is_torch_module,
+)
+
 
 def scope() -> Any:
     """TensorFlow: strategy scope. Create and compile your model inside it."""
@@ -202,21 +211,3 @@ def fit(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple[
     from .fitting import fit as _f
 
     return _f(model, train_loader, val_loader, **kwargs)
-
-
-def _is_torch_module(model: Any) -> bool:
-    try:
-        import torch  # noqa: PLC0415
-
-        return isinstance(model, torch.nn.Module)
-    except ImportError:
-        return False
-
-
-def _is_sklearn_estimator(model: Any) -> bool:
-    try:
-        from sklearn.base import BaseEstimator  # noqa: PLC0415
-
-        return isinstance(model, BaseEstimator)
-    except ImportError:
-        return False

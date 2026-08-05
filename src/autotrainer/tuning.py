@@ -192,6 +192,7 @@ def tune(
     direction: str = "auto",
     resume: bool = False,
     sanity: bool = True,
+    _emit_summary: bool = True,
 ) -> tuple[Any, dict[str, Any], Any]:
     """Search training hyperparameters for the user's model.
 
@@ -452,8 +453,9 @@ def tune(
 
         save0(best_model.state_dict(), save_path)
 
-    from .summary import finish
+    if _emit_summary:
+        from .summary import finish
 
-    finish(checkpoint=save_path)
+        finish(checkpoint=save_path)
 
     return best_model, best_params, study
