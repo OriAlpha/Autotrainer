@@ -7,5 +7,5 @@
 #SBATCH --output=%x-%j.out
 
 # No launcher needed - thread parallelism, not process parallelism
-python sklearn_example.py
-python xgboost_example.py
+python examples/sklearn.py
+python examples/xgboost.py

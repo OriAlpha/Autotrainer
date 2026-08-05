@@ -10,4 +10,4 @@
 # Activate your virtual environment if needed
 # source .venv/bin/activate
 
-srun autotrainer run pytorch_ddp.py
+srun autotrainer run examples/pytorch_ddp.py

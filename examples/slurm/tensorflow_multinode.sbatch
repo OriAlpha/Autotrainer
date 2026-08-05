@@ -8,4 +8,4 @@
 #SBATCH --output=%x-%j.out
 
 # autotrainer generates TF_CONFIG from the SLURM node list automatically
-srun autotrainer run tensorflow_scope.py
+srun autotrainer run examples/tensorflow_scope.py

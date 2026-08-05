@@ -7,4 +7,7 @@
 #SBATCH --time=04:00:00             # tuning = many short trainings; budget time
 #SBATCH --output=%x-%j.out
 
-python pytorch_tune.py
+# Activate your virtual environment if needed
+# source .venv/bin/activate
+
+srun autotrainer run examples/pytorch_tune.py
