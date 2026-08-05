@@ -13,13 +13,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  # `activate-environment: true` on every setup-uv step is load-bearing, and it
+  # is why the plain v5 -> v7 bump (dependabot #25) failed every job that used
+  # the action. v5 implicitly created and activated a venv at $GITHUB_WORKSPACE
+  # /.venv whenever `python-version` was set; v6 moved that behind this input
+  # and defaults it to false. Without it, `uv pip install` has no target and
+  # exits 2 with "No virtual environment found for Python 3.11".
+  #
+  # Do not "fix" that by switching to `uv pip install --system`: the install
+  # would land in the system Python while the `uv run` steps below still
+  # resolve the project venv, so the tests would run without their extras.
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
+          activate-environment: true
       - run: uv pip install ruff
       # .github/scripts is release-critical (it writes the release notes) and
       # was previously unlinted.
@@ -33,9 +44,10 @@ jobs:
         python: ["3.9", "3.11", "3.13"]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "${{ matrix.python }}"
+          activate-environment: true
       - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run pytest tests/ -v -m "not cuda"
       # Coverage XML is uploaded so coverage trends are inspectable without a
@@ -50,9 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
+          activate-environment: true
       - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: |
           uv run python examples/pytorch_auto.py
@@ -128,9 +141,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
+          activate-environment: true
       - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run mypy src/autotrainer
 
@@ -141,9 +155,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
+          activate-environment: true
       - run: uv pip install -e ".[dev,tf]"
       - run: uv run pytest tests/ -v -k "TFConfig or tf" --no-cov
 
@@ -151,9 +166,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
+          activate-environment: true
       - run: uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
       - run: uv run pdoc -o docs/build src/autotrainer
       - uses: actions/upload-artifact@v7
@@ -378,9 +394,10 @@ jobs:
       id-token: write # trusted publishing, no API token needed
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
+          activate-environment: true
       - run: uv pip install build && uv run python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
