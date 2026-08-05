@@ -23,6 +23,20 @@ pip install -e ".[dev,torch,sklearn,boosting,tune]"
 The `tf` extra is optional and heavy - install it only when working on
 TensorFlow code paths.
 
+### Fast Installation on HPC / SLURM Clusters
+
+On shared network file systems (NFS/Lustre), installing packages with `uv` can be slow due to file linking warnings and network I/O. To optimize speed:
+
+```bash
+# Set cache to local node storage (/tmp) and use copy link mode
+export UV_CACHE_DIR=/tmp/$USER-uv-cache
+uv pip install --link-mode=copy -e ".[dev,torch,sklearn,boosting,tune]"
+
+# (Optional) For fastest performance, create .venv on local node storage:
+uv venv /tmp/$USER-venv
+source /tmp/$USER-venv/bin/activate
+```
+
 ## Before opening a PR
 
 All contributions go through pull requests: **branch off `main`, push, open a
