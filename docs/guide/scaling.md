@@ -75,6 +75,27 @@ model, loader, opt = autotrainer.prepare(
 Trades throughput for memory headroom. Ignored with a warning on the DDP path or
 single-process, where there is no sharding to offload from.
 
+## CPU Workloads
+
+Autotrainer handles CPU parallelism based on the backend framework:
+
+* **PyTorch CPU (Multi-Node DDP via `gloo`)**: When no GPUs are present, `autotrainer` automatically selects PyTorch's `gloo` backend instead of `nccl` to enable multi-node or multi-process CPU training:
+  ```bash
+  #SBATCH --nodes=4
+  #SBATCH --ntasks-per-node=1
+  #SBATCH --cpus-per-task=32
+  srun autotrainer run examples/pytorch_auto.py
+  ```
+
+* **Scikit-Learn & XGBoost / LightGBM (Single-Node Threading)**: These models parallelize using shared-memory threads (OpenMP / Joblib) within a single Python process. `autotrainer.prepare()` detects `SLURM_CPUS_PER_TASK` (or CPU count) and automatically configures `n_jobs`. No process launcher wrapper is needed:
+  ```bash
+  #SBATCH --nodes=1
+  #SBATCH --ntasks=1
+  #SBATCH --cpus-per-task=16
+  python examples/sklearn_example.py
+  python examples/xgboost_example.py
+  ```
+
 ## SLURM node-local scratch
 
 The classic HPC footgun is every rank writing to `$HOME` (NFS, slow, shared)
@@ -100,5 +121,5 @@ For long runs under multi-process launches, raise the collective timeout with
 
 - [One-call training](fit.md) — including surviving preemption on a requeued
   SLURM job.
-- [runner_setup.md](../internal/runner_setup.md) — self-hosted GPU CI runner setup.
+- [runner-setup.md](../runner-setup.md) — self-hosted GPU CI runner setup.
 
