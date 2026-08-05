@@ -30,6 +30,9 @@ On shared network file systems (NFS/Lustre), installing packages with `uv` can b
 ```bash
 # Set cache to local node storage (/tmp) and use copy link mode
 export UV_CACHE_DIR=/tmp/$USER-uv-cache
+# Install all
+uv pip install --link-mode=copy -e ".[all,dev]" 
+# Everything EXCEPT TensorFlow + Dev tools (Recommended default for dev setup
 uv pip install --link-mode=copy -e ".[dev,torch,sklearn,boosting,tune]"
 
 # (Optional) For fastest performance, create .venv on local node storage:
