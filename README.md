@@ -115,7 +115,11 @@ autotrainer info                  # show what was detected
 | Just the search, not the final train | `tune(model, train, val)` | [One-call training](docs/guide/fit.md) |
 | A learning rate suggestion | `find_lr(model, loader, loss_fn)` | [Training loop](docs/guide/training-loop.md#finding-a-learning-rate) |
 | The largest batch size that fits | `find_batch_size(model, step_fn)` | [Training loop](docs/guide/training-loop.md#batch-size) |
-| Post-training summary & metrics | `finish()`, `log_epoch()`, `step()` | [Training loop](docs/guide/training-loop.md#post-training-summary-finish-log_epoch-step-summarytracker) |
+| Zero-dependency Web UI dashboard | `autotrainer ui`, `run_ui_server()` | [Monitors](docs/guide/monitors.md#autotrainer-ui) |
+| Native experiment tracking (CSV, JSONL, metadata) | `NativeTracker()`, `CSVTracker()`, `JSONLTracker()` | [Monitors](docs/guide/monitors.md#native-experiment-trackers) |
+| Multi-framework callbacks | `AutotrainerCallback()`, `AutotrainerHuggingFaceCallback()`, `AutotrainerLightningCallback()`, `AutotrainerKerasCallback()`, `autotrainer_xgboost_callback()`, `autotrainer_lightgbm_callback()` | [Monitors](docs/guide/monitors.md#multi-framework-callbacks) |
+| Multi-format exports (HTML, Markdown, CSV, JSON) | `autotrainer ui` &rarr; Export Dropdown | [Monitors](docs/guide/monitors.md#multi-format-exports) |
+| Multi-user workspaces & directory aggregation | `autotrainer ui ./logs /cluster/runs` | [Monitors](docs/guide/monitors.md#multi-user-workspace) |
 | To know if the loader is the bottleneck | `BottleneckMonitor()` | [Monitors](docs/guide/monitors.md) |
 | Samples/sec and a rough MFU estimate | `ThroughputMonitor()` | [Monitors](docs/guide/monitors.md) |
 | To know if training is going wrong | `TrainingMonitor()` | [Monitors](docs/guide/monitors.md) |
@@ -162,6 +166,15 @@ Concretely, four things are unusual here:
 It is also framework-plural: PyTorch, TensorFlow/Keras, scikit-learn, XGBoost,
 and LightGBM go through one API, where most of the tools above are PyTorch-only.
 
+## The Core Philosophy: Hardware vs. Math
+
+Autotrainer maintains a strict separation between **hardware execution throughput** and **mathematical modeling recipe**:
+
+| Dimension | What it Includes | How Autotrainer Treats It |
+|---|---|---|
+| **⚡ Hardware Throughput** | AMP (bf16/fp16), TF32, DataLoader Workers, Pin Memory, cuDNN Benchmark, DDP Spawning | **100% Automatic & Safe** — `prepare()` enables these out of the box because they accelerate compute execution without altering your loss function or model convergence. |
+| **🧠 Algorithmic / Math** | Gradient Clipping, Learning Rate, Optimizer Choice, Weight Decay, Loss Scaling | **Non-Invasive by Default** — Autotrainer never silently modifies your mathematical hyperparameters. Instead, the **AI Training Doctor** (`TrainingMonitor`) inspects live tensor dynamics and calculates concrete remediation steps. |
+
 ### Reach for something else when
 
 - **You're already happy on Lightning, Accelerate, or Ray.** Autotrainer doesn't
@@ -169,8 +182,8 @@ and LightGBM go through one API, where most of the tools above are PyTorch-only.
   their abstractions already fit your work, switching buys you little.
 - **You need multi-node beyond SLURM**, or a scheduler-agnostic cluster
   abstraction. Ray covers ground autotrainer doesn't.
-- **You need experiment tracking, model registries, or a UI.** This library
-  prints to stdout and returns objects; it is not a platform.
+- **You need heavy cloud-hosted model registries.** Autotrainer provides a local
+  zero-dependency Web UI (`autotrainer ui`) and local file trackers (CSV, JSONL, run metadata), but does not run external hosted cloud services.
 - **You need architecture search.** Width/depth are deliberately out of scope —
   the model is yours.
 - **You can't take pre-1.0 churn.** The public API has been frozen since 0.10,

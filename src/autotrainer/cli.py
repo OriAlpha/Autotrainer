@@ -27,6 +27,11 @@ def main() -> None:
     sub.add_parser("suhas", help="Display Autotrainer creator credits")
     sub.add_parser("credits", help="Display Autotrainer creator credits")
 
+    ui_p = sub.add_parser("ui", help="Launch the Autotrainer Web UI dashboard")
+    ui_p.add_argument("logs_dirs", nargs="*", default=["logs"], help="One or more paths to logs directories (default: logs)")
+    ui_p.add_argument("--port", type=int, default=8501, help="Port to run the UI server on (default: 8501)")
+    ui_p.add_argument("--no-browser", action="store_true", help="Do not auto-open the browser")
+
     args = parser.parse_args()
 
     if args.command in ("suhas", "credits"):
@@ -35,6 +40,12 @@ def main() -> None:
         print("  Designed & Built by Suhas Goravale Siddaramu (OriAlpha)")
         print("  GitHub: https://github.com/OriAlpha/Autotrainer")
         print("=" * 66)
+        return
+
+    if args.command == "ui":
+        from .ui import run_ui_server
+
+        run_ui_server(logs_dirs=args.logs_dirs, port=args.port, open_browser=not args.no_browser)
         return
 
     if args.command == "doctor":

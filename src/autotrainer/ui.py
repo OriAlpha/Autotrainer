@@ -1,0 +1,3195 @@
+"""Built-in Web UI server for autotrainer.
+
+Provides a zero-dependency local web dashboard (`autotrainer ui`) using
+Python's standard `http.server`. Serves real-time charts of loss curves,
+custom styled multi-user workspace dropdown, dynamic multi-path log directories,
+multi-run comparisons, AI health triage doctor, hardware efficiency gauge,
+file locations, run renaming, enlarged dual chart modal, and 1-click standalone HTML report export with download confirmation popup.
+"""
+
+from __future__ import annotations
+
+import getpass
+import json
+import os
+import socketserver
+import sys
+import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from typing import Any
+
+
+def _detect_system_user() -> str:
+    for env_key in ("AUTOTRAINER_USER", "SLURM_JOB_USER", "USER", "USERNAME", "LOGNAME"):
+        val = os.getenv(env_key)
+        if val:
+            return val.strip()
+    try:
+        return getpass.getuser().strip()
+    except Exception:
+        return "default"
+
+
+_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autotrainer Web UI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card-bg: rgba(18, 26, 43, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(56, 189, 248, 0.4);
+            --accent-cyan: #38bdf8;
+            --accent-purple: #c084fc;
+            --accent-green: #34d399;
+            --accent-pink: #fb7185;
+            --accent-amber: #fbbf24;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+        }
+
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            font-family: var(--font-sans); 
+        }
+
+        body {
+            background: radial-gradient(circle at 10% 10%, #111827 0%, var(--bg) 100%);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Reusable Unified Button System */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            font-family: var(--font-sans);
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.04);
+            user-select: none;
+        }
+
+        .btn:hover {
+            background: rgba(56, 189, 248, 0.12);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(192, 132, 252, 0.2) 100%);
+            border-color: rgba(56, 189, 248, 0.4);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+            gap: 5px;
+        }
+
+        .btn-active {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(192, 132, 252, 0.25) 100%);
+            border-color: var(--accent-cyan);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+        }
+
+        /* Unified Badges and Pills */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 12px;
+            letter-spacing: 0.3px;
+            transition: all 0.2s ease;
+        }
+
+        .badge-green {
+            background: rgba(52, 211, 153, 0.12);
+            color: var(--accent-green);
+            border: 1px solid rgba(52, 211, 153, 0.25);
+        }
+
+        .badge-purple {
+            background: rgba(192, 132, 252, 0.12);
+            color: var(--accent-purple);
+            border: 1px solid rgba(192, 132, 252, 0.25);
+        }
+
+        .badge-cyan {
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+        }
+
+        .badge-amber {
+            background: rgba(251, 191, 36, 0.12);
+            color: var(--accent-amber);
+            border: 1px solid rgba(251, 191, 36, 0.25);
+        }
+
+        .status-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 6px var(--accent-green);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: rgba(13, 19, 33, 0.85);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        .brand {
+            padding: 20px;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .brand-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+        }
+
+        .sidebar-controls {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* Custom Styled User Workspace Dropdown */
+        .user-filter-box {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            position: relative;
+        }
+
+        .user-filter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .custom-dropdown {
+            position: relative;
+            width: 100%;
+        }
+
+        .dropdown-trigger {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--card-border);
+            padding: 9px 12px;
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+        }
+
+        .dropdown-trigger:hover, .custom-dropdown.open .dropdown-trigger {
+            border-color: var(--accent-cyan);
+            background: rgba(56, 189, 248, 0.08);
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+        }
+
+        .dropdown-chevron {
+            transition: transform 0.2s ease;
+            stroke: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .custom-dropdown.open .dropdown-chevron {
+            transform: rotate(180deg);
+            stroke: var(--accent-cyan);
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            background: rgba(13, 19, 33, 0.96);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-hover-border);
+            border-radius: 10px;
+            padding: 6px;
+            display: none;
+            flex-direction: column;
+            gap: 2px;
+            z-index: 100;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7);
+            max-height: 240px;
+            overflow-y: auto;
+        }
+
+        .custom-dropdown.open .dropdown-menu {
+            display: flex;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background: var(--card-border);
+            margin: 4px 0;
+        }
+
+        .dropdown-item {
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-main);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+
+        .dropdown-item:hover {
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--accent-cyan);
+        }
+
+        .dropdown-item.active {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(192, 132, 252, 0.2) 100%);
+            color: #fff;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .dropdown-item-count {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+        }
+
+        .search-input {
+            width: 100%;
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--card-border);
+            padding: 8px 12px;
+            padding-left: 32px;
+            border-radius: 8px;
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            font-size: 0.82rem;
+            outline: none;
+            transition: all 0.2s;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 10px center;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent-cyan);
+            background-color: rgba(255, 255, 255, 0.07);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+        }
+
+        /* Custom Switch Container */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .switch-label-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .switch-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .switch-input { display: none; }
+
+        .switch-track {
+            width: 34px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            position: relative;
+            transition: all 0.25s ease;
+            border: 1px solid var(--card-border);
+        }
+
+        .switch-input:checked + .switch-track {
+            background: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+        }
+
+        .switch-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            border-radius: 50%;
+            transition: all 0.25s ease;
+        }
+
+        .switch-input:checked + .switch-track .switch-thumb {
+            transform: translateX(14px);
+            background: #090d16;
+        }
+
+        .run-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .run-list::-webkit-scrollbar { width: 4px; }
+        .run-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+
+        .run-item {
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .run-item:hover {
+            background: rgba(56, 189, 248, 0.06);
+            border-color: var(--card-hover-border);
+            transform: translateX(2px);
+        }
+
+        .run-item.active {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(192, 132, 252, 0.08) 100%);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);
+        }
+
+        .custom-checkbox {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-cyan);
+            cursor: pointer;
+        }
+
+        .run-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .run-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .run-title-text {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .run-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+
+        /* Main Workspace */
+        .main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        .main::-webkit-scrollbar { width: 6px; }
+        .main::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .title-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .btn-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .rename-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .rename-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--accent-cyan);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: var(--font-sans);
+            font-size: 1.1rem;
+            font-weight: 700;
+            outline: none;
+        }
+
+        .header-title p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Stat Cards */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            padding: 18px;
+            border-radius: 14px;
+            border: 1px solid var(--card-border);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .stat-card:hover {
+            border-color: var(--card-hover-border);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .stat-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.04);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stat-value {
+            font-size: 1.7rem;
+            font-weight: 800;
+            margin-top: 8px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-card.cyan .stat-value { background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%); -webkit-background-clip: text; }
+        .stat-card.green .stat-value { background: linear-gradient(135deg, #34d399 0%, #10b981 100%); -webkit-background-clip: text; }
+        .stat-card.purple .stat-value { background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%); -webkit-background-clip: text; }
+
+        /* AI Health Doctor Card */
+        .doctor-card {
+            background: linear-gradient(135deg, rgba(16, 24, 39, 0.9) 0%, rgba(24, 33, 56, 0.8) 100%);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .doctor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .doctor-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+        }
+
+        /* Clean Doctor Bullet List */
+        .doctor-bullet-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-left: 4px;
+        }
+
+        .doctor-bullet-item {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            font-size: 0.88rem;
+            line-height: 1.6;
+            color: #fde68a;
+        }
+
+        .doctor-bullet-icon {
+            color: var(--accent-amber);
+            font-size: 1.1rem;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .doctor-bullet-text {
+            flex: 1;
+        }
+
+        .doctor-bullet-text code {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--accent-cyan);
+            padding: 2px 7px;
+            border-radius: 5px;
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            margin: 0 2px;
+        }
+
+        /* Chart Cards */
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .chart-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            padding: 22px;
+            border-radius: 14px;
+            border: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 260px;
+            width: 100%;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(4, 7, 13, 0.88);
+            backdrop-filter: blur(16px);
+            z-index: 999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: rgba(13, 19, 33, 0.96);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            width: 92vw;
+            max-width: 1300px;
+            height: 84vh;
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            gap: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+        }
+
+        .modal-content-sm {
+            max-width: 640px;
+            height: auto;
+            max-height: 85vh;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-body-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            min-height: 0;
+        }
+
+        .modal-body-grid.single {
+            grid-template-columns: 1fr;
+        }
+
+        .modal-chart-box {
+            background: rgba(18, 26, 43, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+        }
+
+        .modal-chart-box h3 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .modal-chart-wrapper {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+            width: 100%;
+        }
+
+        /* Sources List */
+        .source-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            gap: 12px;
+        }
+
+        .source-path-col {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .source-path-text {
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            color: var(--text-main);
+            word-break: break-all;
+        }
+
+        /* File Paths Grid */
+        .paths-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-top: 6px;
+        }
+
+        .path-box {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--card-border);
+            padding: 12px 14px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .path-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .path-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .path-val {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        /* Toast Container */
+        .toast-container {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        .export-toast {
+            pointer-events: auto;
+            background: rgba(13, 19, 33, 0.96);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(52, 211, 153, 0.4);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 24px rgba(52, 211, 153, 0.15);
+            border-radius: 14px;
+            padding: 18px 20px;
+            max-width: 500px;
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            animation: slideInToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.3s ease;
+        }
+
+        @keyframes slideInToast {
+            from { transform: translateX(50px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast-icon-wrap {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: rgba(52, 211, 153, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-green);
+            flex-shrink: 0;
+        }
+
+        .toast-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .toast-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .toast-desc {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }
+
+        .toast-path {
+            font-family: var(--font-mono);
+            font-size: 0.76rem;
+            color: var(--accent-cyan);
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            padding: 3px 7px;
+            border-radius: 5px;
+            word-break: break-all;
+            display: inline-block;
+            margin-top: 4px;
+        }
+
+        .toast-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.85rem;
+            color: var(--text-main);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        @media (max-width: 1100px) {
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-container { grid-template-columns: 1fr; }
+            .modal-body-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="brand">
+            <div class="brand-left">
+                <div class="brand-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                </div>
+                <span>Autotrainer UI</span>
+            </div>
+            <button class="btn btn-sm" onclick="openSourcesModal()" title="Manage Log Directories" style="padding: 4px 8px; font-size: 0.7rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span id="sourcesCountBadge">Paths</span>
+            </button>
+        </div>
+        <div class="sidebar-controls">
+            <!-- Custom Styled User Workspace Dropdown -->
+            <div class="user-filter-box">
+                <div class="user-filter-header">
+                    <span>👤 Workspace User</span>
+                </div>
+                <div class="custom-dropdown" id="userDropdown">
+                    <div class="dropdown-trigger" onclick="toggleUserDropdown(event)">
+                        <span id="dropdownSelectedText">👥 All Users</span>
+                        <svg class="dropdown-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div class="dropdown-menu" id="dropdownMenu">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <input type="text" id="runSearch" class="search-input" placeholder="Search runs..." oninput="filterRuns()">
+            <label class="switch-container">
+                <div class="switch-label-group">
+                    <span class="switch-label">Compare Runs</span>
+                    <span id="selectedCount" class="badge badge-cyan" style="font-size: 0.65rem; padding: 2px 6px; display: none;"></span>
+                </div>
+                <input type="checkbox" id="compareToggle" onchange="toggleCompareMode()" class="switch-input">
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+        </div>
+        <div class="run-list" id="runList">
+            <div style="color: var(--text-dim); padding: 12px; font-size: 0.85rem;">Loading runs...</div>
+        </div>
+    </div>
+    
+    <div class="main">
+        <div class="header">
+            <div class="header-title">
+                <div class="title-row" id="titleDisplay">
+                    <h1 id="runTitle">Select a Run</h1>
+                    <button class="btn btn-sm" id="renameBtn" style="display:none;" onclick="enableRename()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        Rename
+                    </button>
+                </div>
+                <div class="rename-box" id="renameBox" style="display:none;">
+                    <input type="text" id="renameInput" class="rename-input" />
+                    <button class="btn btn-primary btn-sm" onclick="submitRename()">Save</button>
+                    <button class="btn btn-sm" onclick="cancelRename()">Cancel</button>
+                </div>
+                <p id="runSub">
+                    <span>Real-time execution dashboard & telemetry</span>
+                    <span id="runUserTag" class="badge badge-purple" style="display:none;"></span>
+                </p>
+            </div>
+            <div class="btn-group">
+                <div class="custom-dropdown" id="exportDropdown" style="width: auto;">
+                    <button class="btn btn-primary" onclick="toggleExportDropdown(event)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export ▾
+                    </button>
+                    <div class="dropdown-menu" id="exportMenu" style="width: 220px; right: 0; left: auto;">
+                        <div class="dropdown-item" onclick="exportReport('html')">
+                            <span>🌐 Standalone HTML</span>
+                            <span class="dropdown-item-count">.html</span>
+                        </div>
+                        <div class="dropdown-item" onclick="exportReport('markdown')">
+                            <span>📝 Markdown Summary</span>
+                            <span class="dropdown-item-count">.md</span>
+                        </div>
+                        <div class="dropdown-item" onclick="exportReport('csv')">
+                            <span>📊 Metrics Data</span>
+                            <span class="dropdown-item-count">.csv</span>
+                        </div>
+                        <div class="dropdown-item" onclick="exportReport('json')">
+                            <span>📦 Raw Telemetry</span>
+                            <span class="dropdown-item-count">.json</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn" onclick="openBigDualView()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                    Enlarge Charts
+                </button>
+                <button class="btn" onclick="fetchRuns()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67"/></svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <div class="doctor-card" id="doctorCard">
+            <div class="doctor-header">
+                <div class="doctor-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    AI Training Doctor & Health Triage
+                </div>
+                <div class="badge badge-green" id="doctorBadge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                    All Systems Healthy
+                </div>
+            </div>
+            <div id="doctorContent" style="font-size: 0.85rem; color: var(--text-muted);">
+                No numerical anomalies, vanishing gradients, or dataloader starvation detected.
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="stat-card cyan">
+                <div class="stat-header">
+                    <span class="stat-label">Initial Loss</span>
+                    <div class="stat-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+                    </div>
+                </div>
+                <div class="stat-value" id="valInitLoss">--</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-header">
+                    <span class="stat-label">Final Loss</span>
+                    <div class="stat-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                </div>
+                <div class="stat-value" id="valFinalLoss">--</div>
+            </div>
+            <div class="stat-card purple">
+                <div class="stat-header">
+                    <span class="stat-label">Throughput / Speed</span>
+                    <div class="stat-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    </div>
+                </div>
+                <div class="stat-value" id="valThroughput">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span class="stat-label">Total Epochs</span>
+                    <div class="stat-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f8fafc" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                </div>
+                <div class="stat-value" id="valEpochs">--</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">Loss Curves</div>
+                    <button class="btn btn-sm" onclick="openBigDualView('loss')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                        Enlarge
+                    </button>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="lossChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">Validation Metrics</div>
+                    <button class="btn btn-sm" onclick="openBigDualView('metrics')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                        Enlarge
+                    </button>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="metricsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card full-width">
+            <div class="chart-header">
+                <div class="chart-title">📁 File Locations & Saved Model Checkpoint</div>
+            </div>
+            <div class="paths-grid">
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Logs Directory</span>
+                        <button class="btn btn-sm" id="btnCopyLogs" onclick="copyText('pathLogsDir', 'btnCopyLogs')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathLogsDir">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Saved Model Checkpoint</span>
+                        <button class="btn btn-sm" id="btnCopyModel" onclick="copyModelCode('btnCopyModel')">Copy Code</button>
+                    </div>
+                    <div class="path-val" id="pathSavedModel">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Metrics CSV Log</span>
+                        <button class="btn btn-sm" id="btnCopyCsv" onclick="copyText('pathCsv', 'btnCopyCsv')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathCsv">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Metrics JSONL Log</span>
+                        <button class="btn btn-sm" id="btnCopyJsonl" onclick="copyText('pathJsonl', 'btnCopyJsonl')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathJsonl">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card full-width">
+            <div class="chart-header">
+                <div class="chart-title">⚙️ Run Details & Optimizations Applied</div>
+            </div>
+            <div class="table-container">
+                <table id="detailsTable">
+                    <thead>
+                        <tr><th>Configuration Parameter / Optimization</th><th>Value / Applied Status</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="2" style="color: var(--text-dim); text-align: center;">Select a run to view optimization details.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Enlarged Chart View -->
+    <div class="modal-overlay" id="chartModal" onclick="closeBigChart(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-nav">
+                    <h2 id="modalChartTitle" style="font-size: 1.2rem; font-weight: 800;">Training Telemetry & Curves</h2>
+                    <div style="display:flex; gap:6px; margin-left:16px;">
+                        <button class="btn btn-sm" id="tabDualBtn" onclick="switchModalView('dual')">Dual View</button>
+                        <button class="btn btn-sm" id="tabLossBtn" onclick="switchModalView('loss')">Loss Only</button>
+                        <button class="btn btn-sm" id="tabMetricsBtn" onclick="switchModalView('metrics')">Metrics Only</button>
+                    </div>
+                </div>
+                <button class="btn btn-sm" onclick="closeBigChart()">✕ Close</button>
+            </div>
+            <div class="modal-body-grid" id="modalGrid">
+                <div class="modal-chart-box" id="modalBoxLoss">
+                    <h3>📈 Loss Trajectory (Train & Validation)</h3>
+                    <div class="modal-chart-wrapper">
+                        <canvas id="bigLossCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="modal-chart-box" id="modalBoxMetrics">
+                    <h3>🎯 Validation Metrics & Accuracy</h3>
+                    <div class="modal-chart-wrapper">
+                        <canvas id="bigMetricsCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Managing Log Directory Paths -->
+    <div class="modal-overlay" id="sourcesModal" onclick="closeSourcesModal(event)">
+        <div class="modal-content modal-content-sm" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 style="font-size: 1.15rem; font-weight: 800; display:flex; align-items:center; gap:8px;">
+                    📁 Monitored Log Directories
+                </h2>
+                <button class="btn btn-sm" onclick="closeSourcesModal()">✕ Close</button>
+            </div>
+            <div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">
+                Autotrainer aggregates runs from all directories below. Add paths to include shared cluster storage, local project logs, or teammate folders.
+            </div>
+            
+            <div style="display:flex; gap:8px; margin-top:4px;">
+                <input type="text" id="newSourcePathInput" class="search-input" style="padding-left:12px; background-image:none;" placeholder="Enter folder path (e.g. D:/shared_runs or /cluster/logs)..." onkeydown="if(event.key==='Enter') addSourcePath()">
+                <button class="btn btn-primary" onclick="addSourcePath()">+ Add Path</button>
+            </div>
+
+            <div id="sourcesList" style="display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto; margin-top:6px;">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container for Export & Alerts -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        let lossChart, metricsChart, bigLossChart, bigMetricsChart;
+        let activeRunId = null;
+        let allRuns = [];
+        let isCompareMode = false;
+        let currentModalView = 'dual';
+        let currentSelectedUser = 'all';
+        let selectedRunIds = new Set();
+        const PALETTE = ['#38bdf8', '#34d399', '#c084fc', '#fb7185', '#facc15', '#818cf8', '#a78bfa', '#f472b6'];
+
+        function getTooltipOptions() {
+            return {
+                enabled: true,
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(11, 15, 25, 0.95)',
+                titleColor: '#f8fafc',
+                bodyColor: '#cbd5e1',
+                borderColor: 'rgba(56, 189, 248, 0.4)',
+                borderWidth: 1,
+                padding: 12,
+                boxPadding: 6,
+                usePointStyle: true,
+                titleFont: { family: 'Plus Jakarta Sans', weight: 700, size: 13 },
+                bodyFont: { family: 'JetBrains Mono', weight: 600, size: 12 },
+                callbacks: {
+                    label: function(context) {
+                        let label = context.dataset.label || '';
+                        if (label) label += ': ';
+                        if (context.parsed.y !== null && context.parsed.y !== undefined) {
+                            label += typeof context.parsed.y === 'number' ? context.parsed.y.toFixed(4) : context.parsed.y;
+                        }
+                        return label;
+                    }
+                }
+            };
+        }
+
+        function initCharts() {
+            const lossCtx = document.getElementById('lossChart').getContext('2d');
+
+            lossChart = new Chart(lossCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Train Loss', borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.12)', data: [], tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 },
+                        { label: 'Val Loss', borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.12)', borderDash: [6, 4], data: [], tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', weight: 600 } } },
+                        tooltip: getTooltipOptions()
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans' } } },
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans' } } }
+                    }
+                }
+            });
+
+            const metricsCtx = document.getElementById('metricsChart').getContext('2d');
+
+            metricsChart = new Chart(metricsCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Val Metric (%)', borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.15)', data: [], tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', weight: 600 } } },
+                        tooltip: getTooltipOptions()
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans' } } },
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans' } } }
+                    }
+                }
+            });
+        }
+
+        function openBigDualView(preferredView = 'dual') {
+            const modal = document.getElementById('chartModal');
+            modal.classList.add('active');
+            switchModalView(preferredView);
+        }
+
+        function switchModalView(view) {
+            currentModalView = view;
+            const grid = document.getElementById('modalGrid');
+            const boxLoss = document.getElementById('modalBoxLoss');
+            const boxMetrics = document.getElementById('modalBoxMetrics');
+            const btnDual = document.getElementById('tabDualBtn');
+            const btnLoss = document.getElementById('tabLossBtn');
+            const btnMetrics = document.getElementById('tabMetricsBtn');
+
+            btnDual.className = 'btn btn-sm' + (view === 'dual' ? ' btn-active' : '');
+            btnLoss.className = 'btn btn-sm' + (view === 'loss' ? ' btn-active' : '');
+            btnMetrics.className = 'btn btn-sm' + (view === 'metrics' ? ' btn-active' : '');
+
+            if (view === 'dual') {
+                grid.className = 'modal-body-grid';
+                boxLoss.style.display = 'flex';
+                boxMetrics.style.display = 'flex';
+            } else if (view === 'loss') {
+                grid.className = 'modal-body-grid single';
+                boxLoss.style.display = 'flex';
+                boxMetrics.style.display = 'none';
+            } else if (view === 'metrics') {
+                grid.className = 'modal-body-grid single';
+                boxLoss.style.display = 'none';
+                boxMetrics.style.display = 'flex';
+            }
+
+            renderModalCharts();
+        }
+
+        function renderModalCharts() {
+            if (bigLossChart) bigLossChart.destroy();
+            if (bigMetricsChart) bigMetricsChart.destroy();
+
+            const lossCanvas = document.getElementById('bigLossCanvas');
+            const metricsCanvas = document.getElementById('bigMetricsCanvas');
+
+            const lossDatasets = lossChart.data.datasets.map(ds => ({
+                ...ds,
+                backgroundColor: ds.label.includes('Train') ? 'rgba(56, 189, 248, 0.14)' : 'rgba(52, 211, 153, 0.14)',
+                fill: true,
+                pointRadius: 5,
+                pointHoverRadius: 8
+            }));
+
+            const metricDatasets = metricsChart.data.datasets.map(ds => ({
+                ...ds,
+                backgroundColor: 'rgba(192, 132, 252, 0.15)',
+                fill: true,
+                pointRadius: 5,
+                pointHoverRadius: 8
+            }));
+
+            bigLossChart = new Chart(lossCanvas.getContext('2d'), {
+                type: 'line',
+                data: { labels: lossChart.data.labels, datasets: lossDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1', font: { family: 'Plus Jakarta Sans', weight: 700 } } },
+                        tooltip: getTooltipOptions()
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.06)' }, ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } } },
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.06)' }, ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } } }
+                    }
+                }
+            });
+
+            bigMetricsChart = new Chart(metricsCanvas.getContext('2d'), {
+                type: 'line',
+                data: { labels: metricsChart.data.labels, datasets: metricDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1', font: { family: 'Plus Jakarta Sans', weight: 700 } } },
+                        tooltip: getTooltipOptions()
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.06)' }, ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } } },
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.06)' }, ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } } }
+                    }
+                }
+            });
+        }
+
+        function closeBigChart(event) {
+            if (event && event.target !== document.getElementById('chartModal') && !event.target.classList.contains('btn')) {
+                return;
+            }
+            document.getElementById('chartModal').classList.remove('active');
+            if (bigLossChart) { bigLossChart.destroy(); bigLossChart = null; }
+            if (bigMetricsChart) { bigMetricsChart.destroy(); bigMetricsChart = null; }
+        }
+
+        // Sources Modal Controls
+        function openSourcesModal() {
+            document.getElementById('sourcesModal').classList.add('active');
+            fetchSources();
+        }
+
+        function closeSourcesModal(event) {
+            if (event && event.target !== document.getElementById('sourcesModal') && !event.target.classList.contains('btn')) {
+                return;
+            }
+            document.getElementById('sourcesModal').classList.remove('active');
+        }
+
+        async function fetchSources() {
+            try {
+                const res = await fetch('/api/sources');
+                const sources = await res.json();
+                const container = document.getElementById('sourcesList');
+                container.innerHTML = '';
+
+                document.getElementById('sourcesCountBadge').innerText = `${sources.length} Path${sources.length === 1 ? '' : 's'}`;
+
+                sources.forEach(src => {
+                    const div = document.createElement('div');
+                    div.className = 'source-item';
+                    div.innerHTML = `
+                        <div class="source-path-col">
+                            <span class="source-path-text">${src.path}</span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span class="badge ${src.exists ? 'badge-green' : 'badge-amber'}" style="font-size:0.65rem; padding:1px 6px;">
+                                    ${src.exists ? '● Active' : '⚠ Path Not Found'}
+                                </span>
+                                <span style="font-size:0.72rem; color:var(--text-dim); font-family:var(--font-mono);">${src.runs_count} runs</span>
+                            </div>
+                        </div>
+                        ${src.is_default ? '<span style="font-size:0.72rem; color:var(--text-dim);">Default</span>' : `<button class="btn btn-sm" onclick="removeSourcePath('${encodeURIComponent(src.path)}')">Remove</button>`}
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (err) {
+                console.error("Failed to fetch sources", err);
+            }
+        }
+
+        async function addSourcePath() {
+            const input = document.getElementById('newSourcePathInput');
+            const pathVal = input.value.trim();
+            if (!pathVal) return;
+
+            try {
+                const res = await fetch('/api/sources', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: pathVal })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    input.value = '';
+                    await fetchSources();
+                    await fetchRuns();
+                } else {
+                    alert('Could not add directory: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Failed to add directory path: ' + err.message);
+            }
+        }
+
+        async function removeSourcePath(encodedPath) {
+            const pathVal = decodeURIComponent(encodedPath);
+            try {
+                const res = await fetch('/api/sources', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: pathVal })
+                });
+                if (res.ok) {
+                    await fetchSources();
+                    await fetchRuns();
+                }
+            } catch (err) {}
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeBigChart();
+                closeSourcesModal();
+                closeUserDropdown();
+            }
+        });
+
+        // Custom Dropdown Controls
+        function toggleUserDropdown(event) {
+            event.stopPropagation();
+            const dd = document.getElementById('userDropdown');
+            dd.classList.toggle('open');
+        }
+
+        function closeUserDropdown() {
+            const dd = document.getElementById('userDropdown');
+            if (dd) dd.classList.remove('open');
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#userDropdown')) {
+                closeUserDropdown();
+            }
+        });
+
+        function selectUser(userVal, userLabel) {
+            currentSelectedUser = userVal;
+            document.getElementById('dropdownSelectedText').innerText = userLabel;
+            closeUserDropdown();
+            updateUserFilterDropdownUI();
+            filterRuns();
+        }
+
+        async function fetchRuns() {
+            try {
+                const res = await fetch('/api/runs');
+                allRuns = await res.json();
+                renderUserDropdown(allRuns);
+                filterRuns();
+                fetchSources();
+
+                if (!activeRunId && allRuns.length > 0) {
+                    loadRunDetails(allRuns[0].run_id);
+                }
+            } catch (err) {
+                console.error("Failed to fetch runs", err);
+            }
+        }
+
+        function renderUserDropdown(runs) {
+            const userCounts = {};
+            runs.forEach(r => {
+                const u = r.user || 'default';
+                userCounts[u] = (userCounts[u] || 0) + 1;
+            });
+
+            const uniqueUsers = Object.keys(userCounts).sort();
+            const menu = document.getElementById('dropdownMenu');
+            menu.innerHTML = '';
+
+            const userCountStr = `${uniqueUsers.length} ${uniqueUsers.length === 1 ? 'user' : 'users'}`;
+            const runCountStr = `${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`;
+            const allUsersCombinedStr = `${userCountStr}, ${runCountStr}`;
+
+            // All users item
+            const allItem = document.createElement('div');
+            allItem.className = 'dropdown-item' + (currentSelectedUser === 'all' ? ' active' : '');
+            allItem.innerHTML = `<span>👥 All Users</span><span class="dropdown-item-count">${allUsersCombinedStr}</span>`;
+            allItem.onclick = (e) => { 
+                e.stopPropagation(); 
+                selectUser('all', `👥 All Users (${allUsersCombinedStr})`); 
+            };
+            menu.appendChild(allItem);
+
+            // Divider
+            const divider = document.createElement('div');
+            divider.className = 'dropdown-divider';
+            menu.appendChild(divider);
+
+            uniqueUsers.forEach(u => {
+                const count = userCounts[u];
+                const countStr = `${count} ${count === 1 ? 'run' : 'runs'}`;
+                const item = document.createElement('div');
+                item.className = 'dropdown-item' + (currentSelectedUser === u ? ' active' : '');
+                item.innerHTML = `<span>👤 ${u}</span><span class="dropdown-item-count">${countStr}</span>`;
+                item.onclick = (e) => { 
+                    e.stopPropagation(); 
+                    selectUser(u, `👤 ${u} (${countStr})`); 
+                };
+                menu.appendChild(item);
+            });
+
+            if (currentSelectedUser === 'all') {
+                document.getElementById('dropdownSelectedText').innerText = `👥 All Users (${allUsersCombinedStr})`;
+            }
+        }
+
+        function updateUserFilterDropdownUI() {
+            const items = document.querySelectorAll('.dropdown-item');
+            items.forEach(item => {
+                if (currentSelectedUser === 'all' && item.innerText.includes('All Users')) {
+                    item.classList.add('active');
+                } else if (item.innerText.includes(currentSelectedUser)) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+
+        function toggleCompareMode() {
+            isCompareMode = document.getElementById('compareToggle').checked;
+            const countElem = document.getElementById('selectedCount');
+            if (!isCompareMode) {
+                selectedRunIds.clear();
+                countElem.style.display = 'none';
+                if (activeRunId) loadRunDetails(activeRunId);
+            } else {
+                if (activeRunId) selectedRunIds.add(activeRunId);
+                countElem.style.display = 'inline-flex';
+                countElem.innerText = `${selectedRunIds.size} selected`;
+                updateCompareView();
+            }
+            filterRuns();
+        }
+
+        function handleCheckboxClick(event, runId) {
+            event.stopPropagation();
+            if (selectedRunIds.has(runId)) {
+                selectedRunIds.delete(runId);
+            } else {
+                selectedRunIds.add(runId);
+            }
+            const countElem = document.getElementById('selectedCount');
+            countElem.style.display = 'inline-flex';
+            countElem.innerText = `${selectedRunIds.size} selected`;
+            if (isCompareMode) {
+                updateCompareView();
+            }
+            filterRuns();
+        }
+
+        async function updateCompareView() {
+            if (selectedRunIds.size === 0) return;
+            const runIdList = Array.from(selectedRunIds);
+            document.getElementById('runTitle').innerText = `Comparing ${runIdList.length} Runs`;
+            document.getElementById('renameBtn').style.display = 'none';
+            document.getElementById('runUserTag').style.display = 'none';
+
+            const lossDatasets = [];
+            const metricDatasets = [];
+            let maxEpochs = 0;
+
+            for (let i = 0; i < runIdList.length; i++) {
+                const rId = runIdList[i];
+                const color = PALETTE[i % PALETTE.length];
+                try {
+                    const res = await fetch(`/api/runs/${rId}`);
+                    const data = await res.json();
+
+                    const epochRecords = data.metrics.filter(m => m.epoch !== undefined);
+                    const stepRecords = data.metrics.filter(m => m.step !== undefined && m.epoch === undefined);
+                    const records = epochRecords.length > 0 ? epochRecords : stepRecords;
+
+                    maxEpochs = Math.max(maxEpochs, records.length);
+                    const trainVals = records.map(m => m.train_loss !== undefined ? m.train_loss : m.loss);
+                    const valAccs = records.map(m => m.val_acc !== undefined ? m.val_acc : null);
+
+                    lossDatasets.push({
+                        label: `${rId} (${data.metadata.user || 'default'})`,
+                        borderColor: color,
+                        backgroundColor: 'transparent',
+                        data: trainVals,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        pointHitRadius: 25
+                    });
+
+                    metricDatasets.push({
+                        label: `${rId} (${data.metadata.user || 'default'})`,
+                        borderColor: color,
+                        backgroundColor: 'transparent',
+                        data: valAccs,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        pointHitRadius: 25
+                    });
+                } catch (e) {}
+            }
+
+            const labels = Array.from({length: maxEpochs}, (_, i) => `Epoch ${i + 1}`);
+            lossChart.data.labels = labels;
+            lossChart.data.datasets = lossDatasets;
+            lossChart.update();
+
+            metricsChart.data.labels = labels;
+            metricsChart.data.datasets = metricDatasets;
+            metricsChart.update();
+        }
+
+        function renderRunList(runs) {
+            const container = document.getElementById('runList');
+            container.innerHTML = '';
+
+            if (runs.length === 0) {
+                container.innerHTML = '<div style="color: var(--text-dim); padding: 12px; font-size: 0.85rem;">No matching runs found.</div>';
+                return;
+            }
+
+            runs.forEach(run => {
+                const div = document.createElement('div');
+                div.className = 'run-item' + (run.run_id === activeRunId && !isCompareMode ? ' active' : '');
+                div.onclick = () => {
+                    if (isCompareMode) {
+                        handleCheckboxClick({ stopPropagation: () => {} }, run.run_id);
+                    } else {
+                        loadRunDetails(run.run_id);
+                    }
+                };
+
+                const isChecked = selectedRunIds.has(run.run_id);
+                const checkboxHtml = isCompareMode ? `<input type="checkbox" class="custom-checkbox" ${isChecked ? 'checked' : ''} onclick="handleCheckboxClick(event, '${run.run_id}')" />` : '';
+
+                div.innerHTML = `
+                    ${checkboxHtml}
+                    <div class="run-info">
+                        <div class="run-item-header">
+                            <div class="run-title-text">${run.run_id}</div>
+                            <span class="badge badge-green"><span class="status-dot"></span>Completed</span>
+                        </div>
+                        <div class="run-meta-row">
+                            <span class="badge badge-purple" style="font-size:0.65rem; padding:1px 6px;">👤 ${run.user || 'default'}</span>
+                            <span>${run.start_datetime ? run.start_datetime.split(' ')[1] || run.start_datetime : 'Recently'}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function filterRuns() {
+            const searchVal = document.getElementById('runSearch').value.toLowerCase();
+
+            const filtered = allRuns.filter(r => {
+                const matchesSearch = r.run_id.toLowerCase().includes(searchVal);
+                const matchesUser = (currentSelectedUser === 'all') || ((r.user || 'default') === currentSelectedUser);
+                return matchesSearch && matchesUser;
+            });
+
+            renderRunList(filtered);
+        }
+
+        function enableRename() {
+            document.getElementById('titleDisplay').style.display = 'none';
+            document.getElementById('renameBox').style.display = 'flex';
+            document.getElementById('renameInput').value = activeRunId;
+            document.getElementById('renameInput').focus();
+        }
+
+        function cancelRename() {
+            document.getElementById('renameBox').style.display = 'none';
+            document.getElementById('titleDisplay').style.display = 'flex';
+        }
+
+        async function submitRename() {
+            const newName = document.getElementById('renameInput').value.trim();
+            if (!newName || newName === activeRunId) {
+                cancelRename();
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/runs/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_run_id: activeRunId, new_run_id: newName })
+                });
+
+                const respData = await res.json();
+                if (res.ok && respData.success) {
+                    activeRunId = respData.run_id;
+                    cancelRename();
+                    await fetchRuns();
+                    await loadRunDetails(activeRunId);
+                } else {
+                    alert('Rename failed: ' + (respData.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Rename failed: ' + err.message);
+            }
+        }
+
+        function toggleExportDropdown(event) {
+            event.stopPropagation();
+            const dd = document.getElementById('exportDropdown');
+            dd.classList.toggle('open');
+        }
+
+        function closeExportDropdown() {
+            const dd = document.getElementById('exportDropdown');
+            if (dd) dd.classList.remove('open');
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#exportDropdown')) {
+                closeExportDropdown();
+            }
+        });
+
+        function exportReport(fmt = 'html') {
+            closeExportDropdown();
+            if (!activeRunId) return;
+            
+            const exportUrl = `/api/runs/${activeRunId}/export/${fmt}`;
+            const extMap = { html: 'html', markdown: 'md', csv: 'csv', json: 'json' };
+            const ext = extMap[fmt] || 'html';
+            const filename = `autotrainer_${activeRunId}.${ext}`;
+
+            const tempLink = document.createElement('a');
+            tempLink.href = exportUrl;
+            tempLink.download = filename;
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            document.body.removeChild(tempLink);
+
+            const logsDirPath = document.getElementById('pathLogsDir').innerText;
+            const diskPath = logsDirPath !== '--' && logsDirPath !== 'N/A' 
+                ? `${logsDirPath}\\\\report.${ext}` 
+                : `logs/${activeRunId}/report.${ext}`;
+
+            showExportPopup(activeRunId, filename, diskPath, `/api/runs/${activeRunId}/report`, fmt.toUpperCase());
+        }
+
+        function showExportPopup(runId, filename, diskPath, previewUrl, formatTitle) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'export-toast';
+            toast.innerHTML = `
+                <div class="toast-icon-wrap">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="toast-body">
+                    <div class="toast-title">${formatTitle} Export Complete</div>
+                    <div class="toast-desc">
+                        Downloaded to your browser's <strong>Downloads/</strong> folder as:<br>
+                        <span class="toast-path">${filename}</span>
+                        <div style="margin-top: 6px;">Also saved directly in your run logs folder:</div>
+                        <span class="toast-path">${diskPath}</span>
+                    </div>
+                    <div class="toast-actions">
+                        <button class="btn btn-sm btn-primary" onclick="window.open('${previewUrl}', '_blank')">Preview HTML</button>
+                        <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${diskPath.replace(/\\\\/g, '\\\\\\\\')}'); this.innerText='✓ Copied!';">Copy Path</button>
+                    </div>
+                </div>
+                <button class="btn btn-sm" style="padding:4px 7px;" onclick="this.closest('.export-toast').remove()">✕</button>
+            `;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 8000);
+        }
+
+        function copyText(elemId, btnId) {
+            const text = document.getElementById(elemId).innerText;
+            if (text && text !== '--' && text !== 'N/A') {
+                navigator.clipboard.writeText(text);
+                const btn = document.getElementById(btnId);
+                const oldText = btn.innerText;
+                btn.innerText = '✓ Copied';
+                btn.classList.add('badge-green');
+                setTimeout(() => {
+                    btn.innerText = oldText;
+                    btn.classList.remove('badge-green');
+                }, 1800);
+            }
+        }
+
+        function copyModelCode(btnId) {
+            const modelPath = document.getElementById('pathSavedModel').innerText;
+            if (modelPath && modelPath !== '--' && modelPath !== 'N/A') {
+                const code = `import torch\nmodel.load_state_dict(torch.load("${modelPath.replace(/\\\\/g, '/')}"))`;
+                navigator.clipboard.writeText(code);
+                const btn = document.getElementById(btnId);
+                const oldText = btn.innerText;
+                btn.innerText = '✓ Code Copied';
+                btn.classList.add('badge-green');
+                setTimeout(() => {
+                    btn.innerText = oldText;
+                    btn.classList.remove('badge-green');
+                }, 1800);
+            }
+        }
+
+        function formatDoctorMessage(rawMsg) {
+            let msg = rawMsg.replace(/^\\[autotrainer\\]\\s*triage:\\s*/i, '');
+            // Highlight code patterns like clip_grad_norm_ or lr values
+            msg = msg.replace(/(torch\\.nn\\.utils\\.clip_grad_norm_\\([^)]+\\))/g, '<code>$1</code>');
+            msg = msg.replace(/(\\b(?:lr=\\S+|lr\\/\\d+|bf16|fp16)\\b)/g, '<code>$1</code>');
+            return msg;
+        }
+
+        async function loadRunDetails(runId) {
+            if (isCompareMode) return;
+            activeRunId = runId;
+            renderRunList(allRuns);
+            document.getElementById('runTitle').innerText = runId;
+            document.getElementById('renameBtn').style.display = 'inline-flex';
+
+            try {
+                const res = await fetch(`/api/runs/${runId}`);
+                const data = await res.json();
+                const meta = data.metadata || {};
+                const summary = meta.summary || {};
+                const paths = data.paths || {};
+
+                // User tag display in header
+                const userTag = document.getElementById('runUserTag');
+                userTag.style.display = 'inline-flex';
+                userTag.innerHTML = `👤 User: <strong>${meta.user || 'default'}</strong>`;
+
+                // Paths display
+                document.getElementById('pathLogsDir').innerText = paths.logs_dir || 'N/A';
+                document.getElementById('pathSavedModel').innerText = paths.saved_model || 'N/A';
+                document.getElementById('pathCsv').innerText = paths.metrics_csv || 'N/A';
+                document.getElementById('pathJsonl').innerText = paths.metrics_jsonl || 'N/A';
+
+                // Health triage doctor - Clean Bulleted List (No nested boxes)
+                const triageList = summary.triage_diagnostics || [];
+                const doctorBadge = document.getElementById('doctorBadge');
+                const doctorContent = document.getElementById('doctorContent');
+
+                if (triageList.length > 0) {
+                    doctorBadge.className = 'badge badge-amber';
+                    doctorBadge.innerHTML = `⚠️ ${triageList.length} Anomaly Flagged`;
+                    
+                    const itemsHtml = triageList.map(msg => `
+                        <li class="doctor-bullet-item">
+                            <span class="doctor-bullet-icon">•</span>
+                            <div class="doctor-bullet-text">${formatDoctorMessage(msg)}</div>
+                        </li>
+                    `).join('');
+
+                    doctorContent.innerHTML = `<ul class="doctor-bullet-list">${itemsHtml}</ul>`;
+                } else {
+                    doctorBadge.className = 'badge badge-green';
+                    doctorBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> All Systems Healthy`;
+                    doctorContent.innerHTML = `<div style="color: var(--text-muted); padding-left: 2px;">No numerical anomalies, vanishing gradients, or dataloader starvation detected over ${summary.epochs || 5} epochs.</div>`;
+                }
+
+                const epochRecords = data.metrics.filter(m => m.epoch !== undefined);
+                const stepRecords = data.metrics.filter(m => m.step !== undefined && m.epoch === undefined);
+
+                let labels, trainLosses, valLosses, valAccs;
+
+                if (epochRecords.length > 0) {
+                    labels = epochRecords.map(m => `Epoch ${m.epoch}`);
+                    trainLosses = epochRecords.map(m => m.train_loss !== undefined ? m.train_loss : m.loss);
+                    valLosses = epochRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
+                    valAccs = epochRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+                } else {
+                    labels = stepRecords.map(m => `Step ${m.step}`);
+                    trainLosses = stepRecords.map(m => m.loss !== undefined ? m.loss : m.train_loss);
+                    valLosses = stepRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
+                    valAccs = stepRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+                }
+
+                lossChart.data.labels = labels;
+                lossChart.data.datasets = [
+                    { label: 'Train Loss', borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.12)', data: trainLosses, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 },
+                    { label: 'Val Loss', borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.12)', borderDash: [6, 4], data: valLosses, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 }
+                ];
+                lossChart.update();
+
+                metricsChart.data.labels = labels;
+                metricsChart.data.datasets = [
+                    { label: 'Val Metric (%)', borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.15)', data: valAccs, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 }
+                ];
+                metricsChart.update();
+
+                // Stats summary
+                const validTrain = trainLosses.filter(l => l !== undefined && l !== null);
+                const validVal = valLosses.filter(l => l !== undefined && l !== null);
+
+                document.getElementById('valInitLoss').innerText = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
+                document.getElementById('valFinalLoss').innerText = summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : '--');
+                document.getElementById('valThroughput').innerText = summary.throughput ? `${Math.round(summary.throughput).toLocaleString()} smp/s` : 'N/A';
+                document.getElementById('valEpochs').innerText = summary.epochs !== undefined ? summary.epochs : (epochRecords.length > 0 ? epochRecords.length : stepRecords.length);
+
+                // Table
+                const tbody = document.querySelector('#detailsTable tbody');
+                tbody.innerHTML = '';
+                const params = meta.params || {};
+                const combined = { user: meta.user || 'default', ...params, ...summary };
+
+                if (Object.keys(combined).length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" style="color: var(--text-dim); text-align: center;">No configuration recorded for this run.</td></tr>';
+                } else {
+                    for (const [k, v] of Object.entries(combined)) {
+                        if (k === 'triage_diagnostics') continue;
+                        const tr = document.createElement('tr');
+                        const valDisplay = typeof v === 'boolean' 
+                            ? `<span class="badge badge-cyan">${v ? 'Enabled' : 'Disabled'}</span>`
+                            : (typeof v === 'object' ? JSON.stringify(v) : v);
+                        tr.innerHTML = `<td style="font-weight: 600;">${k}</td><td>${valDisplay}</td>`;
+                        tbody.appendChild(tr);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load run details", err);
+            }
+        }
+
+        window.onload = () => {
+            initCharts();
+            fetchRuns();
+            fetchSources();
+            setInterval(fetchRuns, 5000);
+        };
+    </script>
+</body>
+</html>
+"""
+
+
+class AutotrainerUIHandler(BaseHTTPRequestHandler):
+    """HTTP Request handler for serving the Autotrainer Web UI and REST API."""
+
+    logs_dirs: list[Path] = [Path("logs")]
+
+    def do_GET(self) -> None:
+        if self.path == "/" or self.path == "/index.html":
+            self._respond_html(_DASHBOARD_HTML)
+        elif self.path == "/api/sources":
+            self._handle_api_sources()
+        elif self.path == "/api/runs":
+            self._handle_api_runs()
+        elif self.path.startswith("/api/runs/") and (self.path.endswith("/export") or self.path.endswith("/export/html")):
+            parts = self.path.strip("/").split("/")
+            run_id = parts[2]
+            self._handle_export_html(run_id, as_attachment=True)
+        elif self.path.startswith("/api/runs/") and (self.path.endswith("/export/markdown") or self.path.endswith("/export/md")):
+            parts = self.path.strip("/").split("/")
+            run_id = parts[2]
+            self._handle_export_markdown(run_id)
+        elif self.path.startswith("/api/runs/") and self.path.endswith("/export/csv"):
+            parts = self.path.strip("/").split("/")
+            run_id = parts[2]
+            self._handle_export_csv(run_id)
+        elif self.path.startswith("/api/runs/") and self.path.endswith("/export/json"):
+            parts = self.path.strip("/").split("/")
+            run_id = parts[2]
+            self._handle_export_json(run_id)
+        elif self.path.startswith("/api/runs/") and (self.path.endswith("/report") or self.path.endswith("/preview")):
+            parts = self.path.strip("/").split("/")
+            run_id = parts[2]
+            self._handle_export_html(run_id, as_attachment=False)
+        elif self.path.startswith("/api/runs/"):
+            run_id = self.path[len("/api/runs/") :]
+            self._handle_api_run_detail(run_id)
+        else:
+            self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
+
+    def do_POST(self) -> None:
+        if self.path == "/api/sources":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                raw_path = data.get("path", "").strip()
+                if not raw_path:
+                    self._respond_error(HTTPStatus.BAD_REQUEST, "Missing path")
+                    return
+
+                new_dir = Path(raw_path).resolve()
+                if new_dir not in [d.resolve() for d in self.logs_dirs]:
+                    self.logs_dirs.append(new_dir)
+
+                self._respond_json({"success": True, "path": str(new_dir)})
+            except Exception as e:
+                self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
+        elif self.path == "/api/runs/rename":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                old_id = data.get("old_run_id")
+                new_id = data.get("new_run_id")
+                if not old_id or not new_id:
+                    self._respond_error(HTTPStatus.BAD_REQUEST, "Missing old_run_id or new_run_id")
+                    return
+
+                clean_new_id = "".join(c for c in new_id if c.isalnum() or c in ("_", "-")).strip()
+                if not clean_new_id:
+                    self._respond_error(HTTPStatus.BAD_REQUEST, "Invalid run_id")
+                    return
+
+                found_dir: Path | None = None
+                for d in self.logs_dirs:
+                    old_path = d / old_id
+                    if old_path.exists():
+                        found_dir = d
+                        break
+
+                if not found_dir:
+                    self._respond_error(HTTPStatus.NOT_FOUND, f"Run {old_id} not found")
+                    return
+
+                old_path = found_dir / old_id
+                new_path = found_dir / clean_new_id
+                if new_path.exists() and old_path != new_path:
+                    self._respond_error(HTTPStatus.CONFLICT, f"Run {clean_new_id} already exists")
+                    return
+
+                if old_path != new_path:
+                    old_path.rename(new_path)
+
+                meta_file = new_path / "run.json"
+                if meta_file.exists():
+                    try:
+                        with open(meta_file, "r+", encoding="utf-8") as f:
+                            meta = json.load(f)
+                            meta["run_id"] = clean_new_id
+                            f.seek(0)
+                            json.dump(meta, f, indent=2)
+                            f.truncate()
+                    except Exception:
+                        pass
+
+                self._respond_json({"success": True, "run_id": clean_new_id})
+            except Exception as e:
+                self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+        else:
+            self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
+
+    def do_DELETE(self) -> None:
+        if self.path == "/api/sources":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                raw_path = data.get("path", "").strip()
+                to_remove = Path(raw_path).resolve()
+                self.logs_dirs = [d for d in self.logs_dirs if d.resolve() != to_remove]
+                self._respond_json({"success": True})
+            except Exception as e:
+                self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+        else:
+            self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
+
+    def _respond_html(self, content: str) -> None:
+        encoded = content.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _respond_json(self, data: Any) -> None:
+        encoded = json.dumps(data).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _respond_error(self, status: HTTPStatus, message: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"error": message}).encode("utf-8"))
+
+    def _handle_api_sources(self) -> None:
+        sources_info: list[dict[str, Any]] = []
+        for idx, d in enumerate(self.logs_dirs):
+            resolved = d.resolve()
+            exists = resolved.exists() and resolved.is_dir()
+            runs_count = 0
+            if exists:
+                try:
+                    runs_count = sum(1 for item in resolved.iterdir() if item.is_dir())
+                except Exception:
+                    pass
+            sources_info.append({
+                "path": str(resolved),
+                "exists": exists,
+                "runs_count": runs_count,
+                "is_default": idx == 0,
+            })
+        self._respond_json(sources_info)
+
+    def _handle_api_runs(self) -> None:
+        default_user = _detect_system_user()
+        runs: list[dict[str, Any]] = []
+        seen_run_ids = set()
+
+        for d in self.logs_dirs:
+            if d.exists() and d.is_dir():
+                for item in sorted(d.iterdir(), reverse=True):
+                    if item.is_dir() and item.name not in seen_run_ids:
+                        seen_run_ids.add(item.name)
+                        meta_file = item / "run.json"
+                        if meta_file.exists():
+                            try:
+                                with open(meta_file, encoding="utf-8") as f:
+                                    meta = json.load(f)
+                                    if "user" not in meta:
+                                        meta["user"] = default_user
+                                    meta["source_dir"] = str(d.resolve())
+                                    runs.append(meta)
+                            except Exception:
+                                runs.append({"run_id": item.name, "user": default_user, "source_dir": str(d.resolve())})
+                        else:
+                            runs.append({"run_id": item.name, "user": default_user, "source_dir": str(d.resolve())})
+        self._respond_json(runs)
+
+    def _get_run_data(self, run_id: str) -> dict[str, Any] | None:
+        run_dir: Path | None = None
+        for d in self.logs_dirs:
+            candidate = d / run_id
+            if candidate.exists() and candidate.is_dir():
+                run_dir = candidate
+                break
+
+        if not run_dir:
+            return None
+
+        default_user = _detect_system_user()
+        metadata: dict[str, Any] = {"user": default_user}
+        meta_file = run_dir / "run.json"
+        if meta_file.exists():
+            try:
+                with open(meta_file, encoding="utf-8") as f:
+                    metadata = json.load(f)
+                    if "user" not in metadata:
+                        metadata["user"] = default_user
+            except Exception:
+                pass
+
+        metrics: list[dict[str, Any]] = []
+        jsonl_file = run_dir / "metrics.jsonl"
+        if jsonl_file.exists():
+            try:
+                with open(jsonl_file, encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            record = json.loads(line)
+                            if record.get("type") in ("epoch", "step"):
+                                item = record.get("metrics", {})
+                                if "epoch" in record:
+                                    item["epoch"] = record["epoch"]
+                                if "step" in record:
+                                    item["step"] = record["step"]
+                                metrics.append(item)
+            except Exception:
+                pass
+
+        csv_file = run_dir / "metrics.csv"
+
+        paths = {
+            "logs_dir": str(run_dir.resolve()),
+            "metrics_csv": str(csv_file.resolve()) if csv_file.exists() else "N/A",
+            "metrics_jsonl": str(jsonl_file.resolve()) if jsonl_file.exists() else "N/A",
+            "saved_model": str(Path("model.pt").resolve()) if Path("model.pt").exists() else "N/A",
+        }
+
+        return {
+            "run_id": run_id,
+            "metadata": metadata,
+            "metrics": metrics,
+            "paths": paths,
+        }
+
+    def _handle_api_run_detail(self, run_id: str) -> None:
+        data = self._get_run_data(run_id)
+        if data is None:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+        self._respond_json(data)
+
+    def _handle_export_html(self, run_id: str, as_attachment: bool = True) -> None:
+        data = self._get_run_data(run_id)
+        if data is None:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+
+        json_str = json.dumps(data)
+        user_name = data.get("metadata", {}).get("user", _detect_system_user())
+        start_time = data.get("metadata", {}).get("start_datetime", "N/A")
+        
+        standalone_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autotrainer Executive Report - {run_id}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {{
+            --bg: #0b0f19;
+            --card-bg: rgba(18, 26, 43, 0.85);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(56, 189, 248, 0.4);
+            --accent-cyan: #38bdf8;
+            --accent-purple: #c084fc;
+            --accent-green: #34d399;
+            --accent-pink: #fb7185;
+            --accent-amber: #fbbf24;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }}
+
+        * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-sans); }}
+
+        body {{
+            background: radial-gradient(circle at 10% 10%, #111827 0%, var(--bg) 100%);
+            color: var(--text-main);
+            padding: 36px 48px;
+            line-height: 1.5;
+        }}
+
+        .report-wrapper {{
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }}
+
+        /* Buttons */
+        .btn {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            cursor: pointer;
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.04);
+            transition: all 0.2s ease;
+            text-decoration: none;
+            user-select: none;
+        }}
+
+        .btn:hover {{
+            background: rgba(56, 189, 248, 0.12);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }}
+
+        .btn-primary {{
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(192, 132, 252, 0.2) 100%);
+            border-color: rgba(56, 189, 248, 0.4);
+            color: #fff;
+        }}
+
+        .btn-primary:hover {{
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+        }}
+
+        .btn-sm {{ padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }}
+
+        /* Badges */
+        .badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 12px;
+            letter-spacing: 0.3px;
+        }}
+
+        .badge-green {{ background: rgba(52, 211, 153, 0.12); color: var(--accent-green); border: 1px solid rgba(52, 211, 153, 0.25); }}
+        .badge-purple {{ background: rgba(192, 132, 252, 0.12); color: var(--accent-purple); border: 1px solid rgba(192, 132, 252, 0.25); }}
+        .badge-cyan {{ background: rgba(56, 189, 248, 0.12); color: var(--accent-cyan); border: 1px solid rgba(56, 189, 248, 0.25); }}
+        .badge-amber {{ background: rgba(251, 191, 36, 0.12); color: var(--accent-amber); border: 1px solid rgba(251, 191, 36, 0.25); }}
+
+        /* Header */
+        .header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 20px;
+        }}
+
+        .brand-title {{
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+
+        .header-meta {{
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }}
+
+        /* Health Doctor */
+        .doctor-card {{
+            background: linear-gradient(135deg, rgba(16, 24, 39, 0.9) 0%, rgba(24, 33, 56, 0.8) 100%);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }}
+
+        .doctor-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+
+        .doctor-title {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+
+        .doctor-bullet-list {{
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-left: 4px;
+        }}
+
+        .doctor-bullet-item {{
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            color: #fde68a;
+        }}
+
+        .doctor-bullet-icon {{ color: var(--accent-amber); font-size: 1.1rem; line-height: 1; flex-shrink: 0; }}
+
+        .doctor-bullet-text code {{
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--accent-cyan);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.25);
+        }}
+
+        /* Metrics Grid */
+        .metrics-grid {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }}
+
+        .stat-card {{
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 18px 20px;
+        }}
+
+        .stat-label {{
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }}
+
+        .stat-value {{
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-top: 6px;
+            letter-spacing: -0.5px;
+        }}
+
+        .stat-card.cyan .stat-value {{ background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        .stat-card.green .stat-value {{ background: linear-gradient(135deg, #34d399 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        .stat-card.purple .stat-value {{ background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+        .stat-card.white .stat-value {{ background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+
+        /* Charts */
+        .charts-container {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }}
+
+        .chart-card {{
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }}
+
+        .chart-title {{
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }}
+
+        .chart-wrapper {{
+            position: relative;
+            height: 280px;
+            width: 100%;
+        }}
+
+        /* Paths Grid */
+        .paths-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
+        }}
+
+        .path-box {{
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--card-border);
+            padding: 12px 14px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }}
+
+        .path-label-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+
+        .path-label {{
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+        }}
+
+        .path-val {{
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            word-break: break-all;
+        }}
+
+        /* Table */
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+
+        th {{
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.02);
+        }}
+
+        td {{
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.85rem;
+            color: var(--text-main);
+        }}
+
+        tr:hover td {{ background: rgba(255, 255, 255, 0.02); }}
+
+        @media print {{
+            body {{ background: #ffffff; color: #0f172a; padding: 20px; }}
+            .btn-group {{ display: none; }}
+            .stat-card, .chart-card, .doctor-card {{ background: #ffffff; border: 1px solid #cbd5e1; box-shadow: none; }}
+            .stat-card.cyan .stat-value {{ color: #0284c7; -webkit-text-fill-color: #0284c7; }}
+            .stat-card.green .stat-value {{ color: #059669; -webkit-text-fill-color: #059669; }}
+            .stat-card.purple .stat-value {{ color: #7c3aed; -webkit-text-fill-color: #7c3aed; }}
+            .stat-card.white .stat-value {{ color: #0f172a; -webkit-text-fill-color: #0f172a; }}
+            .path-box {{ background: #f8fafc; border-color: #e2e8f0; }}
+            .path-val {{ color: #334155; }}
+            th {{ background: #f1f5f9; color: #475569; }}
+            td {{ color: #0f172a; border-color: #e2e8f0; }}
+            .brand-title {{ -webkit-text-fill-color: #0f172a; }}
+        }}
+
+        @media (max-width: 900px) {{
+            body {{ padding: 20px; }}
+            .metrics-grid {{ grid-template-columns: repeat(2, 1fr); }}
+            .charts-container {{ grid-template-columns: 1fr; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="report-wrapper">
+        <div class="header">
+            <div>
+                <div class="brand-title">⚡ Autotrainer Executive Report</div>
+                <div class="header-meta">
+                    <span>Run: <strong>{run_id}</strong></span>
+                    <span>&bull;</span>
+                    <span class="badge badge-purple">👤 {user_name}</span>
+                    <span>&bull;</span>
+                    <span>Generated: {start_time}</span>
+                </div>
+            </div>
+            <div class="btn-group" style="display:flex; gap:8px;">
+                <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ Print / Save PDF</button>
+                <button class="btn btn-sm" id="btnCopyJson" onclick="copyRawJson('btnCopyJson')">📋 Copy JSON</button>
+            </div>
+        </div>
+
+        <div class="doctor-card">
+            <div class="doctor-header">
+                <div class="doctor-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    AI Training Doctor & Health Triage Assessment
+                </div>
+                <div class="badge badge-green" id="doctorBadge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                    All Systems Healthy
+                </div>
+            </div>
+            <div id="doctorContent" style="font-size: 0.85rem; color: var(--text-muted);">
+                Analyzing numerical stability, loss convergence, and hardware execution...
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="stat-card cyan">
+                <div class="stat-label">Initial Loss</div>
+                <div class="stat-value" id="valInitLoss">--</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-label">Final Loss</div>
+                <div class="stat-value" id="valFinalLoss">--</div>
+            </div>
+            <div class="stat-card purple">
+                <div class="stat-label">Throughput / Speed</div>
+                <div class="stat-value" id="valThroughput">--</div>
+            </div>
+            <div class="stat-card white">
+                <div class="stat-label">Total Epochs</div>
+                <div class="stat-value" id="valEpochs">--</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <div class="chart-title">📈 Loss Trajectory (Train & Validation)</div>
+                <div class="chart-wrapper">
+                    <canvas id="lossChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">🎯 Validation Metrics & Accuracy</div>
+                <div class="chart-wrapper">
+                    <canvas id="metricsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">📁 File Locations & Saved Model Checkpoint</div>
+            <div class="paths-grid">
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Logs Directory</span>
+                        <button class="btn btn-sm" id="btnCopyLogs" onclick="copyFieldText('pathLogsDir', 'btnCopyLogs')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathLogsDir">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Saved Model Checkpoint</span>
+                        <button class="btn btn-sm" id="btnCopyModel" onclick="copyModelCode('btnCopyModel')">Copy Code</button>
+                    </div>
+                    <div class="path-val" id="pathSavedModel">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Metrics CSV Log</span>
+                        <button class="btn btn-sm" id="btnCopyCsv" onclick="copyFieldText('pathCsv', 'btnCopyCsv')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathCsv">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Metrics JSONL Log</span>
+                        <button class="btn btn-sm" id="btnCopyJsonl" onclick="copyFieldText('pathJsonl', 'btnCopyJsonl')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathJsonl">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">⚙️ Run Details & Applied Optimizations</div>
+            <table id="detailsTable">
+                <thead>
+                    <tr><th>Parameter / Optimization Flag</th><th>Value / Applied Status</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const runData = {json_str};
+        const meta = runData.metadata || {{}};
+        const summary = meta.summary || {{}};
+        const paths = runData.paths || {{}};
+
+        // Render Paths
+        document.getElementById('pathLogsDir').innerText = paths.logs_dir || 'N/A';
+        document.getElementById('pathSavedModel').innerText = paths.saved_model || 'N/A';
+        document.getElementById('pathCsv').innerText = paths.metrics_csv || 'N/A';
+        document.getElementById('pathJsonl').innerText = paths.metrics_jsonl || 'N/A';
+
+        // Render Triage Doctor
+        const triageList = summary.triage_diagnostics || [];
+        const doctorBadge = document.getElementById('doctorBadge');
+        const doctorContent = document.getElementById('doctorContent');
+
+        function formatDoctorMessage(rawMsg) {{
+            let msg = rawMsg.replace(/^\\[autotrainer\\]\\s*triage:\\s*/i, '');
+            msg = msg.replace(/(torch\\.nn\\.utils\\.clip_grad_norm_\\([^)]+\\))/g, '<code>$1</code>');
+            msg = msg.replace(/(\\b(?:lr=\\S+|lr\\/\\d+|bf16|fp16)\\b)/g, '<code>$1</code>');
+            return msg;
+        }}
+
+        if (triageList.length > 0) {{
+            doctorBadge.className = 'badge badge-amber';
+            doctorBadge.innerHTML = `⚠️ ${{triageList.length}} Anomaly Flagged`;
+            const itemsHtml = triageList.map(msg => `
+                <li class="doctor-bullet-item">
+                    <span class="doctor-bullet-icon">•</span>
+                    <div class="doctor-bullet-text">${{formatDoctorMessage(msg)}}</div>
+                </li>
+            `).join('');
+            doctorContent.innerHTML = `<ul class="doctor-bullet-list">${{itemsHtml}}</ul>`;
+        }} else {{
+            doctorBadge.className = 'badge badge-green';
+            doctorBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> All Systems Healthy`;
+            doctorContent.innerHTML = `<div style="color: var(--text-muted); padding-left: 2px;">No numerical anomalies, vanishing gradients, or dataloader starvation detected.</div>`;
+        }}
+
+        // Render Records & Charts
+        const epochRecords = runData.metrics.filter(m => m.epoch !== undefined);
+        const stepRecords = runData.metrics.filter(m => m.step !== undefined && m.epoch === undefined);
+        const records = epochRecords.length > 0 ? epochRecords : stepRecords;
+
+        let labels, trainLosses, valLosses, valAccs;
+        if (epochRecords.length > 0) {{
+            labels = epochRecords.map(m => `Epoch ${{m.epoch}}`);
+            trainLosses = epochRecords.map(m => m.train_loss !== undefined ? m.train_loss : m.loss);
+            valLosses = epochRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
+            valAccs = epochRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+        }} else {{
+            labels = stepRecords.map(m => `Step ${{m.step}}`);
+            trainLosses = stepRecords.map(m => m.loss !== undefined ? m.loss : m.train_loss);
+            valLosses = stepRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
+            valAccs = stepRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+        }}
+
+        const validTrain = trainLosses.filter(l => l !== undefined && l !== null);
+        document.getElementById('valInitLoss').innerText = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
+        document.getElementById('valFinalLoss').innerText = summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : '--');
+        document.getElementById('valThroughput').innerText = summary.throughput ? `${{Math.round(summary.throughput).toLocaleString()}} smp/s` : 'N/A';
+        document.getElementById('valEpochs').innerText = summary.epochs || records.length;
+
+        // Tooltip Config
+        const tooltipConfig = {{
+            backgroundColor: 'rgba(11, 15, 25, 0.95)',
+            titleColor: '#f8fafc',
+            bodyColor: '#cbd5e1',
+            borderColor: 'rgba(56, 189, 248, 0.4)',
+            borderWidth: 1,
+            padding: 10,
+            usePointStyle: true
+        }};
+
+        // Loss Chart
+        new Chart(document.getElementById('lossChart').getContext('2d'), {{
+            type: 'line',
+            data: {{
+                labels: labels,
+                datasets: [
+                    {{ label: 'Train Loss', borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.12)', data: trainLosses, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7 }},
+                    {{ label: 'Val Loss', borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.12)', borderDash: [6, 4], data: valLosses, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7 }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{ labels: {{ color: '#94a3b8', font: {{ family: 'Plus Jakarta Sans', weight: 600 }} }} }},
+                    tooltip: tooltipConfig
+                }},
+                scales: {{
+                    x: {{ grid: {{ color: 'rgba(255, 255, 255, 0.04)' }}, ticks: {{ color: '#64748b' }} }},
+                    y: {{ grid: {{ color: 'rgba(255, 255, 255, 0.04)' }}, ticks: {{ color: '#64748b' }} }}
+                }}
+            }}
+        }});
+
+        // Metrics Chart
+        new Chart(document.getElementById('metricsChart').getContext('2d'), {{
+            type: 'line',
+            data: {{
+                labels: labels,
+                datasets: [
+                    {{ label: 'Val Metric (%)', borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.15)', data: valAccs, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7 }}
+                ]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {{
+                    legend: {{ labels: {{ color: '#94a3b8', font: {{ family: 'Plus Jakarta Sans', weight: 600 }} }} }},
+                    tooltip: tooltipConfig
+                }},
+                scales: {{
+                    x: {{ grid: {{ color: 'rgba(255, 255, 255, 0.04)' }}, ticks: {{ color: '#64748b' }} }},
+                    y: {{ grid: {{ color: 'rgba(255, 255, 255, 0.04)' }}, ticks: {{ color: '#64748b' }} }}
+                }}
+            }}
+        }});
+
+        // Table
+        const tbody = document.querySelector('#detailsTable tbody');
+        const combined = {{ user: meta.user || 'default', ...(meta.params || {{}}), ...summary }};
+        for (const [k, v] of Object.entries(combined)) {{
+            if (k === 'triage_diagnostics') continue;
+            const tr = document.createElement('tr');
+            const valDisplay = typeof v === 'boolean' 
+                ? `<span class="badge badge-cyan">${{v ? 'Enabled' : 'Disabled'}}</span>`
+                : (typeof v === 'object' ? JSON.stringify(v) : v);
+            tr.innerHTML = `<td style="font-weight: 600;">${{k}}</td><td>${{valDisplay}}</td>`;
+            tbody.appendChild(tr);
+        }}
+
+        // Helpers
+        function copyFieldText(elemId, btnId) {{
+            const text = document.getElementById(elemId).innerText;
+            if (text && text !== '--' && text !== 'N/A') {{
+                navigator.clipboard.writeText(text);
+                const btn = document.getElementById(btnId);
+                const old = btn.innerText;
+                btn.innerText = '✓ Copied';
+                btn.classList.add('badge-green');
+                setTimeout(() => {{ btn.innerText = old; btn.classList.remove('badge-green'); }}, 1800);
+            }}
+        }}
+
+        function copyModelCode(btnId) {{
+            const modelPath = document.getElementById('pathSavedModel').innerText;
+            if (modelPath && modelPath !== '--' && modelPath !== 'N/A') {{
+                const code = `import torch\\nmodel.load_state_dict(torch.load("${{modelPath.replace(/\\\\/g, '/')}}"))`;
+                navigator.clipboard.writeText(code);
+                const btn = document.getElementById(btnId);
+                const old = btn.innerText;
+                btn.innerText = '✓ Code Copied';
+                btn.classList.add('badge-green');
+                setTimeout(() => {{ btn.innerText = old; btn.classList.remove('badge-green'); }}, 1800);
+            }}
+        }}
+
+        function copyRawJson(btnId) {{
+            navigator.clipboard.writeText(JSON.stringify(runData, null, 2));
+            const btn = document.getElementById(btnId);
+            const old = btn.innerText;
+            btn.innerText = '✓ JSON Copied';
+            btn.classList.add('badge-green');
+            setTimeout(() => {{ btn.innerText = old; btn.classList.remove('badge-green'); }}, 1800);
+        }}
+    </script>
+</body>
+</html>"""
+
+        # Also save persistently into the run directory on disk
+        for d in self.logs_dirs:
+            candidate = d / run_id
+            if candidate.exists() and candidate.is_dir():
+                try:
+                    (candidate / "report.html").write_text(standalone_html, encoding="utf-8")
+                except Exception:
+                    pass
+                break
+
+        encoded = standalone_html.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        if as_attachment:
+            self.send_header("Content-Disposition", f'attachment; filename="autotrainer_report_{run_id}.html"')
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _handle_export_markdown(self, run_id: str) -> None:
+        data = self._get_run_data(run_id)
+        if data is None:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+
+        meta = data.get("metadata", {})
+        summary = meta.get("summary", {})
+        user_name = meta.get("user", _detect_system_user())
+        start_time = meta.get("start_datetime", "N/A")
+        triage_list = summary.get("triage_diagnostics", [])
+
+        md = [
+            f"# ⚡ Autotrainer Run Summary: `{run_id}`",
+            f"> **Author**: `👤 {user_name}` | **Started**: `{start_time}` | **Status**: `Completed`",
+            "",
+            "## 📊 Key Telemetry",
+            "| Metric | Value |",
+            "| :--- | :--- |",
+            f"| **Initial Loss** | `{summary.get('init_loss', 'N/A')}` |",
+            f"| **Final Loss** | `{summary.get('final_loss', 'N/A')}` |",
+            f"| **Throughput** | `{round(summary.get('throughput', 0)):,} smp/s` |" if summary.get("throughput") else "| **Throughput** | `N/A` |",
+            f"| **Total Epochs** | `{summary.get('epochs', len(data.get('metrics', [])))}` |",
+            "",
+            "## 🧠 AI Health Triage Diagnosis",
+        ]
+
+        if triage_list:
+            for item in triage_list:
+                clean_item = item.replace("[autotrainer] triage: ", "")
+                md.append(f"- ⚠️ {clean_item}")
+        else:
+            md.append("- ✅ **All Systems Healthy**: No numerical anomalies, vanishing gradients, or dataloader starvation detected.")
+
+        md.extend([
+            "",
+            "## ⚙️ Hyperparameters & Configuration",
+            "| Parameter | Value |",
+            "| :--- | :--- |",
+        ])
+
+        combined = {**meta.get("params", {}), **{k: v for k, v in summary.items() if k != "triage_diagnostics"}}
+        for k, v in combined.items():
+            md.append(f"| `{k}` | `{v}` |")
+
+        md_content = "\n".join(md) + "\n"
+
+        # Also save to run directory
+        for d in self.logs_dirs:
+            candidate = d / run_id
+            if candidate.exists() and candidate.is_dir():
+                try:
+                    (candidate / "report.md").write_text(md_content, encoding="utf-8")
+                except Exception:
+                    pass
+                break
+
+        encoded = md_content.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/markdown; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="autotrainer_summary_{run_id}.md"')
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _handle_export_csv(self, run_id: str) -> None:
+        data = self._get_run_data(run_id)
+        if data is None:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+
+        csv_content = ""
+        csv_path = data.get("paths", {}).get("metrics_csv")
+        if csv_path and csv_path != "N/A" and Path(csv_path).exists():
+            try:
+                csv_content = Path(csv_path).read_text(encoding="utf-8")
+            except Exception:
+                csv_content = ""
+
+        if not csv_content:
+            metrics = data.get("metrics", [])
+            if metrics:
+                import io, csv as py_csv
+                output = io.StringIO()
+                all_keys = list(dict.fromkeys(k for m in metrics for k in m.keys()))
+                writer = py_csv.DictWriter(output, fieldnames=all_keys)
+                writer.writeheader()
+                for m in metrics:
+                    writer.writerow(m)
+                csv_content = output.getvalue()
+            else:
+                csv_content = "epoch,step,train_loss,val_loss,val_acc\n"
+
+        encoded = csv_content.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="metrics_{run_id}.csv"')
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _handle_export_json(self, run_id: str) -> None:
+        data = self._get_run_data(run_id)
+        if data is None:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+
+        json_str = json.dumps(data, indent=2)
+        encoded = json_str.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="run_data_{run_id}.json"')
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        # Silence default stderr logging to keep console clean
+        pass
+
+
+def run_ui_server(
+    logs_dir: str | Path | list[str | Path] | None = None,
+    logs_dirs: list[str | Path] | None = None,
+    port: int = 8501,
+    open_browser: bool = True,
+) -> None:
+    """Launch the autotrainer Web UI server supporting single or multiple logs directories."""
+    paths: list[Path] = []
+
+    if logs_dirs:
+        for p in logs_dirs:
+            paths.append(Path(p).resolve())
+    elif logs_dir:
+        if isinstance(logs_dir, (list, tuple)):
+            for p in logs_dir:
+                paths.append(Path(p).resolve())
+        else:
+            paths.append(Path(logs_dir).resolve())
+    else:
+        paths.append(Path("logs").resolve())
+
+    AutotrainerUIHandler.logs_dirs = paths
+
+    class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
+    server = ThreadedHTTPServer(("0.0.0.0", port), AutotrainerUIHandler)
+    url = f"http://localhost:{port}"
+    print(f"[autotrainer] Web UI running at {url} (monitoring {len(paths)} directories)")
+
+    if open_browser:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping Autotrainer Web UI server...")
+        server.server_close()

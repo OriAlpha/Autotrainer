@@ -54,6 +54,8 @@ class SummaryTracker:
         optimizer: Any | None = None,
         loss_fn: Any | None = None,
         scheduler: Any | None = None,
+        user: str | None = None,
+        logs_dir: str | Path | None = None,
     ) -> None:
         self.start_time = time.time()
         self.model = model
@@ -62,6 +64,8 @@ class SummaryTracker:
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.scheduler = scheduler
+        self.user = user
+        self.logs_dir = logs_dir
 
         self.triage_mon = TrainingMonitor()
         self.train_losses: list[float] = []
@@ -71,10 +75,33 @@ class SummaryTracker:
         self.reported = False
         # What autotrainer actually changed, keyed the same way as the dict
         # ``torch_backend.prepare()`` builds. The report renders the "Applied"
-        # section straight from this rather than re-deriving it from global
-        # torch flags or env vars, which cannot tell "autotrainer set this"
-        # from "the user set this" - and so used to claim credit for both.
+        # column by checking this. Empty dict when the user is running an
+        # uninstrumented loop or another framework.
         self.applied: dict[str, Any] = {}
+        self._native_tracker = None
+
+    def _get_native_tracker(self):
+        import os
+
+        if self.logs_dir is None and ("PYTEST_CURRENT_TEST" in os.environ or os.environ.get("AUTOTRAINER_DISABLE_TRACKING") == "1"):
+            return None
+        if self._native_tracker is None:
+            try:
+                from .trackers import NativeTracker
+
+                self._native_tracker = NativeTracker(user=self.user, base_dir=self.logs_dir or "logs")
+            except Exception:
+                pass
+        return self._native_tracker
+
+    @property
+    def run_id(self) -> str:
+        nt = self._get_native_tracker()
+        return nt.run_id if nt else "run_active"
+
+    def log_params(self, params: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        """Log hyperparameter or configuration key-values."""
+        self.record_applied(applied=params, **kwargs)
 
     def record_applied(self, applied: dict[str, Any] | None = None, **kwargs: Any) -> None:
         """Merge in optimizations autotrainer applied. Callers are the code
@@ -82,6 +109,16 @@ class SummaryTracker:
         if applied:
             self.applied.update(applied)
         self.applied.update(kwargs)
+        nt = self._get_native_tracker()
+        if nt:
+            nt.log_params(self.applied)
+
+    def end(self, summary_data: dict[str, Any] | None = None) -> None:
+        """Alias for report() / finish()."""
+        self.report()
+        nt = self._get_native_tracker()
+        if nt:
+            nt.close()
 
     def step(
         self,
@@ -101,19 +138,70 @@ class SummaryTracker:
         if loss is not None:
             opt = optimizer or self.optimizer
             self.triage_mon.step(loss, model=model, optimizer=opt)
+            nt = self._get_native_tracker()
+            if nt:
+                try:
+                    nt.log_step(self.step_count, {"loss": float(loss)})
+                except Exception:
+                    pass
 
     def log_epoch(
         self,
-        train_loss: float,
+        train_loss: float | int | dict[str, Any],
         val_loss: float | None = None,
         val_acc: float | None = None,
+        **kwargs: Any,
     ) -> None:
         """Log epoch-level metrics."""
-        self.train_losses.append(float(train_loss))
-        if val_loss is not None:
-            self.val_losses.append(float(val_loss))
-        if val_acc is not None:
-            self.val_accs.append(float(val_acc))
+        epoch_idx = len(self.train_losses) + 1
+        metrics_to_log: dict[str, float] = {}
+
+        if isinstance(train_loss, dict):
+            m = train_loss
+            t_loss = m.get("train_loss", m.get("loss"))
+            v_loss = m.get("val_loss")
+            v_acc = m.get("val_acc", m.get("accuracy"))
+            if t_loss is not None:
+                self.train_losses.append(float(t_loss))
+                metrics_to_log["train_loss"] = float(t_loss)
+            if v_loss is not None:
+                self.val_losses.append(float(v_loss))
+                metrics_to_log["val_loss"] = float(v_loss)
+            if v_acc is not None:
+                self.val_accs.append(float(v_acc))
+                metrics_to_log["val_acc"] = float(v_acc)
+        elif isinstance(val_loss, dict):
+            # Form: log_epoch(epoch_num, metrics_dict)
+            epoch_idx = int(train_loss)
+            m = val_loss
+            t_loss = m.get("train_loss", m.get("loss"))
+            v_loss = m.get("val_loss")
+            v_acc = m.get("val_acc", m.get("accuracy"))
+            if t_loss is not None:
+                self.train_losses.append(float(t_loss))
+                metrics_to_log["train_loss"] = float(t_loss)
+            if v_loss is not None:
+                self.val_losses.append(float(v_loss))
+                metrics_to_log["val_loss"] = float(v_loss)
+            if v_acc is not None:
+                self.val_accs.append(float(v_acc))
+                metrics_to_log["val_acc"] = float(v_acc)
+        else:
+            self.train_losses.append(float(train_loss))
+            metrics_to_log["train_loss"] = float(train_loss)
+            if val_loss is not None:
+                self.val_losses.append(float(val_loss))
+                metrics_to_log["val_loss"] = float(val_loss)
+            if val_acc is not None:
+                self.val_accs.append(float(val_acc))
+                metrics_to_log["val_acc"] = float(val_acc)
+
+        nt = self._get_native_tracker()
+        if nt and metrics_to_log:
+            try:
+                nt.log_epoch(epoch_idx, metrics_to_log)
+            except Exception:
+                pass
 
     def report(self, checkpoint: str | Path | None = None) -> None:
         """Print formatted comprehensive training summary box on rank 0."""
@@ -267,6 +355,27 @@ class SummaryTracker:
         print0("  Autotrainer Health Diagnostic:")
         self.triage_mon.report()
         print0("=" * 66)
+
+        nt = self._get_native_tracker()
+        if nt:
+            try:
+                nt.log_summary({
+                    "duration": elapsed,
+                    "epochs": num_epochs,
+                    "throughput": throughput,
+                    "init_loss": init_loss,
+                    "final_loss": final_loss,
+                    "checkpoint": str(Path(checkpoint).resolve()) if checkpoint else None,
+                    "triage_diagnostics": self.triage_mon.diagnostics,
+                    "hardware": {
+                        "device": gpu_name,
+                        "memory": mem_str,
+                        "world_size": world_size,
+                    }
+                })
+                nt.close()
+            except Exception:
+                pass
 
     def _applied_lines(self, world_size: int) -> list[str]:
         """Render the "Applied" section from :attr:`applied` and nothing else.

@@ -39,3 +39,12 @@ docs/internal/
 
 # Code-analysis tool output (generated, not part of the package)
 graphify-out/
+
+# Training logs, telemetry and runs
+logs/
+*.log
+wandb/
+mlruns/
+runs/
+.autotrainer/
+scratch/

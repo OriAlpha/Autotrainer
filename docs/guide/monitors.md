@@ -84,7 +84,48 @@ for a concrete lr hint, `scaler` for fp16 overflow detection. The thresholds
 `overflow_patience`) are constructor arguments if the defaults are too noisy or
 too quiet for your model.
 
+## autotrainer ui
+
+Launch the zero-dependency dark-mode Web UI dashboard directly from CLI or Python:
+
+```bash
+autotrainer ui                          # Launches server at http://localhost:8501
+autotrainer ui ./logs /cluster/runs     # Watch multiple directories simultaneously
+```
+
+Or programmatically via `run_ui_server(logs_dirs=["logs", "/shared/cluster/runs"], port=8501)`.
+
+### Multi-User Workspace
+The UI automatically detects and aggregates runs by user identity (`AUTOTRAINER_USER`, `SLURM_JOB_USER`, or OS username). Use the **Workspace User** dropdown to filter runs by specific team members or view the cluster as a whole (`👥 All Users (X users, Y runs)`).
+
+### Multi-Format Exports
+Export any training run with 1 click directly from the dashboard:
+- **🌐 Standalone HTML Report (`.html`)**: Complete interactive report with embedded Chart.js curves, AI triage doctor diagnoses, and print/PDF optimization.
+- **📝 Markdown Summary (`.md`)**: Formatted table ready to paste into GitHub PRs, Slack, or Notion.
+- **📊 Metrics CSV (`.csv`)**: Raw numerical step & epoch logs.
+- **📦 Raw JSON (`.json`)**: Complete telemetry payload.
+
+## Native Experiment Trackers
+
+`NativeTracker()`, `CSVTracker()`, and `JSONLTracker()` log structured metrics locally under `./logs/<run_id>/` without requiring external 3rd-party tracking packages:
+
+```python
+tracker = autotrainer.NativeTracker(run_name="my_experiment", user="suhas")
+tracker.log_params({"lr": 0.001, "batch_size": 32})
+tracker.log_epoch(1, {"train_loss": 0.45, "val_loss": 0.41, "val_acc": 88.5})
+tracker.close()
+```
+
+## Multi-Framework Callbacks
+
+Use built-in callbacks to stream telemetry directly from your favorite ML framework:
+- `AutotrainerCallback()` for standard PyTorch or custom loops
+- `AutotrainerHuggingFaceCallback()` for Hugging Face `Trainer(callbacks=[...])`
+- `AutotrainerLightningCallback()` for PyTorch Lightning `Trainer(callbacks=[...])`
+- `AutotrainerKerasCallback()` for Keras `model.fit(callbacks=[...])`
+- `autotrainer_xgboost_callback()` for XGBoost `xgb.train(callbacks=[...])`
+- `autotrainer_lightgbm_callback()` for LightGBM `lgb.train(callbacks=[...])`
+
 ## Next
 
-- [One-call training](fit.md) — `fit()` runs its own checks before spending the
-  compute.
+- [One-call training](fit.md) — `fit()` runs its own checks before spending the compute.

@@ -44,7 +44,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   only ever verified that `__all__` members appear in the docs, never that
   documented names are exported.
 
-## [0.14.1] - 2026-08-05
+## [0.15.0] - 2026-08-19
+### Added
+- **Zero-Dependency Executive Web UI Dashboard (`autotrainer ui`)**:
+  - Live interactive training execution dashboard serving on port 8501 without external heavy dependencies.
+  - Multi-user workspace filtering: dynamically tags runs by user (`AUTOTRAINER_USER`, `SLURM_JOB_USER`, OS username) and formats workspace selectors (`👥 All Users (X users, Y runs)`).
+  - Dynamic multi-path directory aggregation: monitor single or multiple local/shared cluster paths (`autotrainer ui ./logs /cluster/runs`) with interactive paths management modal in the sidebar.
+  - Interactive dual telemetry charts (Training & Validation loss curves, Validation accuracy / metric progression) with custom hover tooltips and chart enlargement modal.
+  - AI Training Doctor & Health Triage diagnostics card with real-time health badges and actionable bulleted remediation steps.
+  - 1-click run renaming directly from the dashboard with directory synchronization.
+- **Multi-Format Reports & Exports**:
+  - **Standalone Interactive HTML Report (`.html`)**: Self-contained executive report with dark glassmorphic styling, embedded interactive Chart.js curves, triage diagnostics, KPI cards, and print/PDF optimization.
+  - **Markdown Summary (`.md`)**: Clean markdown formatted telemetry and hyperparameter tables ready for GitHub PRs, Slack, or Notion.
+  - **Metrics CSV (`.csv`)** and **Full Telemetry JSON (`.json`)** downloads.
+- **Native ML Framework Callbacks Suite (`autotrainer.callbacks`)**:
+  - `AutotrainerCallback`: General-purpose callback for custom and vanilla PyTorch loops.
+  - `AutotrainerHuggingFaceCallback`: Native `transformers.TrainerCallback` integration.
+  - `AutotrainerLightningCallback`: Native PyTorch Lightning callback integration.
+  - `AutotrainerKerasCallback`: Native TensorFlow / Keras callback integration.
+  - `autotrainer_xgboost_callback()` & `autotrainer_lightgbm_callback()`: Native boosting callbacks.
+- **Native Local Experiment Trackers (`autotrainer.trackers`)**:
+  - `NativeTracker`, `CSVTracker`, and `JSONLTracker` with user attribution, metadata persistence, and thread-safe streaming.
 ### Fixed
 - **`prepare()` auto-launch no longer kills notebook kernels.** Auto-launch
   re-executes `sys.argv` once per GPU and exits the parent, but only checked
