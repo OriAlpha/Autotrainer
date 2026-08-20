@@ -1141,34 +1141,34 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         <div class="metrics-grid">
             <div class="stat-card cyan">
                 <div class="stat-header">
-                    <span class="stat-label">Initial Loss</span>
+                    <span class="stat-label">First Loss</span>
                     <div class="stat-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
                     </div>
                 </div>
-                <div class="stat-value" id="valInitLoss">--</div>
+                <div class="stat-value" id="valFirstLoss">--</div>
             </div>
             <div class="stat-card green">
                 <div class="stat-header">
-                    <span class="stat-label">Final Loss</span>
+                    <span class="stat-label">Training Loss</span>
                     <div class="stat-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     </div>
                 </div>
-                <div class="stat-value" id="valFinalLoss">--</div>
+                <div class="stat-value" id="valTrainLoss">--</div>
             </div>
             <div class="stat-card purple">
                 <div class="stat-header">
-                    <span class="stat-label">Best Loss</span>
+                    <span class="stat-label">Validation Loss</span>
                     <div class="stat-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
                     </div>
                 </div>
-                <div class="stat-value" id="valBestLoss">--</div>
+                <div class="stat-value" id="valValLoss">--</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header">
-                    <span class="stat-label">Total Epochs</span>
+                    <span class="stat-label">Epochs</span>
                     <div class="stat-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f8fafc" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     </div>
@@ -2085,21 +2085,15 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 const validTrain = trainLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
                 const validVal = valLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
 
-                let bestLossVal = '--';
-                if (validVal.length > 0) {
-                    bestLossVal = Math.min(...validVal).toFixed(4);
-                } else if (validTrain.length > 0) {
-                    bestLossVal = Math.min(...validTrain).toFixed(4);
-                } else if (summary.best_loss !== undefined) {
-                    bestLossVal = summary.best_loss.toFixed(4);
-                } else if (summary.final_loss !== undefined) {
-                    bestLossVal = summary.final_loss.toFixed(4);
-                }
+                const firstLoss = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
+                const trainLoss = validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : (summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : '--');
+                const valLoss = validVal.length > 0 ? validVal[validVal.length - 1].toFixed(4) : (summary.val_loss !== undefined ? summary.val_loss.toFixed(4) : '--');
+                const epochs = summary.epochs !== undefined ? summary.epochs : (epochRecords.length > 0 ? epochRecords.length : stepRecords.length);
 
-                document.getElementById('valInitLoss').innerText = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
-                document.getElementById('valFinalLoss').innerText = summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : '--');
-                document.getElementById('valBestLoss').innerText = bestLossVal;
-                document.getElementById('valEpochs').innerText = summary.epochs !== undefined ? summary.epochs : (epochRecords.length > 0 ? epochRecords.length : stepRecords.length);
+                document.getElementById('valFirstLoss').innerText = firstLoss;
+                document.getElementById('valTrainLoss').innerText = trainLoss;
+                document.getElementById('valValLoss').innerText = valLoss;
+                document.getElementById('valEpochs').innerText = epochs;
 
                 // Table
                 const tbody = document.querySelector('#detailsTable tbody');
@@ -2773,19 +2767,19 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
 
         <div class="metrics-grid">
             <div class="stat-card cyan">
-                <div class="stat-label">Initial Loss</div>
-                <div class="stat-value" id="valInitLoss">--</div>
+                <div class="stat-label">First Loss</div>
+                <div class="stat-value" id="valFirstLoss">--</div>
             </div>
             <div class="stat-card green">
-                <div class="stat-label">Final Loss</div>
-                <div class="stat-value" id="valFinalLoss">--</div>
+                <div class="stat-label">Training Loss</div>
+                <div class="stat-value" id="valTrainLoss">--</div>
             </div>
             <div class="stat-card purple">
-                <div class="stat-label">Best Loss</div>
-                <div class="stat-value" id="valBestLoss">--</div>
+                <div class="stat-label">Validation Loss</div>
+                <div class="stat-value" id="valValLoss">--</div>
             </div>
             <div class="stat-card white">
-                <div class="stat-label">Total Epochs</div>
+                <div class="stat-label">Epochs</div>
                 <div class="stat-value" id="valEpochs">--</div>
             </div>
         </div>
@@ -2911,20 +2905,13 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         const validTrain = trainLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
         const validVal = valLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
 
-        let bestLossVal = '--';
-        if (validVal.length > 0) {{
-            bestLossVal = Math.min(...validVal).toFixed(4);
-        }} else if (validTrain.length > 0) {{
-            bestLossVal = Math.min(...validTrain).toFixed(4);
-        }} else if (summary.best_loss !== undefined) {{
-            bestLossVal = summary.best_loss.toFixed(4);
-        }} else if (summary.final_loss !== undefined) {{
-            bestLossVal = summary.final_loss.toFixed(4);
-        }}
+        const firstLoss = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
+        const trainLoss = validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : (summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : '--');
+        const valLoss = validVal.length > 0 ? validVal[validVal.length - 1].toFixed(4) : (summary.val_loss !== undefined ? summary.val_loss.toFixed(4) : '--');
 
-        document.getElementById('valInitLoss').innerText = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
-        document.getElementById('valFinalLoss').innerText = summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : '--');
-        document.getElementById('valBestLoss').innerText = bestLossVal;
+        document.getElementById('valFirstLoss').innerText = firstLoss;
+        document.getElementById('valTrainLoss').innerText = trainLoss;
+        document.getElementById('valValLoss').innerText = valLoss;
         document.getElementById('valEpochs').innerText = summary.epochs || records.length;
 
         // Tooltip Config
@@ -3067,13 +3054,18 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         start_time = meta.get("start_datetime", "N/A")
         triage_list = summary.get("triage_diagnostics", [])
 
-        # Compute best loss
+        # Compute losses
         metrics = data.get("metrics", [])
-        all_losses = [m.get("val_loss") for m in metrics if m.get("val_loss") is not None]
-        if not all_losses:
-            all_losses = [m.get("train_loss") or m.get("loss") for m in metrics if (m.get("train_loss") or m.get("loss")) is not None]
-        best_loss = min(all_losses) if all_losses else summary.get("final_loss", "N/A")
-        best_loss_str = f"{best_loss:.4f}" if isinstance(best_loss, (int, float)) else str(best_loss)
+        train_losses = [m.get("train_loss") or m.get("loss") for m in metrics if (m.get("train_loss") or m.get("loss")) is not None]
+        val_losses = [m.get("val_loss") for m in metrics if m.get("val_loss") is not None]
+
+        first_loss = summary.get("init_loss", train_losses[0] if train_losses else "N/A")
+        latest_train_loss = train_losses[-1] if train_losses else summary.get("final_loss", "N/A")
+        latest_val_loss = val_losses[-1] if val_losses else summary.get("val_loss", "N/A")
+
+        first_loss_str = f"{first_loss:.4f}" if isinstance(first_loss, (int, float)) else str(first_loss)
+        train_loss_str = f"{latest_train_loss:.4f}" if isinstance(latest_train_loss, (int, float)) else str(latest_train_loss)
+        val_loss_str = f"{latest_val_loss:.4f}" if isinstance(latest_val_loss, (int, float)) else str(latest_val_loss)
 
         md = [
             f"# ⚡ Autotrainer Run Summary: `{run_id}`",
@@ -3082,10 +3074,10 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             "## 📊 Key Telemetry",
             "| Metric | Value |",
             "| :--- | :--- |",
-            f"| **Initial Loss** | `{summary.get('init_loss', 'N/A')}` |",
-            f"| **Final Loss** | `{summary.get('final_loss', 'N/A')}` |",
-            f"| **Best Loss** | `{best_loss_str}` |",
-            f"| **Total Epochs** | `{summary.get('epochs', len(data.get('metrics', [])))}` |",
+            f"| **First Loss** | `{first_loss_str}` |",
+            f"| **Training Loss** | `{train_loss_str}` |",
+            f"| **Validation Loss** | `{val_loss_str}` |",
+            f"| **Epochs** | `{summary.get('epochs', len(data.get('metrics', [])))}` |",
             "",
             "## 🧠 AI Health Triage Diagnosis",
         ]
