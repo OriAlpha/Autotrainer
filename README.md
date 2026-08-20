@@ -78,8 +78,8 @@ import autotrainer
 model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)  # no-op when not distributed
-    # ... your normal training loop
+    autotrainer.set_epoch(loader, epoch)  # optional: prepare()'s loader
+    # ... your normal training loop      # already reshuffles each epoch
 
 # At the end: prints comprehensive training summary & cleans up process groups
 autotrainer.finish()

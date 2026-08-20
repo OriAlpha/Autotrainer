@@ -32,6 +32,21 @@ for epoch in range(epochs):
 hands every epoch the same order, so your shuffling quietly stops shuffling.
 It is a no-op when you aren't distributed, so it costs nothing to always call.
 
+**When `prepare()` installed the sampler, this is already handled.** Passing a
+loader to `prepare()` under DDP returns one that advances the epoch on each
+pass, so the call above is optional there — kept in the example because it is
+still correct, still free, and still required for the cases below. Note the
+automatic counter *wins*: it overwrites whatever epoch you set, counting passes
+from zero, so an explicit number (resuming at epoch 40, say) does not survive.
+
+You do need to call it yourself when:
+
+- you built the `DistributedSampler` and passed it in — `prepare()` leaves
+  loaders you sharded yourself alone, so nothing advances the epoch for you;
+- you iterate a sharded loader outside the training pass (a manual eval loop
+  over the train split) and want a specific order;
+- you need a *particular* epoch number rather than "a different one each pass".
+
 `train_mode` is the mirror of `eval_mode` for the same restore-the-prior-state
 reason.
 

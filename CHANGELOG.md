@@ -23,6 +23,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   is throughput. Read once, reused.
 
 ### Changed
+- **Docs now describe the auto-managed epoch shuffling that 0.14.0 added.**
+  `docs/guide/gpu-optimization.md` still showed the pre-0.14.0 log line
+  (`- call autotrainer.set_epoch(loader, epoch) ...`) where the code prints
+  `- epoch shuffling auto-managed`, and the guides still presented the manual
+  call as required. They now say it is optional for loaders `prepare()`
+  sharded, and — worth knowing — that the automatic counter *overwrites* an
+  explicit epoch number, so resuming at a specific epoch needs the loader you
+  sharded yourself. `set_epoch`'s own docstring says the same.
+- **Removed the `suhas` and `suhas-goravale-siddaramu` optional-dependency
+  groups** from `pyproject.toml`. Both were `["psutil"]` and shipped as real
+  installable extras (`pip install autotrainer[suhas]`) in the published
+  metadata. The `autotrainer suhas` CLI credits command is unrelated and
+  stays.
 - **`ThroughputMonitor` is now in `__all__`.** It was documented in
   `docs/guide/monitors.md` with a worked example while absent from `__all__`,
   which the README declares the boundary of the stable public API — so the

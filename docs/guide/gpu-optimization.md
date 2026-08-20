@@ -53,7 +53,8 @@ model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 scaler = autotrainer.GradScaler()   # no-op when bf16 is available
 for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)                    # reshuffles in DDP
+    autotrainer.set_epoch(loader, epoch)                    # optional: prepare()'s
+                                                            # loader self-advances
     for xb, yb in loader:
         with autotrainer.autocast_context():                # bf16 if supported, else fp16
             loss = loss_fn(model(xb), yb)
@@ -105,7 +106,7 @@ way. The helpers are no-ops on CPU, so the snippet it prints is safe verbatim:
 
 ```
 [autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
-[autotrainer] DistributedSampler installed (shuffle=True) - call autotrainer.set_epoch(loader, epoch) ...
+[autotrainer] DistributedSampler installed (shuffle=True) - epoch shuffling auto-managed
 [autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
 [autotrainer] optimize: AMP is on. Simplest - one call per step:
     scaler = autotrainer.GradScaler()   # once, before the loop
