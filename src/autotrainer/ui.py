@@ -12,8 +12,10 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import shutil
 import socketserver
 import sys
+import time
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -30,6 +32,52 @@ def _detect_system_user() -> str:
         return getpass.getuser().strip()
     except Exception:
         return "default"
+
+
+def _get_live_hardware() -> dict[str, Any]:
+    """Return live host CPU, RAM, and GPU memory telemetry."""
+    hw: dict[str, Any] = {
+        "timestamp": round(time.time(), 2),
+        "gpu_available": False,
+        "gpus": [],
+        "cpu_pct": 0.0,
+        "ram_used_gb": 0.0,
+        "ram_total_gb": 0.0,
+        "ram_pct": 0.0,
+    }
+    try:
+        import psutil
+        hw["cpu_pct"] = round(psutil.cpu_percent(interval=None), 1)
+        vm = psutil.virtual_memory()
+        hw["ram_used_gb"] = round((vm.total - vm.available) / (1024**3), 2)
+        hw["ram_total_gb"] = round(vm.total / (1024**3), 2)
+        hw["ram_pct"] = round(vm.percent, 1)
+    except Exception:
+        pass
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            hw["gpu_available"] = True
+            for i in range(torch.cuda.device_count()):
+                props = torch.cuda.get_device_properties(i)
+                allocated_mb = torch.cuda.memory_allocated(i) / (1024 * 1024)
+                reserved_mb = torch.cuda.memory_reserved(i) / (1024 * 1024)
+                total_mb = props.total_memory / (1024 * 1024)
+                hw["gpus"].append({
+                    "id": i,
+                    "name": props.name,
+                    "allocated_mb": round(allocated_mb, 1),
+                    "reserved_mb": round(reserved_mb, 1),
+                    "total_mb": round(total_mb, 1),
+                    "allocated_gb": round(allocated_mb / 1024, 2),
+                    "total_gb": round(total_mb / 1024, 2),
+                    "util_pct": round((allocated_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0,
+                })
+    except Exception:
+        pass
+
+    return hw
 
 
 _DASHBOARD_HTML = """<!DOCTYPE html>
@@ -1013,6 +1061,394 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             background: rgba(255, 255, 255, 0.02);
         }
 
+        /* Sidebar Filter Tabs & Tag Filter Bar */
+        .filter-tabs-row {
+            display: flex;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 3px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+        }
+
+        .filter-tab {
+            flex: 1;
+            padding: 5px 8px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            background: transparent;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .filter-tab:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .filter-tab.active {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+        }
+
+        .tag-filter-bar {
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            padding: 2px 0 4px 0;
+            scrollbar-width: none;
+        }
+        .tag-filter-bar::-webkit-scrollbar { display: none; }
+
+        .tag-chip-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-muted);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+
+        .tag-chip-filter:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .tag-chip-filter.active {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(192, 132, 252, 0.2) 100%);
+            border-color: var(--accent-cyan);
+            color: #fff;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+        }
+
+        /* Star Button & Item Star */
+        .star-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-dim);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .star-btn:hover {
+            color: #facc15;
+            transform: scale(1.15);
+        }
+
+        .star-btn.active {
+            color: #facc15;
+            filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.6));
+        }
+
+        .item-star {
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 2px;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+
+        .item-star:hover {
+            color: #facc15;
+            transform: scale(1.2);
+        }
+
+        .item-star.active {
+            color: #facc15;
+            filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.5));
+        }
+
+        /* Run item tags and delete actions */
+        .run-item-tags {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 3px;
+        }
+
+        .run-item-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-delete-run {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .run-item:hover .btn-delete-run {
+            opacity: 0.7;
+        }
+
+        .btn-delete-run:hover {
+            opacity: 1 !important;
+            color: var(--accent-pink);
+            transform: scale(1.15);
+            background: rgba(251, 113, 133, 0.15);
+        }
+
+        /* Sidebar Hardware Live Status Footer */
+        .sidebar-hw-status {
+            padding: 12px 16px;
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .hw-pulse-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulseDot 2s infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes pulseDot {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px var(--accent-green); }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* Header Tag Bar & Pill Components */
+        .run-tags-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        .tag-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 12px;
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            transition: all 0.2s ease;
+        }
+
+        .tag-pill:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+        }
+
+        .tag-pill-remove {
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            line-height: 1;
+            transition: color 0.15s ease;
+        }
+
+        .tag-pill-remove:hover {
+            color: var(--accent-pink);
+        }
+
+        .tag-add-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-muted);
+            border: 1px dashed var(--card-border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tag-add-btn:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            background: rgba(56, 189, 248, 0.08);
+        }
+
+        .tag-input-inline {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--accent-cyan);
+            color: var(--text-main);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.72rem;
+            font-family: var(--font-sans);
+            outline: none;
+            width: 100px;
+        }
+
+        /* Markdown Notes Card & Editor */
+        .notes-card {
+            background: linear-gradient(135deg, rgba(16, 24, 39, 0.95) 0%, rgba(20, 30, 50, 0.85) 100%);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(192, 132, 252, 0.25);
+            border-radius: 14px;
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5);
+            animation: fadeInCard 0.3s ease;
+        }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .notes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .notes-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+        }
+
+        .notes-tabs {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .notes-body {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .notes-textarea {
+            width: 100%;
+            min-height: 140px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 12px;
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .notes-textarea:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 12px rgba(192, 132, 252, 0.2);
+        }
+
+        .notes-preview {
+            min-height: 140px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-main);
+            overflow-y: auto;
+        }
+
+        .notes-preview h1, .notes-preview h2, .notes-preview h3 {
+            color: var(--accent-cyan);
+            margin: 8px 0 4px 0;
+        }
+        .notes-preview p { margin-bottom: 8px; }
+        .notes-preview ul, .notes-preview ol { padding-left: 20px; margin-bottom: 8px; }
+        .notes-preview code {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 5px;
+            border-radius: 4px;
+            color: var(--accent-purple);
+        }
+        .notes-preview pre {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-bottom: 8px;
+        }
+
+        /* Hardware Telemetry Gauges */
+        .hw-gauges-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .hw-gauge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+        }
+
+        /* Parallel Coordinates Comparison Card */
+        .parallel-coords-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
         @media (max-width: 1100px) {
             .metrics-grid { grid-template-columns: repeat(2, 1fr); }
             .charts-container { grid-template-columns: 1fr; }
@@ -1051,7 +1487,16 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <input type="text" id="runSearch" class="search-input" placeholder="Search runs..." oninput="filterRuns()">
+            <!-- Category Filter Tabs: All vs Starred -->
+            <div class="filter-tabs-row">
+                <button class="filter-tab active" id="tabAllRuns" onclick="setCategoryFilter('all')">All</button>
+                <button class="filter-tab" id="tabFavRuns" onclick="setCategoryFilter('favorites')">⭐ Starred</button>
+            </div>
+
+            <!-- Dynamic Tag Filters Bar -->
+            <div class="tag-filter-bar" id="tagFilterBar"></div>
+
+            <input type="text" id="runSearch" class="search-input" placeholder="Search runs or tags..." oninput="filterRuns()">
             <label class="switch-container">
                 <div class="switch-label-group">
                     <span class="switch-label">Compare Runs</span>
@@ -1064,16 +1509,28 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         <div class="run-list" id="runList">
             <div style="color: var(--text-dim); padding: 12px; font-size: 0.85rem;">Loading runs...</div>
         </div>
+        <!-- Live System Hardware Pulse Footer -->
+        <div class="sidebar-hw-status" id="sidebarHwStatus">
+            <div class="hw-pulse-dot"></div>
+            <span id="sidebarHwText" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Hardware: Initializing...</span>
+        </div>
     </div>
     
     <div class="main">
         <div class="header">
             <div class="header-title">
                 <div class="title-row" id="titleDisplay">
+                    <button class="star-btn" id="runStarBtn" onclick="toggleCurrentRunFavorite()" title="Toggle Favorite" style="display:none;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </button>
                     <h1 id="runTitle">Select a Run</h1>
                     <button class="btn btn-sm" id="renameBtn" style="display:none;" onclick="enableRename()">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         Rename
+                    </button>
+                    <button class="btn btn-sm" id="notesToggleBtn" style="display:none;" onclick="toggleNotesDrawer()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        📝 Notes
                     </button>
                 </div>
                 <div class="rename-box" id="renameBox" style="display:none;">
@@ -1081,6 +1538,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                     <button class="btn btn-primary btn-sm" onclick="submitRename()">Save</button>
                     <button class="btn btn-sm" onclick="cancelRename()">Cancel</button>
                 </div>
+                <div class="run-tags-bar" id="runTagsBar" style="display:none;"></div>
                 <p id="runSub">
                     <span>Real-time execution dashboard & telemetry</span>
                     <span id="runUserTag" class="badge badge-purple" style="display:none;"></span>
@@ -1119,6 +1577,36 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67"/></svg>
                     Refresh
                 </button>
+            </div>
+        </div>
+
+        <!-- Markdown Notes Drawer / Card -->
+        <div class="notes-card" id="notesCard" style="display:none;">
+            <div class="notes-header">
+                <div class="notes-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    <span>Run Notes & Hypothesis</span>
+                </div>
+                <div class="notes-tabs">
+                    <button class="btn btn-sm btn-active" id="btnNotesTabEdit" onclick="switchNotesTab('edit')">Edit</button>
+                    <button class="btn btn-sm" id="btnNotesTabPreview" onclick="switchNotesTab('preview')">Preview</button>
+                    <button class="btn btn-sm btn-primary" onclick="saveNotes()">Save Notes</button>
+                </div>
+            </div>
+            <div class="notes-body">
+                <textarea id="notesTextarea" class="notes-textarea" placeholder="Write markdown notes, experiment takeaways, or ideas here..."></textarea>
+                <div id="notesPreview" class="notes-preview" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Multi-Run Parallel Coordinates Comparison Card (Compare Mode) -->
+        <div class="parallel-coords-card full-width" id="parallelCoordsCard" style="display:none;">
+            <div class="chart-header">
+                <div class="chart-title">📈 Hyperparameter & Metric Parallel Coordinates</div>
+                <span style="font-size:0.75rem; color:var(--text-muted);">Comparing parameters across selected runs: LR &rarr; Batch Size &rarr; First Loss &rarr; Train Loss &rarr; Val Loss</span>
+            </div>
+            <div style="height: 250px; width: 100%; position: relative;">
+                <canvas id="parallelCanvas" style="width:100%; height:100%;"></canvas>
             </div>
         </div>
 
@@ -1201,6 +1689,19 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 <div class="chart-wrapper">
                     <canvas id="metricsChart"></canvas>
                 </div>
+            </div>
+        </div>
+
+        <!-- Hardware Telemetry Card -->
+        <div class="chart-card full-width" id="hwCard">
+            <div class="chart-header">
+                <div class="chart-title">📟 Hardware Utilization Telemetry (GPU VRAM & Host CPU / RAM)</div>
+                <div class="hw-gauges-row" id="hwGaugesRow">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+            <div class="chart-wrapper" style="height: 200px;">
+                <canvas id="hwChart"></canvas>
             </div>
         </div>
 
@@ -1316,13 +1817,16 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
-        let lossChart, metricsChart, bigLossChart, bigMetricsChart;
+        let lossChart, metricsChart, hwChart, bigLossChart, bigMetricsChart;
         let activeRunId = null;
         let allRuns = [];
         let isCompareMode = false;
         let currentModalView = 'dual';
         let currentSelectedUser = 'all';
+        let currentCategoryFilter = 'all'; // 'all' or 'favorites'
+        let currentTagFilter = null;
         let selectedRunIds = new Set();
+        let currentRunMetadata = null;
         const PALETTE = ['#38bdf8', '#34d399', '#c084fc', '#fb7185', '#facc15', '#818cf8', '#a78bfa', '#f472b6'];
 
         function getTooltipOptions() {
@@ -1355,7 +1859,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 
         function initCharts() {
             const lossCtx = document.getElementById('lossChart').getContext('2d');
-
             lossChart = new Chart(lossCtx, {
                 type: 'line',
                 data: {
@@ -1381,7 +1884,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             });
 
             const metricsCtx = document.getElementById('metricsChart').getContext('2d');
-
             metricsChart = new Chart(metricsCtx, {
                 type: 'line',
                 data: {
@@ -1403,6 +1905,104 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                         y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans' } } }
                     }
                 }
+            });
+
+            const hwCtx = document.getElementById('hwChart').getContext('2d');
+            hwChart = new Chart(hwCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'GPU VRAM (MB)', borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.14)', data: [], tension: 0.3, fill: true, pointRadius: 3, yAxisID: 'y' },
+                        { label: 'Host CPU (%)', borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', data: [], tension: 0.3, borderDash: [5, 4], pointRadius: 3, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1', font: { family: 'Plus Jakarta Sans', weight: 600 } } },
+                        tooltip: getTooltipOptions()
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b' } },
+                        y: { position: 'left', grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#c084fc' }, title: { display: true, text: 'VRAM MB', color: '#c084fc' } },
+                        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#38bdf8' }, min: 0, max: 100, title: { display: true, text: 'CPU %', color: '#38bdf8' } }
+                    }
+                }
+            });
+        }
+
+        async function pollHardwareTelemetry() {
+            try {
+                const res = await fetch('/api/hardware');
+                const hw = await res.json();
+                const statusElem = document.getElementById('sidebarHwText');
+                const gaugesRow = document.getElementById('hwGaugesRow');
+                
+                let gpuText = 'CPU Only';
+                let gpuPill = '';
+                if (hw.gpu_available && hw.gpus && hw.gpus.length > 0) {
+                    const g = hw.gpus[0];
+                    gpuText = `GPU: ${g.name.split(' ')[0]} (${g.allocated_gb}/${g.total_gb} GB, ${g.util_pct}%)`;
+                    gpuPill = `
+                        <div class="hw-gauge-pill"><span style="color:var(--accent-purple);">🎮 ${g.name}</span>: ${g.allocated_gb}/${g.total_gb} GB (${g.util_pct}%)</div>
+                    `;
+                }
+
+                statusElem.innerText = `${gpuText} | CPU: ${hw.cpu_pct}% | RAM: ${hw.ram_used_gb}/${hw.ram_total_gb} GB (${hw.ram_pct}%)`;
+
+                if (gaugesRow) {
+                    gaugesRow.innerHTML = `
+                        ${gpuPill}
+                        <div class="hw-gauge-pill"><span style="color:var(--accent-cyan);">⚡ Host CPU</span>: ${hw.cpu_pct}%</div>
+                        <div class="hw-gauge-pill"><span style="color:var(--accent-green);">💾 RAM</span>: ${hw.ram_used_gb} / ${hw.ram_total_gb} GB (${hw.ram_pct}%)</div>
+                    `;
+                }
+            } catch (err) {}
+        }
+
+        function setCategoryFilter(cat) {
+            currentCategoryFilter = cat;
+            document.getElementById('tabAllRuns').className = 'filter-tab' + (cat === 'all' ? ' active' : '');
+            document.getElementById('tabFavRuns').className = 'filter-tab' + (cat === 'favorites' ? ' active' : '');
+            filterRuns();
+        }
+
+        function setTagFilter(tag) {
+            if (currentTagFilter === tag) {
+                currentTagFilter = null;
+            } else {
+                currentTagFilter = tag;
+            }
+            renderSidebarTagFilters(allRuns);
+            filterRuns();
+        }
+
+        function renderSidebarTagFilters(runs) {
+            const container = document.getElementById('tagFilterBar');
+            const allTags = new Set();
+            runs.forEach(r => {
+                (r.tags || []).forEach(t => allTags.add(t));
+            });
+
+            if (allTags.size === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'flex';
+            container.innerHTML = '';
+            Array.from(allTags).sort().forEach(tag => {
+                const chip = document.createElement('div');
+                chip.className = 'tag-chip-filter' + (currentTagFilter === tag ? ' active' : '');
+                chip.innerHTML = `🏷️ ${tag}`;
+                chip.onclick = (e) => {
+                    e.stopPropagation();
+                    setTagFilter(tag);
+                };
+                container.appendChild(chip);
             });
         }
 
@@ -1633,8 +2233,10 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 const res = await fetch('/api/runs');
                 allRuns = await res.json();
                 renderUserDropdown(allRuns);
+                renderSidebarTagFilters(allRuns);
                 filterRuns();
                 fetchSources();
+                pollHardwareTelemetry();
 
                 if (!activeRunId && allRuns.length > 0) {
                     loadRunDetails(allRuns[0].run_id);
@@ -1659,7 +2261,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             const runCountStr = `${runs.length} ${runs.length === 1 ? 'run' : 'runs'}`;
             const allUsersCombinedStr = `${userCountStr}, ${runCountStr}`;
 
-            // All users item
             const allItem = document.createElement('div');
             allItem.className = 'dropdown-item' + (currentSelectedUser === 'all' ? ' active' : '');
             allItem.innerHTML = `<span>👥 All Users</span><span class="dropdown-item-count">${allUsersCombinedStr}</span>`;
@@ -1669,7 +2270,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             };
             menu.appendChild(allItem);
 
-            // Divider
             const divider = document.createElement('div');
             divider.className = 'dropdown-divider';
             menu.appendChild(divider);
@@ -1708,9 +2308,11 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         function toggleCompareMode() {
             isCompareMode = document.getElementById('compareToggle').checked;
             const countElem = document.getElementById('selectedCount');
+            const parallelCard = document.getElementById('parallelCoordsCard');
             if (!isCompareMode) {
                 selectedRunIds.clear();
                 countElem.style.display = 'none';
+                if (parallelCard) parallelCard.style.display = 'none';
                 if (activeRunId) loadRunDetails(activeRunId);
             } else {
                 if (activeRunId) selectedRunIds.add(activeRunId);
@@ -1742,10 +2344,17 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             const runIdList = Array.from(selectedRunIds);
             document.getElementById('runTitle').innerText = `Comparing ${runIdList.length} Runs`;
             document.getElementById('renameBtn').style.display = 'none';
+            document.getElementById('notesToggleBtn').style.display = 'none';
+            document.getElementById('runStarBtn').style.display = 'none';
+            document.getElementById('runTagsBar').style.display = 'none';
             document.getElementById('runUserTag').style.display = 'none';
+
+            const parallelCard = document.getElementById('parallelCoordsCard');
+            if (parallelCard) parallelCard.style.display = runIdList.length >= 2 ? 'flex' : 'none';
 
             const lossDatasets = [];
             const metricDatasets = [];
+            const runsDataForParallel = [];
             let maxEpochs = 0;
 
             for (let i = 0; i < runIdList.length; i++) {
@@ -1754,6 +2363,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 try {
                     const res = await fetch(`/api/runs/${rId}`);
                     const data = await res.json();
+                    runsDataForParallel.push({ run_id: rId, color, data });
 
                     const epochRecords = data.metrics.filter(m => m.epoch !== undefined);
                     const stepRecords = data.metrics.filter(m => m.step !== undefined && m.epoch === undefined);
@@ -1795,6 +2405,123 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             metricsChart.data.labels = labels;
             metricsChart.data.datasets = metricDatasets;
             metricsChart.update();
+
+            if (runsDataForParallel.length >= 2) {
+                renderParallelCoords(runsDataForParallel);
+            }
+        }
+
+        function renderParallelCoords(runsData) {
+            const canvas = document.getElementById('parallelCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+
+            const width = rect.width;
+            const height = rect.height;
+            ctx.clearRect(0, 0, width, height);
+
+            const axes = [
+                { key: 'lr', label: 'Learning Rate', min: Infinity, max: -Infinity, isLog: true },
+                { key: 'batch_size', label: 'Batch Size', min: Infinity, max: -Infinity, isLog: false },
+                { key: 'first_loss', label: 'First Loss', min: Infinity, max: -Infinity, isLog: false },
+                { key: 'train_loss', label: 'Final Train Loss', min: Infinity, max: -Infinity, isLog: false },
+                { key: 'val_loss', label: 'Final Val Loss', min: Infinity, max: -Infinity, isLog: false }
+            ];
+
+            const rows = runsData.map(item => {
+                const meta = item.data.metadata || {};
+                const params = meta.params || {};
+                const summary = meta.summary || {};
+                const metrics = item.data.metrics || [];
+
+                const trainLosses = metrics.map(m => m.train_loss !== undefined ? m.train_loss : m.loss).filter(l => l !== undefined && l !== null);
+                const valLosses = metrics.map(m => m.val_loss).filter(l => l !== undefined && l !== null);
+
+                const lr = parseFloat(params.lr || params.learning_rate || 0.001);
+                const bs = parseFloat(params.batch_size || params.bs || 32);
+                const firstLoss = summary.init_loss !== undefined ? summary.init_loss : (trainLosses.length > 0 ? trainLosses[0] : 1.0);
+                const trainLoss = trainLosses.length > 0 ? trainLosses[trainLosses.length - 1] : (summary.final_loss || 0.5);
+                const valLoss = valLosses.length > 0 ? valLosses[valLosses.length - 1] : (summary.val_loss || trainLoss);
+
+                return {
+                    run_id: item.run_id,
+                    color: item.color,
+                    vals: { lr, batch_size: bs, first_loss: firstLoss, train_loss: trainLoss, val_loss: valLoss }
+                };
+            });
+
+            axes.forEach(axis => {
+                rows.forEach(r => {
+                    const v = r.vals[axis.key];
+                    if (v < axis.min) axis.min = v;
+                    if (v > axis.max) axis.max = v;
+                });
+                if (axis.min === axis.max) {
+                    axis.min = axis.min * 0.8;
+                    axis.max = axis.max * 1.2 || 1;
+                }
+            });
+
+            const margin = { top: 35, right: 50, bottom: 25, left: 50 };
+            const plotWidth = width - margin.left - margin.right;
+            const plotHeight = height - margin.top - margin.bottom;
+            const xStep = plotWidth / (axes.length - 1);
+
+            // Draw vertical axes
+            axes.forEach((axis, i) => {
+                const x = margin.left + i * xStep;
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
+                ctx.moveTo(x, margin.top);
+                ctx.lineTo(x, margin.top + plotHeight);
+                ctx.stroke();
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '600 11px Plus Jakarta Sans';
+                ctx.textAlign = 'center';
+                ctx.fillText(axis.label, x, margin.top - 12);
+
+                ctx.fillStyle = '#64748b';
+                ctx.font = '500 10px JetBrains Mono';
+                ctx.fillText(axis.max < 0.01 ? axis.max.toExponential(1) : axis.max.toFixed(2), x, margin.top);
+                ctx.fillText(axis.min < 0.01 ? axis.min.toExponential(1) : axis.min.toFixed(2), x, margin.top + plotHeight + 14);
+            });
+
+            // Draw polylines for runs
+            rows.forEach(r => {
+                ctx.beginPath();
+                ctx.strokeStyle = r.color;
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = r.color;
+                ctx.shadowBlur = 6;
+
+                axes.forEach((axis, i) => {
+                    const x = margin.left + i * xStep;
+                    const val = r.vals[axis.key];
+                    const norm = (val - axis.min) / (axis.max - axis.min);
+                    const y = margin.top + plotHeight - (norm * plotHeight);
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        const prevX = margin.left + (i - 1) * xStep;
+                        const prevVal = r.vals[axes[i - 1].key];
+                        const prevNorm = (prevVal - axes[i - 1].min) / (axes[i - 1].max - axes[i - 1].min);
+                        const prevY = margin.top + plotHeight - (prevNorm * plotHeight);
+                        const cpX1 = prevX + (x - prevX) / 2;
+                        const cpX2 = prevX + (x - prevX) / 2;
+                        ctx.bezierCurveTo(cpX1, prevY, cpX2, y, x, y);
+                    }
+                });
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            });
         }
 
         function renderRunList(runs) {
@@ -1819,18 +2546,32 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 
                 const isChecked = selectedRunIds.has(run.run_id);
                 const checkboxHtml = isCompareMode ? `<input type="checkbox" class="custom-checkbox" ${isChecked ? 'checked' : ''} onclick="handleCheckboxClick(event, '${run.run_id}')" />` : '';
+                const isFav = Boolean(run.favorite);
+
+                const tagsHtml = (run.tags || []).slice(0, 3).map(t => 
+                    `<span class="tag-pill" style="font-size:0.6rem; padding:1px 6px;">🏷️ ${t}</span>`
+                ).join('');
 
                 div.innerHTML = `
                     ${checkboxHtml}
+                    <span class="item-star ${isFav ? 'active' : ''}" onclick="toggleRunFavorite('${run.run_id}', event)" title="Toggle Star">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFav ? '#facc15' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </span>
                     <div class="run-info">
                         <div class="run-item-header">
-                            <div class="run-title-text">${run.run_id}</div>
-                            <span class="badge badge-green"><span class="status-dot"></span>Completed</span>
+                            <div class="run-title-text" title="${run.run_id}">${run.run_id}</div>
+                            <div class="run-item-actions">
+                                <span class="badge badge-green"><span class="status-dot"></span>Completed</span>
+                                <button class="btn-delete-run" onclick="deleteRun('${run.run_id}', event)" title="Delete Run">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="run-meta-row">
                             <span class="badge badge-purple" style="font-size:0.65rem; padding:1px 6px;">👤 ${run.user || 'default'}</span>
                             <span>${run.start_datetime ? run.start_datetime.split(' ')[1] || run.start_datetime : 'Recently'}</span>
                         </div>
+                        ${tagsHtml ? `<div class="run-item-tags">${tagsHtml}</div>` : ''}
                     </div>
                 `;
                 container.appendChild(div);
@@ -1838,15 +2579,276 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         function filterRuns() {
-            const searchVal = document.getElementById('runSearch').value.toLowerCase();
+            const searchVal = document.getElementById('runSearch').value.toLowerCase().trim();
 
             const filtered = allRuns.filter(r => {
-                const matchesSearch = r.run_id.toLowerCase().includes(searchVal);
+                const matchesSearch = r.run_id.toLowerCase().includes(searchVal) || (r.tags || []).some(t => t.toLowerCase().includes(searchVal));
                 const matchesUser = (currentSelectedUser === 'all') || ((r.user || 'default') === currentSelectedUser);
-                return matchesSearch && matchesUser;
+                const matchesCategory = (currentCategoryFilter === 'all') || Boolean(r.favorite);
+                const matchesTag = !currentTagFilter || (r.tags || []).includes(currentTagFilter);
+                return matchesSearch && matchesUser && matchesCategory && matchesTag;
             });
 
             renderRunList(filtered);
+        }
+
+        async function toggleRunFavorite(runId, event) {
+            if (event) event.stopPropagation();
+            try {
+                const res = await fetch(`/api/runs/${runId}/favorite`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    const runObj = allRuns.find(r => r.run_id === runId);
+                    if (runObj) runObj.favorite = data.favorite;
+                    if (runId === activeRunId) {
+                        updateRunStarBtnUI(data.favorite);
+                    }
+                    filterRuns();
+                }
+            } catch (err) {}
+        }
+
+        async function toggleCurrentRunFavorite() {
+            if (activeRunId) toggleRunFavorite(activeRunId, null);
+        }
+
+        function updateRunStarBtnUI(isFav) {
+            const btn = document.getElementById('runStarBtn');
+            if (!btn) return;
+            btn.style.display = 'inline-flex';
+            btn.className = 'star-btn' + (isFav ? ' active' : '');
+            btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="${isFav ? '#facc15' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+        }
+
+        function renderTagsBar(tags) {
+            const container = document.getElementById('runTagsBar');
+            if (!container) return;
+            container.style.display = 'flex';
+            container.innerHTML = '';
+
+            tags.forEach(tag => {
+                const pill = document.createElement('span');
+                pill.className = 'tag-pill';
+                pill.innerHTML = `
+                    <span>🏷️ ${tag}</span>
+                    <span class="tag-pill-remove" onclick="removeTagFromCurrentRun('${tag}')" title="Remove tag">✕</span>
+                `;
+                container.appendChild(pill);
+            });
+
+            const addBtn = document.createElement('button');
+            addBtn.className = 'tag-add-btn';
+            addBtn.innerHTML = `+ Tag`;
+            addBtn.onclick = () => promptAddTag(addBtn);
+            container.appendChild(addBtn);
+        }
+
+        function promptAddTag(btnElement) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'tag-input-inline';
+            input.placeholder = 'Tag name...';
+            btnElement.replaceWith(input);
+            input.focus();
+
+            const finish = async () => {
+                const val = input.value.trim().toLowerCase();
+                if (val) {
+                    await addTagToCurrentRun(val);
+                } else if (currentRunMetadata) {
+                    renderTagsBar(currentRunMetadata.tags || []);
+                }
+            };
+
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') finish();
+                if (e.key === 'Escape') renderTagsBar(currentRunMetadata.tags || []);
+            };
+            input.onblur = finish;
+        }
+
+        async function addTagToCurrentRun(tag) {
+            if (!activeRunId || !tag) return;
+            try {
+                const res = await fetch(`/api/runs/${activeRunId}/tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'add', tag })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    if (currentRunMetadata) currentRunMetadata.tags = data.tags;
+                    const r = allRuns.find(x => x.run_id === activeRunId);
+                    if (r) r.tags = data.tags;
+                    renderTagsBar(data.tags);
+                    renderSidebarTagFilters(allRuns);
+                    filterRuns();
+                }
+            } catch (e) {}
+        }
+
+        async function removeTagFromCurrentRun(tag) {
+            if (!activeRunId || !tag) return;
+            try {
+                const res = await fetch(`/api/runs/${activeRunId}/tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'remove', tag })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    if (currentRunMetadata) currentRunMetadata.tags = data.tags;
+                    const r = allRuns.find(x => x.run_id === activeRunId);
+                    if (r) r.tags = data.tags;
+                    renderTagsBar(data.tags);
+                    renderSidebarTagFilters(allRuns);
+                    filterRuns();
+                }
+            } catch (e) {}
+        }
+
+        function toggleNotesDrawer() {
+            const card = document.getElementById('notesCard');
+            if (card.style.display === 'none') {
+                card.style.display = 'flex';
+                switchNotesTab('edit');
+            } else {
+                card.style.display = 'none';
+            }
+        }
+
+        function switchNotesTab(tab) {
+            const textarea = document.getElementById('notesTextarea');
+            const preview = document.getElementById('notesPreview');
+            const btnEdit = document.getElementById('btnNotesTabEdit');
+            const btnPrev = document.getElementById('btnNotesTabPreview');
+
+            if (tab === 'edit') {
+                textarea.style.display = 'block';
+                preview.style.display = 'none';
+                btnEdit.className = 'btn btn-sm btn-active';
+                btnPrev.className = 'btn btn-sm';
+            } else {
+                textarea.style.display = 'none';
+                preview.style.display = 'block';
+                preview.innerHTML = renderNotesMarkdown(textarea.value);
+                btnEdit.className = 'btn btn-sm';
+                btnPrev.className = 'btn btn-sm btn-active';
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function formatInlineMarkdown(str) {
+            let s = escapeHtml(str);
+            s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+            return s;
+        }
+
+        function renderNotesMarkdown(text) {
+            if (!text || !text.trim()) {
+                return '<span style="color:var(--text-dim);">No notes recorded for this run. Click Edit to add takeaways or hypotheses.</span>';
+            }
+            const lines = text.split('\\n');
+            const html = [];
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                if (trimmed.startsWith('### ')) {
+                    html.push('<h3>' + escapeHtml(trimmed.substring(4)) + '</h3>');
+                } else if (trimmed.startsWith('## ')) {
+                    html.push('<h2>' + escapeHtml(trimmed.substring(3)) + '</h2>');
+                } else if (trimmed.startsWith('# ')) {
+                    html.push('<h1>' + escapeHtml(trimmed.substring(2)) + '</h1>');
+                } else if (trimmed.startsWith('- [ ] ')) {
+                    html.push('<div style="margin:4px 0;"><input type="checkbox" disabled /> ' + formatInlineMarkdown(trimmed.substring(6)) + '</div>');
+                } else if (trimmed.startsWith('- [x] ') || trimmed.startsWith('- [X] ')) {
+                    html.push('<div style="margin:4px 0;"><input type="checkbox" checked disabled /> ' + formatInlineMarkdown(trimmed.substring(6)) + '</div>');
+                } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                    html.push('<li>' + formatInlineMarkdown(trimmed.substring(2)) + '</li>');
+                } else if (trimmed.length === 0) {
+                    html.push('<div style="height:6px;"></div>');
+                } else {
+                    html.push('<p style="margin:3px 0;">' + formatInlineMarkdown(line) + '</p>');
+                }
+            }
+            return html.join('');
+        }
+
+        async function saveNotes() {
+            if (!activeRunId) return;
+            const text = document.getElementById('notesTextarea').value;
+            try {
+                const res = await fetch(`/api/runs/${activeRunId}/notes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: text })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    if (currentRunMetadata) currentRunMetadata.notes = text;
+                    const r = allRuns.find(x => x.run_id === activeRunId);
+                    if (r) r.notes = text;
+                    showToastNotification('✅ Notes Saved', `Markdown notes saved to disk (${activeRunId}/notes.md)`);
+                }
+            } catch (e) {
+                alert('Failed to save notes: ' + e.message);
+            }
+        }
+
+        async function deleteRun(runId, event) {
+            if (event) event.stopPropagation();
+            if (!confirm(`Are you sure you want to permanently delete run "${runId}" and all its logs from disk?`)) {
+                return;
+            }
+            try {
+                const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    allRuns = allRuns.filter(r => r.run_id !== runId);
+                    if (activeRunId === runId) {
+                        activeRunId = allRuns.length > 0 ? allRuns[0].run_id : null;
+                    }
+                    await fetchRuns();
+                    if (activeRunId) loadRunDetails(activeRunId);
+                    showToastNotification('🗑️ Run Deleted', `Run ${runId} was removed from disk.`);
+                } else {
+                    alert('Failed to delete run: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Delete error: ' + e.message);
+            }
+        }
+
+        function showToastNotification(title, message) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'export-toast';
+            toast.style.borderColor = 'rgba(192, 132, 252, 0.4)';
+            toast.innerHTML = `
+                <div class="toast-icon-wrap" style="background:rgba(192, 132, 252, 0.15); color:var(--accent-purple);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="toast-body">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-desc">${message}</div>
+                </div>
+                <button class="btn btn-sm" style="padding:4px 7px;" onclick="this.closest('.export-toast').remove()">✕</button>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 5000);
         }
 
         function enableRename() {
@@ -1997,7 +2999,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 
         function formatDoctorMessage(rawMsg) {
             let msg = rawMsg.replace(/^\\[autotrainer\\]\\s*triage:\\s*/i, '');
-            // Highlight code patterns like clip_grad_norm_ or lr values
             msg = msg.replace(/(torch\\.nn\\.utils\\.clip_grad_norm_\\([^)]+\\))/g, '<code>$1</code>');
             msg = msg.replace(/(\\b(?:lr=\\S+|lr\\/\\d+|bf16|fp16)\\b)/g, '<code>$1</code>');
             return msg;
@@ -2009,13 +3010,23 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             renderRunList(allRuns);
             document.getElementById('runTitle').innerText = runId;
             document.getElementById('renameBtn').style.display = 'inline-flex';
+            document.getElementById('notesToggleBtn').style.display = 'inline-flex';
 
             try {
                 const res = await fetch(`/api/runs/${runId}`);
                 const data = await res.json();
                 const meta = data.metadata || {};
+                currentRunMetadata = meta;
                 const summary = meta.summary || {};
                 const paths = data.paths || {};
+
+                // Update Star Button & Tag Bar
+                updateRunStarBtnUI(Boolean(meta.favorite));
+                renderTagsBar(meta.tags || []);
+
+                // Update Notes Textarea
+                const notesArea = document.getElementById('notesTextarea');
+                if (notesArea) notesArea.value = meta.notes || '';
 
                 // User tag display in header
                 const userTag = document.getElementById('runUserTag');
@@ -2028,7 +3039,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 document.getElementById('pathCsv').innerText = paths.metrics_csv || 'N/A';
                 document.getElementById('pathJsonl').innerText = paths.metrics_jsonl || 'N/A';
 
-                // Health triage doctor - Clean Bulleted List (No nested boxes)
+                // Health triage doctor
                 const triageList = summary.triage_diagnostics || [];
                 const doctorBadge = document.getElementById('doctorBadge');
                 const doctorContent = document.getElementById('doctorContent');
@@ -2036,14 +3047,12 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 if (triageList.length > 0) {
                     doctorBadge.className = 'badge badge-amber';
                     doctorBadge.innerHTML = `⚠️ ${triageList.length} Anomaly Flagged`;
-                    
                     const itemsHtml = triageList.map(msg => `
                         <li class="doctor-bullet-item">
                             <span class="doctor-bullet-icon">•</span>
                             <div class="doctor-bullet-text">${formatDoctorMessage(msg)}</div>
                         </li>
                     `).join('');
-
                     doctorContent.innerHTML = `<ul class="doctor-bullet-list">${itemsHtml}</ul>`;
                 } else {
                     doctorBadge.className = 'badge badge-green';
@@ -2054,18 +3063,22 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 const epochRecords = data.metrics.filter(m => m.epoch !== undefined);
                 const stepRecords = data.metrics.filter(m => m.step !== undefined && m.epoch === undefined);
 
-                let labels, trainLosses, valLosses, valAccs;
+                let labels, trainLosses, valLosses, valAccs, vramVals, cpuVals;
 
                 if (epochRecords.length > 0) {
                     labels = epochRecords.map(m => `Epoch ${m.epoch}`);
                     trainLosses = epochRecords.map(m => m.train_loss !== undefined ? m.train_loss : m.loss);
                     valLosses = epochRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
                     valAccs = epochRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+                    vramVals = epochRecords.map(m => m.gpu_memory_mb !== undefined ? m.gpu_memory_mb : (m.memory_mb || null));
+                    cpuVals = epochRecords.map(m => m.cpu_pct !== undefined ? m.cpu_pct : null);
                 } else {
                     labels = stepRecords.map(m => `Step ${m.step}`);
                     trainLosses = stepRecords.map(m => m.loss !== undefined ? m.loss : m.train_loss);
                     valLosses = stepRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
                     valAccs = stepRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+                    vramVals = stepRecords.map(m => m.gpu_memory_mb !== undefined ? m.gpu_memory_mb : (m.memory_mb || null));
+                    cpuVals = stepRecords.map(m => m.cpu_pct !== undefined ? m.cpu_pct : null);
                 }
 
                 lossChart.data.labels = labels;
@@ -2080,6 +3093,14 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                     { label: 'Val Metric (%)', borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.15)', data: valAccs, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 25 }
                 ];
                 metricsChart.update();
+
+                // Hardware Telemetry Curves
+                if (hwChart) {
+                    hwChart.data.labels = labels;
+                    hwChart.data.datasets[0].data = vramVals;
+                    hwChart.data.datasets[1].data = cpuVals;
+                    hwChart.update();
+                }
 
                 // Stats summary
                 const validTrain = trainLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
@@ -2123,7 +3144,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             initCharts();
             fetchRuns();
             fetchSources();
-            setInterval(fetchRuns, 5000);
+            setInterval(fetchRuns, 4000);
         };
     </script>
 </body>
@@ -2139,6 +3160,8 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/" or self.path == "/index.html":
             self._respond_html(_DASHBOARD_HTML)
+        elif self.path == "/api/hardware":
+            self._handle_api_hardware()
         elif self.path == "/api/sources":
             self._handle_api_sources()
         elif self.path == "/api/runs":
@@ -2204,25 +3227,18 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                     self._respond_error(HTTPStatus.BAD_REQUEST, "Invalid run_id")
                     return
 
-                found_dir: Path | None = None
-                for d in self.logs_dirs:
-                    old_path = d / old_id
-                    if old_path.exists():
-                        found_dir = d
-                        break
-
+                found_dir = self._find_run_dir(old_id)
                 if not found_dir:
                     self._respond_error(HTTPStatus.NOT_FOUND, f"Run {old_id} not found")
                     return
 
-                old_path = found_dir / old_id
-                new_path = found_dir / clean_new_id
-                if new_path.exists() and old_path != new_path:
+                new_path = found_dir.parent / clean_new_id
+                if new_path.exists() and found_dir != new_path:
                     self._respond_error(HTTPStatus.CONFLICT, f"Run {clean_new_id} already exists")
                     return
 
-                if old_path != new_path:
-                    old_path.rename(new_path)
+                if found_dir != new_path:
+                    found_dir.rename(new_path)
 
                 meta_file = new_path / "run.json"
                 if meta_file.exists():
@@ -2239,6 +3255,23 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                 self._respond_json({"success": True, "run_id": clean_new_id})
             except Exception as e:
                 self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
+        elif self.path.startswith("/api/runs/") and self.path.endswith("/tags"):
+            run_id = self.path[len("/api/runs/") : -len("/tags")].strip("/")
+            self._handle_api_tags(run_id)
+
+        elif self.path.startswith("/api/runs/") and self.path.endswith("/favorite"):
+            run_id = self.path[len("/api/runs/") : -len("/favorite")].strip("/")
+            self._handle_api_favorite(run_id)
+
+        elif self.path.startswith("/api/runs/") and self.path.endswith("/notes"):
+            run_id = self.path[len("/api/runs/") : -len("/notes")].strip("/")
+            self._handle_api_notes(run_id)
+
+        elif self.path.startswith("/api/runs/") and self.path.endswith("/archive"):
+            run_id = self.path[len("/api/runs/") : -len("/archive")].strip("/")
+            self._handle_api_archive(run_id)
+
         else:
             self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
 
@@ -2254,8 +3287,134 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                 self._respond_json({"success": True})
             except Exception as e:
                 self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+        elif self.path.startswith("/api/runs/"):
+            run_id = self.path[len("/api/runs/") :].strip("/")
+            self._handle_api_delete_run(run_id)
         else:
             self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
+
+    def _find_run_dir(self, run_id: str) -> Path | None:
+        for d in self.logs_dirs:
+            candidate = d / run_id
+            if candidate.exists() and candidate.is_dir():
+                return candidate
+        return None
+
+    def _handle_api_hardware(self) -> None:
+        self._respond_json(_get_live_hardware())
+
+    def _handle_api_tags(self, run_id: str) -> None:
+        run_dir = self._find_run_dir(run_id)
+        if not run_dir:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        try:
+            data = json.loads(body)
+            action = data.get("action", "add")
+            tag = str(data.get("tag", "")).strip().lower()
+            meta_file = run_dir / "run.json"
+            meta = {}
+            if meta_file.exists():
+                with open(meta_file, encoding="utf-8") as f:
+                    meta = json.load(f)
+            tags = meta.get("tags", [])
+            if action == "add" and tag and tag not in tags:
+                tags.append(tag)
+            elif action == "remove" and tag in tags:
+                tags.remove(tag)
+            elif "tags" in data:
+                tags = [str(t).strip().lower() for t in data["tags"] if str(t).strip()]
+            meta["tags"] = tags
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self._respond_json({"success": True, "tags": tags})
+        except Exception as e:
+            self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
+    def _handle_api_favorite(self, run_id: str) -> None:
+        run_dir = self._find_run_dir(run_id)
+        if not run_dir:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+        try:
+            data = json.loads(body) if body else {}
+            meta_file = run_dir / "run.json"
+            meta = {}
+            if meta_file.exists():
+                with open(meta_file, encoding="utf-8") as f:
+                    meta = json.load(f)
+            current_fav = meta.get("favorite", False)
+            new_fav = data.get("favorite", not current_fav)
+            meta["favorite"] = bool(new_fav)
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self._respond_json({"success": True, "favorite": meta["favorite"]})
+        except Exception as e:
+            self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
+    def _handle_api_notes(self, run_id: str) -> None:
+        run_dir = self._find_run_dir(run_id)
+        if not run_dir:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        try:
+            data = json.loads(body)
+            notes = str(data.get("notes", ""))
+            meta_file = run_dir / "run.json"
+            meta = {}
+            if meta_file.exists():
+                with open(meta_file, encoding="utf-8") as f:
+                    meta = json.load(f)
+            meta["notes"] = notes
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            try:
+                (run_dir / "notes.md").write_text(notes, encoding="utf-8")
+            except Exception:
+                pass
+            self._respond_json({"success": True, "notes": notes})
+        except Exception as e:
+            self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
+    def _handle_api_archive(self, run_id: str) -> None:
+        run_dir = self._find_run_dir(run_id)
+        if not run_dir:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+        try:
+            data = json.loads(body) if body else {}
+            meta_file = run_dir / "run.json"
+            meta = {}
+            if meta_file.exists():
+                with open(meta_file, encoding="utf-8") as f:
+                    meta = json.load(f)
+            current_archived = meta.get("archived", False)
+            new_archived = data.get("archived", not current_archived)
+            meta["archived"] = bool(new_archived)
+            with open(meta_file, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+            self._respond_json({"success": True, "archived": meta["archived"]})
+        except Exception as e:
+            self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
+
+    def _handle_api_delete_run(self, run_id: str) -> None:
+        run_dir = self._find_run_dir(run_id)
+        if not run_dir:
+            self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
+            return
+        try:
+            shutil.rmtree(run_dir)
+            self._respond_json({"success": True, "deleted_run_id": run_id})
+        except Exception as e:
+            self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
     def _respond_html(self, content: str) -> None:
         encoded = content.encode("utf-8")
@@ -2309,18 +3468,25 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                     if item.is_dir() and item.name not in seen_run_ids:
                         seen_run_ids.add(item.name)
                         meta_file = item / "run.json"
+                        meta: dict[str, Any] = {"run_id": item.name, "user": default_user, "source_dir": str(d.resolve())}
                         if meta_file.exists():
                             try:
                                 with open(meta_file, encoding="utf-8") as f:
-                                    meta = json.load(f)
-                                    if "user" not in meta:
-                                        meta["user"] = default_user
-                                    meta["source_dir"] = str(d.resolve())
-                                    runs.append(meta)
+                                    loaded = json.load(f)
+                                    meta.update(loaded)
                             except Exception:
-                                runs.append({"run_id": item.name, "user": default_user, "source_dir": str(d.resolve())})
-                        else:
-                            runs.append({"run_id": item.name, "user": default_user, "source_dir": str(d.resolve())})
+                                pass
+                        notes_file = item / "notes.md"
+                        if notes_file.exists() and not meta.get("notes"):
+                            try:
+                                meta["notes"] = notes_file.read_text(encoding="utf-8")
+                            except Exception:
+                                pass
+                        meta.setdefault("tags", [])
+                        meta.setdefault("favorite", False)
+                        meta.setdefault("notes", "")
+                        meta.setdefault("archived", False)
+                        runs.append(meta)
         self._respond_json(runs)
 
     def _get_run_data(self, run_id: str) -> dict[str, Any] | None:
@@ -2345,6 +3511,18 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                         metadata["user"] = default_user
             except Exception:
                 pass
+
+        notes_file = run_dir / "notes.md"
+        if notes_file.exists() and not metadata.get("notes"):
+            try:
+                metadata["notes"] = notes_file.read_text(encoding="utf-8")
+            except Exception:
+                pass
+
+        metadata.setdefault("tags", [])
+        metadata.setdefault("favorite", False)
+        metadata.setdefault("notes", "")
+        metadata.setdefault("archived", False)
 
         metrics: list[dict[str, Any]] = []
         jsonl_file = run_dir / "metrics.jsonl"

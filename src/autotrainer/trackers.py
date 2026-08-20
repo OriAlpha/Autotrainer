@@ -200,7 +200,33 @@ class NativeTracker:
             "params": {},
             "summary": {},
             "status": "running",
+            "tags": [],
+            "favorite": False,
+            "notes": "",
+            "archived": False,
+            "hardware": self._detect_hardware(),
         }
+
+    def _detect_hardware(self) -> dict[str, Any]:
+        """Detect available GPU and host hardware metrics."""
+        hw: dict[str, Any] = {}
+        try:
+            import torch
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                hw["gpu_name"] = props.name
+                hw["gpu_total_mb"] = round(props.total_memory / (1024 * 1024), 1)
+                hw["gpu_count"] = torch.cuda.device_count()
+        except Exception:
+            pass
+
+        try:
+            import psutil
+            hw["cpu_count"] = psutil.cpu_count(logical=True)
+            hw["ram_total_gb"] = round(psutil.virtual_memory().total / (1024**3), 1)
+        except Exception:
+            pass
+        return hw
 
     def _ensure_init(self) -> None:
         if not self._initialized:
@@ -213,6 +239,39 @@ class NativeTracker:
             meta_path = self.run_dir / "run.json"
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(self.metadata, f, indent=2)
+
+    def add_tag(self, tag: str) -> None:
+        self._ensure_init()
+        clean_tag = tag.strip().lower()
+        if clean_tag and clean_tag not in self.metadata["tags"]:
+            self.metadata["tags"].append(clean_tag)
+            self._save_metadata()
+
+    def remove_tag(self, tag: str) -> None:
+        self._ensure_init()
+        clean_tag = tag.strip().lower()
+        if clean_tag in self.metadata["tags"]:
+            self.metadata["tags"].remove(clean_tag)
+            self._save_metadata()
+
+    def set_favorite(self, is_favorite: bool) -> None:
+        self._ensure_init()
+        self.metadata["favorite"] = bool(is_favorite)
+        self._save_metadata()
+
+    def set_notes(self, notes: str) -> None:
+        self._ensure_init()
+        self.metadata["notes"] = str(notes)
+        self._save_metadata()
+        try:
+            (self.run_dir / "notes.md").write_text(str(notes), encoding="utf-8")
+        except Exception:
+            pass
+
+    def set_archived(self, is_archived: bool) -> None:
+        self._ensure_init()
+        self.metadata["archived"] = bool(is_archived)
+        self._save_metadata()
 
     def log_params(self, params: dict[str, Any]) -> None:
         self._ensure_init()
