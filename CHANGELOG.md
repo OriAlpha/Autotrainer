@@ -4,6 +4,32 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Fixed
+- **`optimize=True` silently disabled per-epoch reshuffling.** `prepare()`
+  wraps a sharded loader in `_AutoEpochDataLoader` so
+  `DistributedSampler.set_epoch()` advances on its own, but the `optimize`
+  loader-defaults step and the `auto_bs` sweep each build a *fresh*
+  `DataLoader`, which the wrapper did not survive. `set_epoch` was then never
+  called and every epoch replayed one fixed permutation on every rank —
+  silently, with nothing raised. It fired on the most common configuration
+  there is: multi-GPU, `optimize=True` (the default), and an untuned loader,
+  since `build_loader_defaults()` only has work to do when `num_workers` is 0
+  or `pin_memory` is off. The wrapper is now applied once, after every
+  rebuild. Loaders the user sharded themselves are still passed through
+  unwrapped, and `shuffle=False` still means a fixed order.
+- **`train()` synced the GPU twice per step.** `loss.item()` was called once
+  for the running total and again for the summary; each is a device sync, so
+  the loop stalled twice per iteration in the entry point whose selling point
+  is throughput. Read once, reused.
+
+### Changed
+- **`ThroughputMonitor` is now in `__all__`.** It was documented in
+  `docs/guide/monitors.md` with a worked example while absent from `__all__`,
+  which the README declares the boundary of the stable public API — so the
+  docs taught something the policy called internal. Also added to the README's
+  entry-point table. `tests/test_docs.py` now checks this direction too; it
+  only ever verified that `__all__` members appear in the docs, never that
+  documented names are exported.
 
 ## [0.14.1] - 2026-08-05
 ### Fixed
