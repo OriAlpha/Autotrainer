@@ -1159,12 +1159,12 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             </div>
             <div class="stat-card purple">
                 <div class="stat-header">
-                    <span class="stat-label">Throughput / Speed</span>
+                    <span class="stat-label">Best Loss</span>
                     <div class="stat-icon">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                     </div>
                 </div>
-                <div class="stat-value" id="valThroughput">--</div>
+                <div class="stat-value" id="valBestLoss">--</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header">
@@ -2082,12 +2082,23 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 metricsChart.update();
 
                 // Stats summary
-                const validTrain = trainLosses.filter(l => l !== undefined && l !== null);
-                const validVal = valLosses.filter(l => l !== undefined && l !== null);
+                const validTrain = trainLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
+                const validVal = valLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
+
+                let bestLossVal = '--';
+                if (validVal.length > 0) {
+                    bestLossVal = Math.min(...validVal).toFixed(4);
+                } else if (validTrain.length > 0) {
+                    bestLossVal = Math.min(...validTrain).toFixed(4);
+                } else if (summary.best_loss !== undefined) {
+                    bestLossVal = summary.best_loss.toFixed(4);
+                } else if (summary.final_loss !== undefined) {
+                    bestLossVal = summary.final_loss.toFixed(4);
+                }
 
                 document.getElementById('valInitLoss').innerText = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
                 document.getElementById('valFinalLoss').innerText = summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : '--');
-                document.getElementById('valThroughput').innerText = summary.throughput ? `${Math.round(summary.throughput).toLocaleString()} smp/s` : 'N/A';
+                document.getElementById('valBestLoss').innerText = bestLossVal;
                 document.getElementById('valEpochs').innerText = summary.epochs !== undefined ? summary.epochs : (epochRecords.length > 0 ? epochRecords.length : stepRecords.length);
 
                 // Table
@@ -2770,8 +2781,8 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                 <div class="stat-value" id="valFinalLoss">--</div>
             </div>
             <div class="stat-card purple">
-                <div class="stat-label">Throughput / Speed</div>
-                <div class="stat-value" id="valThroughput">--</div>
+                <div class="stat-label">Best Loss</div>
+                <div class="stat-value" id="valBestLoss">--</div>
             </div>
             <div class="stat-card white">
                 <div class="stat-label">Total Epochs</div>
@@ -2897,10 +2908,23 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             valAccs = stepRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
         }}
 
-        const validTrain = trainLosses.filter(l => l !== undefined && l !== null);
+        const validTrain = trainLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
+        const validVal = valLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
+
+        let bestLossVal = '--';
+        if (validVal.length > 0) {{
+            bestLossVal = Math.min(...validVal).toFixed(4);
+        }} else if (validTrain.length > 0) {{
+            bestLossVal = Math.min(...validTrain).toFixed(4);
+        }} else if (summary.best_loss !== undefined) {{
+            bestLossVal = summary.best_loss.toFixed(4);
+        }} else if (summary.final_loss !== undefined) {{
+            bestLossVal = summary.final_loss.toFixed(4);
+        }}
+
         document.getElementById('valInitLoss').innerText = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
         document.getElementById('valFinalLoss').innerText = summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : '--');
-        document.getElementById('valThroughput').innerText = summary.throughput ? `${{Math.round(summary.throughput).toLocaleString()}} smp/s` : 'N/A';
+        document.getElementById('valBestLoss').innerText = bestLossVal;
         document.getElementById('valEpochs').innerText = summary.epochs || records.length;
 
         // Tooltip Config
@@ -3043,6 +3067,14 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         start_time = meta.get("start_datetime", "N/A")
         triage_list = summary.get("triage_diagnostics", [])
 
+        # Compute best loss
+        metrics = data.get("metrics", [])
+        all_losses = [m.get("val_loss") for m in metrics if m.get("val_loss") is not None]
+        if not all_losses:
+            all_losses = [m.get("train_loss") or m.get("loss") for m in metrics if (m.get("train_loss") or m.get("loss")) is not None]
+        best_loss = min(all_losses) if all_losses else summary.get("final_loss", "N/A")
+        best_loss_str = f"{best_loss:.4f}" if isinstance(best_loss, (int, float)) else str(best_loss)
+
         md = [
             f"# ⚡ Autotrainer Run Summary: `{run_id}`",
             f"> **Author**: `👤 {user_name}` | **Started**: `{start_time}` | **Status**: `Completed`",
@@ -3052,7 +3084,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             "| :--- | :--- |",
             f"| **Initial Loss** | `{summary.get('init_loss', 'N/A')}` |",
             f"| **Final Loss** | `{summary.get('final_loss', 'N/A')}` |",
-            f"| **Throughput** | `{round(summary.get('throughput', 0)):,} smp/s` |" if summary.get("throughput") else "| **Throughput** | `N/A` |",
+            f"| **Best Loss** | `{best_loss_str}` |",
             f"| **Total Epochs** | `{summary.get('epochs', len(data.get('metrics', [])))}` |",
             "",
             "## 🧠 AI Health Triage Diagnosis",
