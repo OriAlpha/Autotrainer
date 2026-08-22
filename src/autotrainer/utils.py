@@ -79,6 +79,12 @@ def set_epoch(dataloader: Any, epoch: int) -> None:
             autotrainer.set_epoch(loader, epoch)
             for xb, yb in loader:
                 ...
+
+    A loader returned by ``prepare()`` under DDP already advances its own
+    epoch on each pass, so calling this is optional there - and the automatic
+    counter overwrites the value set here. Call it yourself when you built the
+    ``DistributedSampler`` (``prepare()`` leaves those loaders alone), or when
+    you need one specific epoch number rather than "a different one each pass".
     """
     sampler = getattr(dataloader, "sampler", None)
     if sampler is not None and hasattr(sampler, "set_epoch"):

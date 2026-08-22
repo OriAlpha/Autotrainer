@@ -629,8 +629,12 @@ def train(
                 loss = loss_fn(out, yb)
                 loss.backward()
                 opt.step()
-            total_loss += loss.item()
-            summary.step(loss=loss.item())
+            # One .item() per step, reused. Each call is a device sync, so
+            # reading it twice stalled the pipeline twice per iteration - in
+            # the entry point whose whole selling point is throughput.
+            loss_value = loss.item()
+            total_loss += loss_value
+            summary.step(loss=loss_value)
         if sched is not None:
             sched.step()
         epoch_loss = total_loss / max(len(loader), 1)

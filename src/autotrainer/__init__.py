@@ -48,6 +48,7 @@ __all__ = [
     "set_epoch",
     "step",
     "SummaryTracker",
+    "ThroughputMonitor",
     "train",
     "train_mode",
     "TrainingMonitor",
