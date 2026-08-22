@@ -77,8 +77,6 @@ from .callbacks import (  # noqa: E402,F401
     autotrainer_lightgbm_callback,
     autotrainer_xgboost_callback,
 )
-from .trackers import CSVTracker, JSONLTracker, NativeTracker  # noqa: E402,F401
-from .ui import run_ui_server  # noqa: E402,F401
 from .fitting import train  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
@@ -88,7 +86,9 @@ from .slurm import (
 )
 from .summary import SummaryTracker, finish, log_epoch, step  # noqa: E402,F401
 from .throughput import ThroughputMonitor  # noqa: E402,F401
+from .trackers import CSVTracker, JSONLTracker, NativeTracker  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401
+from .ui import run_ui_server  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

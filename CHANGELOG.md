@@ -4,7 +4,44 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Security
+The Web UI added in 0.15.0 served a filesystem-mutating API with no
+authentication on every network interface. Each item below was confirmed by
+exploiting a running server, and is now pinned by a test in
+`tests/test_ui_security.py`.
+
+- **Unauthenticated remote directory deletion.** `run_id` was joined onto the
+  logs root with no containment check, so `DELETE /api/runs/../<path>`
+  resolved outside it and reached `shutil.rmtree`. A live server answered
+  `{"success": true}` and the directory was gone. All six lookups — plus a
+  seventh inlined in `_get_run_data` and two more behind the HTML/Markdown
+  export writes, which made it an arbitrary-**write** primitive too — now go
+  through one `_safe_run_dir()` that rejects separators and anything
+  resolving outside a configured root.
+- **`autotrainer ui` bound `0.0.0.0`.** On a shared SLURM login node that
+  published rename/archive/delete to every user who could route to the port.
+  It now binds `127.0.0.1`; `--host` widens it deliberately and prints a
+  warning naming what is exposed.
+- **No authentication.** A session token is now generated per run and printed
+  as part of the URL, carried afterwards by an `HttpOnly; SameSite=Strict`
+  cookie (also accepted as `?token=` or `X-Autotrainer-Token`) and compared
+  with `secrets.compare_digest`. `--no-token` opts out. `SameSite` plus an
+  `Origin` check on mutating verbs closes the CSRF hole that let any page a
+  user visited drive the delete endpoint.
+- **`POST /api/sources` accepted any absolute path**, turning the dashboard
+  into a filesystem browser — a home directory listed 45 "runs". It now
+  requires a directory that actually contains run folders.
+- **Stored XSS via run tags.** Tags were interpolated raw into `innerHTML`,
+  including inside `onclick="removeTagFromCurrentRun('${tag}')"`. Tags and
+  usernames are escaped, `escapeHtml` now covers quotes, and the tag remove
+  control binds a listener instead of building a JS string.
+
 ### Fixed
+- **`AutotrainerCallback.on_epoch_end()` crashed on its own defaults.**
+  Omitting `train_loss` — normal for a callback that only has a validation
+  number — reached `float(None)` and raised `TypeError`, killing the run it
+  was meant to be observing. `log_epoch` now treats every metric as optional
+  and reads its three call shapes through one code path.
 - **`optimize=True` silently disabled per-epoch reshuffling.** `prepare()`
   wraps a sharded loader in `_AutoEpochDataLoader` so
   `DistributedSampler.set_epoch()` advances on its own, but the `optimize`

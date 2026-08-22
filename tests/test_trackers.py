@@ -2,12 +2,13 @@
 
 import json
 from pathlib import Path
-from autotrainer.trackers import CSVTracker, JSONLTracker, NativeTracker
+
 from autotrainer.callbacks import (
     AutotrainerKerasCallback,
-    autotrainer_xgboost_callback,
     autotrainer_lightgbm_callback,
+    autotrainer_xgboost_callback,
 )
+from autotrainer.trackers import CSVTracker, JSONLTracker, NativeTracker
 
 
 def test_csv_tracker(tmp_path: Path):

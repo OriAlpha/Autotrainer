@@ -14,6 +14,8 @@ into autotrainer's active summary tracker for real-time Web UI rendering.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from typing import Any
 
 from .summary import SummaryTracker, get_active_summary
@@ -21,7 +23,7 @@ from .summary import SummaryTracker, get_active_summary
 
 class AutotrainerCallback:
     """General-purpose training callback for autotrainer.
-    
+
     Can be used directly in custom training loops or subclassed for custom frameworks.
     """
 
@@ -70,12 +72,12 @@ class AutotrainerHuggingFaceCallback:
 
     def on_init_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
         if hasattr(args, "to_dict"):
-            try:
+            with contextlib.suppress(Exception):
                 self.summary.log_params(args.to_dict())
-            except Exception:
-                pass
 
-    def on_log(self, args: Any, state: Any, control: Any, logs: dict[str, Any] | None = None, **kwargs: Any) -> None:
+    def on_log(
+        self, args: Any, state: Any, control: Any, logs: dict[str, Any] | None = None, **kwargs: Any
+    ) -> None:
         if not logs:
             return
 
@@ -119,10 +121,8 @@ class AutotrainerLightningCallback:
         if hasattr(trainer, "precision"):
             params["precision"] = str(trainer.precision)
         if hasattr(pl_module, "hparams"):
-            try:
+            with contextlib.suppress(Exception):
                 params.update(dict(pl_module.hparams))
-            except Exception:
-                pass
         if params:
             self.summary.log_params(params)
 
@@ -160,7 +160,9 @@ class AutotrainerLightningCallback:
 class AutotrainerKerasCallback:
     """Keras / TensorFlow Callback for autotrainer metric reporting and Web UI tracking."""
 
-    def __init__(self, log_batches: bool = False, summary_tracker: SummaryTracker | None = None) -> None:
+    def __init__(
+        self, log_batches: bool = False, summary_tracker: SummaryTracker | None = None
+    ) -> None:
         self.log_batches = log_batches
         self._summary = summary_tracker
         self.step_count = 0
@@ -194,7 +196,7 @@ class AutotrainerKerasCallback:
         self.summary.end()
 
 
-def autotrainer_xgboost_callback():
+def autotrainer_xgboost_callback() -> Callable[[Any], None]:
     """Returns an XGBoost callback function for logging per-iteration evaluation metrics."""
 
     def callback(env: Any) -> None:
@@ -214,7 +216,7 @@ def autotrainer_xgboost_callback():
     return callback
 
 
-def autotrainer_lightgbm_callback():
+def autotrainer_lightgbm_callback() -> Callable[[Any], None]:
     """Returns a LightGBM callback function for logging per-iteration evaluation metrics."""
 
     def callback(env: Any) -> None:
@@ -222,7 +224,7 @@ def autotrainer_lightgbm_callback():
         if evals:
             train_loss = None
             val_loss = None
-            for data_name, eval_name, val, _ in evals:
+            for data_name, _eval_name, val, _ in evals:
                 if data_name == "train" and train_loss is None:
                     train_loss = float(val)
                 elif data_name in ("val", "valid", "test", "eval") and val_loss is None:

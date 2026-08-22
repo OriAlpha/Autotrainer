@@ -1,6 +1,5 @@
 """Tests for framework callbacks in autotrainer.callbacks."""
 
-import pytest
 from autotrainer.callbacks import (
     AutotrainerCallback,
     AutotrainerHuggingFaceCallback,
@@ -34,7 +33,12 @@ def test_autotrainer_huggingface_callback(tmp_path):
             return {"learning_rate": 5e-5, "per_device_train_batch_size": 16}
 
     cb.on_init_end(MockArgs(), None, None)
-    cb.on_log(MockArgs(), None, None, logs={"loss": 0.6, "eval_loss": 0.5, "eval_accuracy": 0.88, "epoch": 1.0})
+    cb.on_log(
+        MockArgs(),
+        None,
+        None,
+        logs={"loss": 0.6, "eval_loss": 0.5, "eval_accuracy": 0.88, "epoch": 1.0},
+    )
     cb.on_train_end(MockArgs(), None, None)
 
     assert (tmp_path / summary.run_id / "run.json").exists()
