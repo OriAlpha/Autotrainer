@@ -78,8 +78,8 @@ import autotrainer
 model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)  # no-op when not distributed
-    # ... your normal training loop
+    autotrainer.set_epoch(loader, epoch)  # optional: prepare()'s loader
+    # ... your normal training loop      # already reshuffles each epoch
 
 # At the end: prints comprehensive training summary & cleans up process groups
 autotrainer.finish()
@@ -117,6 +117,7 @@ autotrainer info                  # show what was detected
 | The largest batch size that fits | `find_batch_size(model, step_fn)` | [Training loop](docs/guide/training-loop.md#batch-size) |
 | Post-training summary & metrics | `finish()`, `log_epoch()`, `step()` | [Training loop](docs/guide/training-loop.md#post-training-summary-finish-log_epoch-step-summarytracker) |
 | To know if the loader is the bottleneck | `BottleneckMonitor()` | [Monitors](docs/guide/monitors.md) |
+| Samples/sec and a rough MFU estimate | `ThroughputMonitor()` | [Monitors](docs/guide/monitors.md) |
 | To know if training is going wrong | `TrainingMonitor()` | [Monitors](docs/guide/monitors.md) |
 | To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |
 | XGBoost/LightGBM params with sane threads | `boost_params(lib="xgboost")` | — |

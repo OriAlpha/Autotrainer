@@ -456,6 +456,10 @@ def prepare(
     if amp is None:
         amp = optimize  # default: optimize= implies AMP, but stays overridable
 
+    # Set when _shard_loader installed the auto-epoch wrapper, so it can be
+    # reapplied after the loader rebuilds below. See the unwrap comment there.
+    auto_epoch = False
+
     if world_size > 1:
         if dataloader is not None:
             # Shard (and validate) BEFORE any collective op: if this rank
@@ -467,6 +471,14 @@ def prepare(
                 # already installed a DistributedSampler - only claim the
                 # sampler in the summary when we were the one to install it.
                 applied["sampler"] = "distributed"
+            # Unwrap immediately and re-wrap once at the end. The optimize and
+            # auto_bs steps below each construct a *fresh* DataLoader from
+            # this one's dataset/sampler/kwargs; a wrapper instance does not
+            # survive that, and the copy silently trained every epoch on the
+            # same permutation because set_epoch() was then never called.
+            if isinstance(dataloader, _AutoEpochDataLoader):
+                auto_epoch = True
+                dataloader = dataloader.dataloader
         _ensure_process_group()
         if fsdp:
             # FSDP shards params/grads/optim state across ranks - the path
@@ -661,6 +673,12 @@ def prepare(
             "        out = model(x); loss = loss_fn(out, y)\n"
             "    scaler.scale(loss).backward(); scaler.step(opt); scaler.update()"
         )
+
+    # Reapply the auto-epoch wrapper now that every rebuild is done, so the
+    # loader the caller gets back advances DistributedSampler.set_epoch() on
+    # each iteration without them having to call autotrainer.set_epoch().
+    if auto_epoch:
+        dataloader = _AutoEpochDataLoader(dataloader)
 
     from ..summary import get_active_summary
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import types
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,39 @@ def test_public_api_is_mentioned_in_the_docs():
         "exported but never mentioned in README/docs: "
         + ", ".join(missing)
         + "\n(add prose, or drop it from __all__ if it is not really public)"
+    )
+
+
+def test_documented_attributes_are_actually_public():
+    """The reverse of the check above: nothing is taught as public API while
+    `__all__` says it is internal.
+
+    `ThroughputMonitor` shipped exactly that way - a worked example in
+    `docs/guide/monitors.md` for a name missing from `__all__`, which the
+    README declares the boundary of the stable API. The presence check above
+    only looks one way, so it could never catch it.
+    """
+    paths = [ROOT / name for name in API_DOC_FILES]
+    for pattern in API_DOC_GLOBS:
+        paths.extend(sorted(ROOT.glob(pattern)))
+    prose = "".join(p.read_text(encoding="utf-8") for p in paths if p.is_file())
+
+    # Only `autotrainer.X` call/attribute forms - prose naming a class in
+    # passing is not a promise that it is importable.
+    documented = set(re.findall(r"\bautotrainer\.([A-Za-z_][A-Za-z0-9_]*)", prose))
+    leaked = sorted(
+        name
+        for name in documented
+        if hasattr(autotrainer, name)
+        and not name.startswith("_")
+        and name not in autotrainer.__all__
+        # Submodules are reachable but were never claimed as API surface.
+        and not isinstance(getattr(autotrainer, name), types.ModuleType)
+    )
+    assert not leaked, (
+        "documented as `autotrainer.X` but absent from __all__: "
+        + ", ".join(leaked)
+        + "\n(add it to __all__ if it is public, or stop documenting it as such)"
     )
 
 
