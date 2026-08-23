@@ -7,6 +7,7 @@ Powers the native ``autotrainer ui`` web dashboard.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import getpass
 import json
@@ -34,20 +35,15 @@ def _get_current_user(user: str | None = None) -> str:
 class BaseTracker(Protocol):
     """Protocol for experiment trackers in autotrainer."""
 
-    def log_params(self, params: dict[str, Any]) -> None:
-        ...
+    def log_params(self, params: dict[str, Any]) -> None: ...
 
-    def log_step(self, step: int, metrics: dict[str, float]) -> None:
-        ...
+    def log_step(self, step: int, metrics: dict[str, float]) -> None: ...
 
-    def log_epoch(self, epoch: int, metrics: dict[str, float]) -> None:
-        ...
+    def log_epoch(self, epoch: int, metrics: dict[str, float]) -> None: ...
 
-    def log_summary(self, summary: dict[str, Any]) -> None:
-        ...
+    def log_summary(self, summary: dict[str, Any]) -> None: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 class CSVTracker:
@@ -59,19 +55,27 @@ class CSVTracker:
         self.log_dir = Path(log_dir)
         self.filepath = self.log_dir / filename
         self.fieldnames: list[str] = list(self.DEFAULT_FIELDS)
-        self._file = None
-        self._writer = None
+        # Annotated as Any: opened lazily in _ensure_writer(), so the
+        # declared type has to admit both None and a text handle.
+        self._file: Any = None
+        self._writer: Any = None
 
     def _ensure_writer(self, sample_dict: dict[str, Any]) -> None:
         if self._writer is None:
             self.filepath.parent.mkdir(parents=True, exist_ok=True)
             file_exists = self.filepath.exists() and self.filepath.stat().st_size > 0
-            for k in sample_dict.keys():
+            for k in sample_dict:
                 if k not in self.fieldnames:
                     self.fieldnames.append(k)
-            
-            # Open file for appending
-            self._file = open(self.filepath, "a", newline="", encoding="utf-8")
+
+            # Deliberately long-lived: this is a streaming append log written
+            # once per step/epoch for the whole run. Reopening per write under
+            # a context manager would add a syscall pair to every logged step
+            # in the training loop. close() releases it; the tracker owns the
+            # handle for its lifetime.
+            self._file = open(  # noqa: SIM115
+                self.filepath, "a", newline="", encoding="utf-8"
+            )
             self._writer = csv.DictWriter(self._file, fieldnames=self.fieldnames)
             if not file_exists:
                 self._writer.writeheader()
@@ -112,12 +116,14 @@ class JSONLTracker:
     def __init__(self, log_dir: str | Path, filename: str = "metrics.jsonl") -> None:
         self.log_dir = Path(log_dir)
         self.filepath = self.log_dir / filename
-        self._file = None
+        self._file: Any = None
 
-    def _get_file(self):
+    def _get_file(self) -> Any:
         if self._file is None or self._file.closed:
             self.filepath.parent.mkdir(parents=True, exist_ok=True)
-            self._file = open(self.filepath, "a", encoding="utf-8")
+            # Long-lived by design, as in CSVTracker above: one append handle
+            # for the run rather than an open/close pair per logged record.
+            self._file = open(self.filepath, "a", encoding="utf-8")  # noqa: SIM115
         return self._file
 
     def log_epoch(self, epoch: int, metrics: dict[str, float]) -> None:
@@ -169,7 +175,7 @@ class JSONLTracker:
 
 class NativeTracker:
     """Native autotrainer experiment tracker.
-    
+
     Creates a unique run folder under ``./logs/<run_id>`` and writes CSV,
     JSONL, and run metadata JSON files for rendering in ``autotrainer ui``.
     """
@@ -212,6 +218,7 @@ class NativeTracker:
         hw: dict[str, Any] = {}
         try:
             import torch
+
             if torch.cuda.is_available():
                 props = torch.cuda.get_device_properties(0)
                 hw["gpu_name"] = props.name
@@ -222,6 +229,7 @@ class NativeTracker:
 
         try:
             import psutil
+
             hw["cpu_count"] = psutil.cpu_count(logical=True)
             hw["ram_total_gb"] = round(psutil.virtual_memory().total / (1024**3), 1)
         except Exception:
@@ -263,10 +271,8 @@ class NativeTracker:
         self._ensure_init()
         self.metadata["notes"] = str(notes)
         self._save_metadata()
-        try:
+        with contextlib.suppress(Exception):
             (self.run_dir / "notes.md").write_text(str(notes), encoding="utf-8")
-        except Exception:
-            pass
 
     def set_archived(self, is_archived: bool) -> None:
         self._ensure_init()

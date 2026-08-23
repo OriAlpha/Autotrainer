@@ -5,7 +5,9 @@ import threading
 import urllib.request
 from http.server import HTTPServer
 from pathlib import Path
+
 import pytest
+
 from autotrainer.trackers import NativeTracker
 from autotrainer.ui import AutotrainerUIHandler
 
@@ -77,8 +79,12 @@ def test_ui_api_rename_endpoint(ui_server):
     tracker.log_epoch(1, {"train_loss": 0.5})
     tracker.close()
 
-    payload = json.dumps({"old_run_id": "old_run_name", "new_run_id": "renamed_cpu_experiment"}).encode("utf-8")
-    req = urllib.request.Request(f"{base_url}/api/runs/rename", data=payload, headers={"Content-Type": "application/json"})
+    payload = json.dumps(
+        {"old_run_id": "old_run_name", "new_run_id": "renamed_cpu_experiment"}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/rename", data=payload, headers={"Content-Type": "application/json"}
+    )
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         res = json.loads(resp.read().decode("utf-8"))
@@ -152,7 +158,9 @@ def test_ui_api_sources_and_multi_paths(ui_server, tmp_path_factory):
 
     # Add extra path via POST /api/sources
     add_payload = json.dumps({"path": str(extra_dir)}).encode("utf-8")
-    req_add = urllib.request.Request(f"{base_url}/api/sources", data=add_payload, headers={"Content-Type": "application/json"})
+    req_add = urllib.request.Request(
+        f"{base_url}/api/sources", data=add_payload, headers={"Content-Type": "application/json"}
+    )
     with urllib.request.urlopen(req_add) as resp:
         assert resp.status == 200
         res = json.loads(resp.read().decode("utf-8"))
@@ -166,7 +174,12 @@ def test_ui_api_sources_and_multi_paths(ui_server, tmp_path_factory):
 
     # Remove extra source via DELETE /api/sources
     del_payload = json.dumps({"path": str(extra_dir)}).encode("utf-8")
-    req_del = urllib.request.Request(f"{base_url}/api/sources", data=del_payload, headers={"Content-Type": "application/json"}, method="DELETE")
+    req_del = urllib.request.Request(
+        f"{base_url}/api/sources",
+        data=del_payload,
+        headers={"Content-Type": "application/json"},
+        method="DELETE",
+    )
     with urllib.request.urlopen(req_del) as resp:
         assert resp.status == 200
         res = json.loads(resp.read().decode("utf-8"))
@@ -194,7 +207,11 @@ def test_ui_api_tags_endpoint(ui_server):
 
     # 1. Add tag "baseline"
     payload = json.dumps({"action": "add", "tag": "baseline"}).encode("utf-8")
-    req = urllib.request.Request(f"{base_url}/api/runs/run_tags_test/tags", data=payload, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/run_tags_test/tags",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         data = json.loads(resp.read().decode("utf-8"))
@@ -203,7 +220,11 @@ def test_ui_api_tags_endpoint(ui_server):
 
     # 2. Add tag "lr-tuned"
     payload2 = json.dumps({"action": "add", "tag": "lr-tuned"}).encode("utf-8")
-    req2 = urllib.request.Request(f"{base_url}/api/runs/run_tags_test/tags", data=payload2, headers={"Content-Type": "application/json"})
+    req2 = urllib.request.Request(
+        f"{base_url}/api/runs/run_tags_test/tags",
+        data=payload2,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req2) as resp:
         assert resp.status == 200
         data2 = json.loads(resp.read().decode("utf-8"))
@@ -212,7 +233,11 @@ def test_ui_api_tags_endpoint(ui_server):
 
     # 3. Remove tag "baseline"
     payload3 = json.dumps({"action": "remove", "tag": "baseline"}).encode("utf-8")
-    req3 = urllib.request.Request(f"{base_url}/api/runs/run_tags_test/tags", data=payload3, headers={"Content-Type": "application/json"})
+    req3 = urllib.request.Request(
+        f"{base_url}/api/runs/run_tags_test/tags",
+        data=payload3,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req3) as resp:
         assert resp.status == 200
         data3 = json.loads(resp.read().decode("utf-8"))
@@ -228,7 +253,11 @@ def test_ui_api_favorite_endpoint(ui_server):
 
     # 1. Toggle favorite -> True
     payload = json.dumps({}).encode("utf-8")
-    req = urllib.request.Request(f"{base_url}/api/runs/run_fav_test/favorite", data=payload, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/run_fav_test/favorite",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         data = json.loads(resp.read().decode("utf-8"))
@@ -236,7 +265,11 @@ def test_ui_api_favorite_endpoint(ui_server):
         assert data["favorite"] is True
 
     # 2. Toggle favorite -> False
-    req2 = urllib.request.Request(f"{base_url}/api/runs/run_fav_test/favorite", data=payload, headers={"Content-Type": "application/json"})
+    req2 = urllib.request.Request(
+        f"{base_url}/api/runs/run_fav_test/favorite",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req2) as resp:
         assert resp.status == 200
         data2 = json.loads(resp.read().decode("utf-8"))
@@ -251,7 +284,11 @@ def test_ui_api_notes_endpoint(ui_server):
 
     notes_text = "# Experiment Takeaways\n- Achieved lowest loss with AdamW\n- Checkpoint verified"
     payload = json.dumps({"notes": notes_text}).encode("utf-8")
-    req = urllib.request.Request(f"{base_url}/api/runs/run_notes_test/notes", data=payload, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/run_notes_test/notes",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req) as resp:
         assert resp.status == 200
         data = json.loads(resp.read().decode("utf-8"))
@@ -312,4 +349,3 @@ def test_native_tracker_metadata_features(tmp_path: Path):
     notes_file = tmp_path / "meta_features_run" / "notes.md"
     assert notes_file.exists()
     assert "cosine" in notes_file.read_text(encoding="utf-8")
-

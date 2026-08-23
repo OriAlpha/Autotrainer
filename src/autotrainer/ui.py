@@ -9,18 +9,21 @@ file locations, run renaming, enlarged dual chart modal, and 1-click standalone 
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import json
 import os
+import secrets
 import shutil
 import socketserver
-import sys
 import time
 import webbrowser
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 
 def _detect_system_user() -> str:
@@ -32,6 +35,26 @@ def _detect_system_user() -> str:
         return getpass.getuser().strip()
     except Exception:
         return "default"
+
+
+_RUN_MARKERS = ("run.json", "metrics.csv", "metrics.jsonl")
+
+
+def _looks_like_logs_dir(path: Path) -> bool:
+    """True when ``path`` holds at least one autotrainer run directory.
+
+    Gate for adding a source at runtime. Without it any absolute path was
+    accepted, so the dashboard doubled as a filesystem browser for whoever
+    could reach it. Only the immediate children are inspected - a run lives
+    directly under a logs root - so this stays cheap on large trees.
+    """
+    try:
+        for child in path.iterdir():
+            if child.is_dir() and any((child / marker).exists() for marker in _RUN_MARKERS):
+                return True
+    except OSError:
+        return False
+    return False
 
 
 def _get_live_hardware() -> dict[str, Any]:
@@ -47,6 +70,7 @@ def _get_live_hardware() -> dict[str, Any]:
     }
     try:
         import psutil
+
         hw["cpu_pct"] = round(psutil.cpu_percent(interval=None), 1)
         vm = psutil.virtual_memory()
         hw["ram_used_gb"] = round((vm.total - vm.available) / (1024**3), 2)
@@ -57,6 +81,7 @@ def _get_live_hardware() -> dict[str, Any]:
 
     try:
         import torch
+
         if torch.cuda.is_available():
             hw["gpu_available"] = True
             for i in range(torch.cuda.device_count()):
@@ -64,16 +89,20 @@ def _get_live_hardware() -> dict[str, Any]:
                 allocated_mb = torch.cuda.memory_allocated(i) / (1024 * 1024)
                 reserved_mb = torch.cuda.memory_reserved(i) / (1024 * 1024)
                 total_mb = props.total_memory / (1024 * 1024)
-                hw["gpus"].append({
-                    "id": i,
-                    "name": props.name,
-                    "allocated_mb": round(allocated_mb, 1),
-                    "reserved_mb": round(reserved_mb, 1),
-                    "total_mb": round(total_mb, 1),
-                    "allocated_gb": round(allocated_mb / 1024, 2),
-                    "total_gb": round(total_mb / 1024, 2),
-                    "util_pct": round((allocated_mb / total_mb) * 100, 1) if total_mb > 0 else 0.0,
-                })
+                hw["gpus"].append(
+                    {
+                        "id": i,
+                        "name": props.name,
+                        "allocated_mb": round(allocated_mb, 1),
+                        "reserved_mb": round(reserved_mb, 1),
+                        "total_mb": round(total_mb, 1),
+                        "allocated_gb": round(allocated_mb / 1024, 2),
+                        "total_gb": round(total_mb / 1024, 2),
+                        "util_pct": round((allocated_mb / total_mb) * 100, 1)
+                        if total_mb > 0
+                        else 0.0,
+                    }
+                )
     except Exception:
         pass
 
@@ -1997,7 +2026,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             Array.from(allTags).sort().forEach(tag => {
                 const chip = document.createElement('div');
                 chip.className = 'tag-chip-filter' + (currentTagFilter === tag ? ' active' : '');
-                chip.innerHTML = `🏷️ ${tag}`;
+                chip.innerHTML = `🏷️ ${escapeHtml(tag)}`;
                 chip.onclick = (e) => {
                     e.stopPropagation();
                     setTagFilter(tag);
@@ -2279,7 +2308,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
                 const countStr = `${count} ${count === 1 ? 'run' : 'runs'}`;
                 const item = document.createElement('div');
                 item.className = 'dropdown-item' + (currentSelectedUser === u ? ' active' : '');
-                item.innerHTML = `<span>👤 ${u}</span><span class="dropdown-item-count">${countStr}</span>`;
+                item.innerHTML = `<span>👤 ${escapeHtml(u)}</span><span class="dropdown-item-count">${countStr}</span>`;
                 item.onclick = (e) => { 
                     e.stopPropagation(); 
                     selectUser(u, `👤 ${u} (${countStr})`); 
@@ -2633,10 +2662,15 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
             tags.forEach(tag => {
                 const pill = document.createElement('span');
                 pill.className = 'tag-pill';
+                // Tags are user input arriving from POST /api/runs/<id>/tags.
+                // Escape for display, and bind the handler to the value itself
+                // rather than interpolating it into an onclick attribute.
                 pill.innerHTML = `
-                    <span>🏷️ ${tag}</span>
-                    <span class="tag-pill-remove" onclick="removeTagFromCurrentRun('${tag}')" title="Remove tag">✕</span>
+                    <span>🏷️ ${escapeHtml(tag)}</span>
+                    <span class="tag-pill-remove" title="Remove tag">✕</span>
                 `;
+                pill.querySelector('.tag-pill-remove')
+                    .addEventListener('click', () => removeTagFromCurrentRun(tag));
                 container.appendChild(pill);
             });
 
@@ -2742,7 +2776,14 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         }
 
         function escapeHtml(str) {
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Quotes included: values reach attribute contexts as well as text
+            // nodes, and &<> alone lets a value break out of an attribute.
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function formatInlineMarkdown(str) {
@@ -3153,47 +3194,161 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 
 
 class AutotrainerUIHandler(BaseHTTPRequestHandler):
-    """HTTP Request handler for serving the Autotrainer Web UI and REST API."""
+    """HTTP Request handler for serving the Autotrainer Web UI and REST API.
+
+    The API mutates the filesystem - it renames, archives and deletes run
+    directories - so two guards sit in front of every request:
+
+    * :meth:`_safe_run_dir` resolves a ``run_id`` and refuses anything that
+      escapes the configured log roots. Without it ``run_id`` was pasted
+      straight into ``root / run_id``, so ``../..`` walked anywhere on disk
+      and ``DELETE /api/runs/../<path>`` reached ``shutil.rmtree``.
+    * :meth:`_authorized` requires the session token unless the server was
+      started with ``token=None``. Paired with the loopback default bind in
+      :func:`run_ui_server`, that keeps a dashboard on a shared login node
+      from being someone else's remote-control panel.
+    """
 
     logs_dirs: list[Path] = [Path("logs")]
+    # Set by run_ui_server(). None disables the check entirely (--no-token).
+    auth_token: str | None = None
+
+    # -- security ---------------------------------------------------------
+
+    def _safe_run_dir(self, run_id: str) -> Path | None:
+        """Resolve ``run_id`` to a directory inside a configured log root.
+
+        A run id names one directory directly under a root, so anything with
+        a path separator, a drive letter, or a ``..`` component is invalid by
+        construction. Resolution happens before the containment check so a
+        symlink pointing outside is caught too. Returns None on any failure -
+        callers turn that into a uniform 404 rather than leaking whether the
+        path existed.
+        """
+        if not run_id or run_id in (".", ".."):
+            return None
+        if any(sep in run_id for sep in ("/", "\\", "\x00")):
+            return None
+
+        for root in self.logs_dirs:
+            try:
+                root_resolved = root.resolve()
+                candidate = (root_resolved / run_id).resolve()
+            except OSError:
+                continue
+            if candidate == root_resolved or not candidate.is_relative_to(root_resolved):
+                continue
+            if candidate.is_dir():
+                return candidate
+        return None
+
+    def _authorized(self) -> bool:
+        """True when the request carries the session token.
+
+        Accepted from the ``token`` query parameter (how the printed URL
+        arrives), the ``autotrainer_token`` cookie (set on that first page
+        load, so the dashboard's own fetch() calls carry it), or an
+        ``X-Autotrainer-Token`` header for scripted access.
+        """
+        if not self.auth_token:
+            return True
+
+        query = parse_qs(urlparse(self.path).query)
+        tokens = query.get("token") or []
+        supplied: str | None = tokens[0] if tokens else None
+        if supplied is None:
+            supplied = self.headers.get("X-Autotrainer-Token")
+        if supplied is None:
+            cookie_header = self.headers.get("Cookie", "")
+            jar = SimpleCookie()
+            with contextlib.suppress(Exception):
+                jar.load(cookie_header)
+            if "autotrainer_token" in jar:
+                supplied = jar["autotrainer_token"].value
+
+        if not supplied:
+            return False
+        # Constant-time: a plain == leaks the token prefix through timing.
+        return secrets.compare_digest(supplied, self.auth_token)
+
+    def _same_origin(self) -> bool:
+        """Reject cross-site state-changing requests.
+
+        The token cookie is SameSite=Strict, so a browser will not attach it
+        to a cross-site POST in the first place; this is the belt to that
+        suspenders, and also covers clients that ignore SameSite.
+        """
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True  # non-browser client; the token is the gate there
+        host = self.headers.get("Host", "")
+        return urlparse(origin).netloc == host
+
+    def _guard(self, *, mutating: bool = False) -> bool:
+        """Run the request guards, responding with the error if one fails."""
+        if not self._authorized():
+            self._respond_error(
+                HTTPStatus.UNAUTHORIZED,
+                "Missing or invalid token. Use the URL printed by `autotrainer ui`.",
+            )
+            return False
+        if mutating and not self._same_origin():
+            self._respond_error(HTTPStatus.FORBIDDEN, "Cross-origin request refused")
+            return False
+        return True
+
+    @property
+    def route(self) -> str:
+        """The request path with any query string removed.
+
+        Routing has to match on this rather than ``self.path``: the token
+        arrives as ``?token=...``, which would otherwise turn every endpoint
+        into a 404.
+        """
+        return urlparse(self.path).path
 
     def do_GET(self) -> None:
-        if self.path == "/" or self.path == "/index.html":
-            self._respond_html(_DASHBOARD_HTML)
-        elif self.path == "/api/hardware":
+        if not self._guard():
+            return
+
+        route = self.route
+        if route in ("/", "/index.html"):
+            # First load carries the token in the URL; hand it back as a
+            # SameSite cookie so the dashboard's fetch() calls are
+            # authenticated without threading it through every JS call site.
+            self._respond_html(_DASHBOARD_HTML, set_token_cookie=True)
+        elif route == "/api/hardware":
             self._handle_api_hardware()
-        elif self.path == "/api/sources":
+        elif route == "/api/sources":
             self._handle_api_sources()
-        elif self.path == "/api/runs":
+        elif route == "/api/runs":
             self._handle_api_runs()
-        elif self.path.startswith("/api/runs/") and (self.path.endswith("/export") or self.path.endswith("/export/html")):
-            parts = self.path.strip("/").split("/")
-            run_id = parts[2]
-            self._handle_export_html(run_id, as_attachment=True)
-        elif self.path.startswith("/api/runs/") and (self.path.endswith("/export/markdown") or self.path.endswith("/export/md")):
-            parts = self.path.strip("/").split("/")
-            run_id = parts[2]
-            self._handle_export_markdown(run_id)
-        elif self.path.startswith("/api/runs/") and self.path.endswith("/export/csv"):
-            parts = self.path.strip("/").split("/")
-            run_id = parts[2]
-            self._handle_export_csv(run_id)
-        elif self.path.startswith("/api/runs/") and self.path.endswith("/export/json"):
-            parts = self.path.strip("/").split("/")
-            run_id = parts[2]
-            self._handle_export_json(run_id)
-        elif self.path.startswith("/api/runs/") and (self.path.endswith("/report") or self.path.endswith("/preview")):
-            parts = self.path.strip("/").split("/")
-            run_id = parts[2]
-            self._handle_export_html(run_id, as_attachment=False)
-        elif self.path.startswith("/api/runs/"):
-            run_id = self.path[len("/api/runs/") :]
-            self._handle_api_run_detail(run_id)
+        elif route.startswith("/api/runs/") and (
+            route.endswith("/export") or route.endswith("/export/html")
+        ):
+            self._handle_export_html(route.strip("/").split("/")[2], as_attachment=True)
+        elif route.startswith("/api/runs/") and (
+            route.endswith("/export/markdown") or route.endswith("/export/md")
+        ):
+            self._handle_export_markdown(route.strip("/").split("/")[2])
+        elif route.startswith("/api/runs/") and route.endswith("/export/csv"):
+            self._handle_export_csv(route.strip("/").split("/")[2])
+        elif route.startswith("/api/runs/") and route.endswith("/export/json"):
+            self._handle_export_json(route.strip("/").split("/")[2])
+        elif route.startswith("/api/runs/") and (
+            route.endswith("/report") or route.endswith("/preview")
+        ):
+            self._handle_export_html(route.strip("/").split("/")[2], as_attachment=False)
+        elif route.startswith("/api/runs/"):
+            self._handle_api_run_detail(route[len("/api/runs/") :])
         else:
             self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
 
     def do_POST(self) -> None:
-        if self.path == "/api/sources":
+        if not self._guard(mutating=True):
+            return
+
+        if self.route == "/api/sources":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8")
             try:
@@ -3204,6 +3359,21 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                     return
 
                 new_dir = Path(raw_path).resolve()
+                if not new_dir.is_dir():
+                    self._respond_error(HTTPStatus.BAD_REQUEST, "Not a directory")
+                    return
+                if not _looks_like_logs_dir(new_dir):
+                    # Any absolute path used to be accepted here, which made
+                    # the dashboard a filesystem browser: POST /api/sources
+                    # with a home directory and every subfolder was listed as
+                    # a "run". Require it to actually contain runs.
+                    self._respond_error(
+                        HTTPStatus.BAD_REQUEST,
+                        "No autotrainer runs found in that directory. A logs "
+                        "directory contains run folders with run.json, "
+                        "metrics.csv, or metrics.jsonl.",
+                    )
+                    return
                 if new_dir not in [d.resolve() for d in self.logs_dirs]:
                     self.logs_dirs.append(new_dir)
 
@@ -3211,7 +3381,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
-        elif self.path == "/api/runs/rename":
+        elif self.route == "/api/runs/rename":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8")
             try:
@@ -3227,7 +3397,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                     self._respond_error(HTTPStatus.BAD_REQUEST, "Invalid run_id")
                     return
 
-                found_dir = self._find_run_dir(old_id)
+                found_dir = self._safe_run_dir(old_id)
                 if not found_dir:
                     self._respond_error(HTTPStatus.NOT_FOUND, f"Run {old_id} not found")
                     return
@@ -3256,27 +3426,30 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
-        elif self.path.startswith("/api/runs/") and self.path.endswith("/tags"):
-            run_id = self.path[len("/api/runs/") : -len("/tags")].strip("/")
+        elif self.route.startswith("/api/runs/") and self.route.endswith("/tags"):
+            run_id = self.route[len("/api/runs/") : -len("/tags")].strip("/")
             self._handle_api_tags(run_id)
 
-        elif self.path.startswith("/api/runs/") and self.path.endswith("/favorite"):
-            run_id = self.path[len("/api/runs/") : -len("/favorite")].strip("/")
+        elif self.route.startswith("/api/runs/") and self.route.endswith("/favorite"):
+            run_id = self.route[len("/api/runs/") : -len("/favorite")].strip("/")
             self._handle_api_favorite(run_id)
 
-        elif self.path.startswith("/api/runs/") and self.path.endswith("/notes"):
-            run_id = self.path[len("/api/runs/") : -len("/notes")].strip("/")
+        elif self.route.startswith("/api/runs/") and self.route.endswith("/notes"):
+            run_id = self.route[len("/api/runs/") : -len("/notes")].strip("/")
             self._handle_api_notes(run_id)
 
-        elif self.path.startswith("/api/runs/") and self.path.endswith("/archive"):
-            run_id = self.path[len("/api/runs/") : -len("/archive")].strip("/")
+        elif self.route.startswith("/api/runs/") and self.route.endswith("/archive"):
+            run_id = self.route[len("/api/runs/") : -len("/archive")].strip("/")
             self._handle_api_archive(run_id)
 
         else:
             self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
 
     def do_DELETE(self) -> None:
-        if self.path == "/api/sources":
+        if not self._guard(mutating=True):
+            return
+
+        if self.route == "/api/sources":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8")
             try:
@@ -3287,24 +3460,17 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                 self._respond_json({"success": True})
             except Exception as e:
                 self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
-        elif self.path.startswith("/api/runs/"):
-            run_id = self.path[len("/api/runs/") :].strip("/")
+        elif self.route.startswith("/api/runs/"):
+            run_id = self.route[len("/api/runs/") :].strip("/")
             self._handle_api_delete_run(run_id)
         else:
             self._respond_error(HTTPStatus.NOT_FOUND, "Endpoint not found")
-
-    def _find_run_dir(self, run_id: str) -> Path | None:
-        for d in self.logs_dirs:
-            candidate = d / run_id
-            if candidate.exists() and candidate.is_dir():
-                return candidate
-        return None
 
     def _handle_api_hardware(self) -> None:
         self._respond_json(_get_live_hardware())
 
     def _handle_api_tags(self, run_id: str) -> None:
-        run_dir = self._find_run_dir(run_id)
+        run_dir = self._safe_run_dir(run_id)
         if not run_dir:
             self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
             return
@@ -3334,7 +3500,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
     def _handle_api_favorite(self, run_id: str) -> None:
-        run_dir = self._find_run_dir(run_id)
+        run_dir = self._safe_run_dir(run_id)
         if not run_dir:
             self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
             return
@@ -3357,7 +3523,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
     def _handle_api_notes(self, run_id: str) -> None:
-        run_dir = self._find_run_dir(run_id)
+        run_dir = self._safe_run_dir(run_id)
         if not run_dir:
             self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
             return
@@ -3374,16 +3540,14 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             meta["notes"] = notes
             with open(meta_file, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
-            try:
+            with contextlib.suppress(Exception):
                 (run_dir / "notes.md").write_text(notes, encoding="utf-8")
-            except Exception:
-                pass
             self._respond_json({"success": True, "notes": notes})
         except Exception as e:
             self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
     def _handle_api_archive(self, run_id: str) -> None:
-        run_dir = self._find_run_dir(run_id)
+        run_dir = self._safe_run_dir(run_id)
         if not run_dir:
             self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
             return
@@ -3406,7 +3570,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
     def _handle_api_delete_run(self, run_id: str) -> None:
-        run_dir = self._find_run_dir(run_id)
+        run_dir = self._safe_run_dir(run_id)
         if not run_dir:
             self._respond_error(HTTPStatus.NOT_FOUND, f"Run {run_id} not found")
             return
@@ -3416,10 +3580,18 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._respond_error(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
-    def _respond_html(self, content: str) -> None:
+    def _respond_html(self, content: str, *, set_token_cookie: bool = False) -> None:
         encoded = content.encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        if set_token_cookie and self.auth_token:
+            # HttpOnly so page scripts can't read it; SameSite=Strict so a
+            # browser never attaches it to a cross-site request, which is what
+            # stops another tab from driving the delete endpoint.
+            self.send_header(
+                "Set-Cookie",
+                f"autotrainer_token={self.auth_token}; Path=/; HttpOnly; SameSite=Strict",
+            )
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -3445,16 +3617,16 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
             exists = resolved.exists() and resolved.is_dir()
             runs_count = 0
             if exists:
-                try:
+                with contextlib.suppress(Exception):
                     runs_count = sum(1 for item in resolved.iterdir() if item.is_dir())
-                except Exception:
-                    pass
-            sources_info.append({
-                "path": str(resolved),
-                "exists": exists,
-                "runs_count": runs_count,
-                "is_default": idx == 0,
-            })
+            sources_info.append(
+                {
+                    "path": str(resolved),
+                    "exists": exists,
+                    "runs_count": runs_count,
+                    "is_default": idx == 0,
+                }
+            )
         self._respond_json(sources_info)
 
     def _handle_api_runs(self) -> None:
@@ -3468,7 +3640,11 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                     if item.is_dir() and item.name not in seen_run_ids:
                         seen_run_ids.add(item.name)
                         meta_file = item / "run.json"
-                        meta: dict[str, Any] = {"run_id": item.name, "user": default_user, "source_dir": str(d.resolve())}
+                        meta: dict[str, Any] = {
+                            "run_id": item.name,
+                            "user": default_user,
+                            "source_dir": str(d.resolve()),
+                        }
                         if meta_file.exists():
                             try:
                                 with open(meta_file, encoding="utf-8") as f:
@@ -3478,10 +3654,8 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                                 pass
                         notes_file = item / "notes.md"
                         if notes_file.exists() and not meta.get("notes"):
-                            try:
+                            with contextlib.suppress(Exception):
                                 meta["notes"] = notes_file.read_text(encoding="utf-8")
-                            except Exception:
-                                pass
                         meta.setdefault("tags", [])
                         meta.setdefault("favorite", False)
                         meta.setdefault("notes", "")
@@ -3490,13 +3664,10 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         self._respond_json(runs)
 
     def _get_run_data(self, run_id: str) -> dict[str, Any] | None:
-        run_dir: Path | None = None
-        for d in self.logs_dirs:
-            candidate = d / run_id
-            if candidate.exists() and candidate.is_dir():
-                run_dir = candidate
-                break
-
+        # Same containment check as every other entry point - this method had
+        # its own inlined copy of the unchecked lookup, so hardening only
+        # _find_run_dir would have left the read path wide open.
+        run_dir = self._safe_run_dir(run_id)
         if not run_dir:
             return None
 
@@ -3514,10 +3685,8 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
 
         notes_file = run_dir / "notes.md"
         if notes_file.exists() and not metadata.get("notes"):
-            try:
+            with contextlib.suppress(Exception):
                 metadata["notes"] = notes_file.read_text(encoding="utf-8")
-            except Exception:
-                pass
 
         metadata.setdefault("tags", [])
         metadata.setdefault("favorite", False)
@@ -3574,7 +3743,7 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         json_str = json.dumps(data)
         user_name = data.get("metadata", {}).get("user", _detect_system_user())
         start_time = data.get("metadata", {}).get("start_datetime", "N/A")
-        
+
         standalone_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4202,20 +4371,20 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
 </html>"""
 
         # Also save persistently into the run directory on disk
-        for d in self.logs_dirs:
-            candidate = d / run_id
-            if candidate.exists() and candidate.is_dir():
-                try:
-                    (candidate / "report.html").write_text(standalone_html, encoding="utf-8")
-                except Exception:
-                    pass
-                break
+        # Containment-checked like every other run_id use: this writes a
+        # file, so an unchecked join here was an arbitrary-write primitive.
+        run_dir = self._safe_run_dir(run_id)
+        if run_dir is not None:
+            with contextlib.suppress(Exception):
+                (run_dir / "report.html").write_text(standalone_html, encoding="utf-8")
 
         encoded = standalone_html.encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         if as_attachment:
-            self.send_header("Content-Disposition", f'attachment; filename="autotrainer_report_{run_id}.html"')
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="autotrainer_report_{run_id}.html"'
+            )
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -4234,16 +4403,30 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
 
         # Compute losses
         metrics = data.get("metrics", [])
-        train_losses = [m.get("train_loss") or m.get("loss") for m in metrics if (m.get("train_loss") or m.get("loss")) is not None]
+        train_losses = [
+            m.get("train_loss") or m.get("loss")
+            for m in metrics
+            if (m.get("train_loss") or m.get("loss")) is not None
+        ]
         val_losses = [m.get("val_loss") for m in metrics if m.get("val_loss") is not None]
 
         first_loss = summary.get("init_loss", train_losses[0] if train_losses else "N/A")
         latest_train_loss = train_losses[-1] if train_losses else summary.get("final_loss", "N/A")
         latest_val_loss = val_losses[-1] if val_losses else summary.get("val_loss", "N/A")
 
-        first_loss_str = f"{first_loss:.4f}" if isinstance(first_loss, (int, float)) else str(first_loss)
-        train_loss_str = f"{latest_train_loss:.4f}" if isinstance(latest_train_loss, (int, float)) else str(latest_train_loss)
-        val_loss_str = f"{latest_val_loss:.4f}" if isinstance(latest_val_loss, (int, float)) else str(latest_val_loss)
+        first_loss_str = (
+            f"{first_loss:.4f}" if isinstance(first_loss, (int, float)) else str(first_loss)
+        )
+        train_loss_str = (
+            f"{latest_train_loss:.4f}"
+            if isinstance(latest_train_loss, (int, float))
+            else str(latest_train_loss)
+        )
+        val_loss_str = (
+            f"{latest_val_loss:.4f}"
+            if isinstance(latest_val_loss, (int, float))
+            else str(latest_val_loss)
+        )
 
         md = [
             f"# ⚡ Autotrainer Run Summary: `{run_id}`",
@@ -4265,35 +4448,42 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
                 clean_item = item.replace("[autotrainer] triage: ", "")
                 md.append(f"- ⚠️ {clean_item}")
         else:
-            md.append("- ✅ **All Systems Healthy**: No numerical anomalies, vanishing gradients, or dataloader starvation detected.")
+            md.append(
+                "- ✅ **All Systems Healthy**: No numerical anomalies, vanishing gradients, or dataloader starvation detected."
+            )
 
-        md.extend([
-            "",
-            "## ⚙️ Hyperparameters & Configuration",
-            "| Parameter | Value |",
-            "| :--- | :--- |",
-        ])
+        md.extend(
+            [
+                "",
+                "## ⚙️ Hyperparameters & Configuration",
+                "| Parameter | Value |",
+                "| :--- | :--- |",
+            ]
+        )
 
-        combined = {**meta.get("params", {}), **{k: v for k, v in summary.items() if k != "triage_diagnostics"}}
+        combined = {
+            **meta.get("params", {}),
+            **{k: v for k, v in summary.items() if k != "triage_diagnostics"},
+        }
         for k, v in combined.items():
             md.append(f"| `{k}` | `{v}` |")
 
         md_content = "\n".join(md) + "\n"
 
         # Also save to run directory
-        for d in self.logs_dirs:
-            candidate = d / run_id
-            if candidate.exists() and candidate.is_dir():
-                try:
-                    (candidate / "report.md").write_text(md_content, encoding="utf-8")
-                except Exception:
-                    pass
-                break
+        # Containment-checked like every other run_id use: this writes a
+        # file, so an unchecked join here was an arbitrary-write primitive.
+        run_dir = self._safe_run_dir(run_id)
+        if run_dir is not None:
+            with contextlib.suppress(Exception):
+                (run_dir / "report.md").write_text(md_content, encoding="utf-8")
 
         encoded = md_content.encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/markdown; charset=utf-8")
-        self.send_header("Content-Disposition", f'attachment; filename="autotrainer_summary_{run_id}.md"')
+        self.send_header(
+            "Content-Disposition", f'attachment; filename="autotrainer_summary_{run_id}.md"'
+        )
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -4315,9 +4505,11 @@ class AutotrainerUIHandler(BaseHTTPRequestHandler):
         if not csv_content:
             metrics = data.get("metrics", [])
             if metrics:
-                import io, csv as py_csv
+                import csv as py_csv
+                import io
+
                 output = io.StringIO()
-                all_keys = list(dict.fromkeys(k for m in metrics for k in m.keys()))
+                all_keys = list(dict.fromkeys(k for m in metrics for k in m))
                 writer = py_csv.DictWriter(output, fieldnames=all_keys)
                 writer.writeheader()
                 for m in metrics:
@@ -4359,8 +4551,26 @@ def run_ui_server(
     logs_dirs: list[str | Path] | None = None,
     port: int = 8501,
     open_browser: bool = True,
+    host: str = "127.0.0.1",
+    token: str | None = "",
 ) -> None:
-    """Launch the autotrainer Web UI server supporting single or multiple logs directories."""
+    """Launch the autotrainer Web UI server over one or more logs directories.
+
+    Args:
+        logs_dir: a single logs directory, or a list of them.
+        logs_dirs: explicit list form; takes precedence over ``logs_dir``.
+        port: TCP port to serve on.
+        open_browser: open the dashboard automatically once bound.
+        host: interface to bind. **Defaults to loopback.** The API renames,
+            archives and deletes run directories, so binding it to
+            ``0.0.0.0`` publishes that to everyone who can route to the box -
+            on a shared SLURM login node, the whole cluster. Pass an explicit
+            address to widen it; a warning is printed when it isn't loopback.
+        token: session token required on every request. ``""`` (default)
+            generates one and prints it as part of the URL; ``None`` disables
+            authentication entirely, which is only reasonable on a machine
+            where you trust every local user.
+    """
     paths: list[Path] = []
 
     if logs_dirs:
@@ -4377,18 +4587,40 @@ def run_ui_server(
 
     AutotrainerUIHandler.logs_dirs = paths
 
+    resolved_token = secrets.token_urlsafe(32) if token == "" else token
+    AutotrainerUIHandler.auth_token = resolved_token
+
     class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
         daemon_threads = True
 
-    server = ThreadedHTTPServer(("0.0.0.0", port), AutotrainerUIHandler)
-    url = f"http://localhost:{port}"
+    server = ThreadedHTTPServer((host, port), AutotrainerUIHandler)
+
+    display_host = "localhost" if host in ("127.0.0.1", "localhost", "::1") else host
+    url = f"http://{display_host}:{port}"
+    if resolved_token:
+        url = f"{url}/?token={resolved_token}"
+
     print(f"[autotrainer] Web UI running at {url} (monitoring {len(paths)} directories)")
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        # Deleting and renaming runs is part of this API, so a non-loopback
+        # bind hands that to anyone who can reach the port. Say so plainly
+        # rather than letting it be discovered.
+        print(
+            f"[autotrainer] WARNING: bound to {host}, not loopback - the run "
+            "rename/archive/delete endpoints are reachable from the network. "
+            + (
+                "The session token above is the only thing gating them."
+                if resolved_token
+                else "Authentication is DISABLED (token=None). Anyone who can "
+                "reach this port can delete your runs."
+            )
+        )
+    if not resolved_token:
+        print("[autotrainer] WARNING: authentication disabled (token=None).")
 
     if open_browser:
-        try:
+        with contextlib.suppress(Exception):
             webbrowser.open(url)
-        except Exception:
-            pass
 
     try:
         server.serve_forever()

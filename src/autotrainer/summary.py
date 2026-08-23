@@ -19,6 +19,7 @@ timings and applied-optimization record.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import time
 from pathlib import Path
 from typing import Any
@@ -78,18 +79,27 @@ class SummaryTracker:
         # column by checking this. Empty dict when the user is running an
         # uninstrumented loop or another framework.
         self.applied: dict[str, Any] = {}
-        self._native_tracker = None
+        self._native_tracker: Any = None
 
-    def _get_native_tracker(self):
+    def _get_native_tracker(self) -> Any:
+        """The lazily-created on-disk tracker, or None when tracking is off.
+
+        ``AUTOTRAINER_DISABLE_TRACKING=1`` opts out, which is how the test
+        suite avoids littering ``logs/`` - set once in ``conftest.py`` rather
+        than by sniffing ``PYTEST_CURRENT_TEST`` here, so the code path under
+        test is the same one that ships.
+        """
         import os
 
-        if self.logs_dir is None and ("PYTEST_CURRENT_TEST" in os.environ or os.environ.get("AUTOTRAINER_DISABLE_TRACKING") == "1"):
+        if self.logs_dir is None and os.environ.get("AUTOTRAINER_DISABLE_TRACKING") == "1":
             return None
         if self._native_tracker is None:
             try:
                 from .trackers import NativeTracker
 
-                self._native_tracker = NativeTracker(user=self.user, base_dir=self.logs_dir or "logs")
+                self._native_tracker = NativeTracker(
+                    user=self.user, base_dir=self.logs_dir or "logs"
+                )
             except Exception:
                 pass
         return self._native_tracker
@@ -140,68 +150,65 @@ class SummaryTracker:
             self.triage_mon.step(loss, model=model, optimizer=opt)
             nt = self._get_native_tracker()
             if nt:
-                try:
+                with contextlib.suppress(Exception):
                     nt.log_step(self.step_count, {"loss": float(loss)})
-                except Exception:
-                    pass
 
     def log_epoch(
         self,
-        train_loss: float | int | dict[str, Any],
-        val_loss: float | None = None,
+        train_loss: float | int | dict[str, Any] | None = None,
+        val_loss: float | dict[str, Any] | None = None,
         val_acc: float | None = None,
         **kwargs: Any,
     ) -> None:
-        """Log epoch-level metrics."""
+        """Log epoch-level metrics.
+
+        Accepts three call shapes, kept for the callback integrations:
+
+            log_epoch(train_loss, val_loss=..., val_acc=...)
+            log_epoch({"train_loss": ..., "val_loss": ...})
+            log_epoch(epoch_number, {"train_loss": ...})
+
+        Every metric is optional. A callback that only has a validation
+        number passes ``train_loss=None``, which used to reach
+        ``float(None)`` and raise ``TypeError`` - so
+        ``AutotrainerCallback.on_epoch_end(epoch=1, val_loss=0.5)``, using
+        nothing but the signature's own defaults, crashed the training run
+        it was supposed to be observing.
+        """
         epoch_idx = len(self.train_losses) + 1
         metrics_to_log: dict[str, float] = {}
 
         if isinstance(train_loss, dict):
-            m = train_loss
-            t_loss = m.get("train_loss", m.get("loss"))
-            v_loss = m.get("val_loss")
-            v_acc = m.get("val_acc", m.get("accuracy"))
-            if t_loss is not None:
-                self.train_losses.append(float(t_loss))
-                metrics_to_log["train_loss"] = float(t_loss)
-            if v_loss is not None:
-                self.val_losses.append(float(v_loss))
-                metrics_to_log["val_loss"] = float(v_loss)
-            if v_acc is not None:
-                self.val_accs.append(float(v_acc))
-                metrics_to_log["val_acc"] = float(v_acc)
+            metrics = train_loss
         elif isinstance(val_loss, dict):
             # Form: log_epoch(epoch_num, metrics_dict)
-            epoch_idx = int(train_loss)
-            m = val_loss
-            t_loss = m.get("train_loss", m.get("loss"))
-            v_loss = m.get("val_loss")
-            v_acc = m.get("val_acc", m.get("accuracy"))
-            if t_loss is not None:
-                self.train_losses.append(float(t_loss))
-                metrics_to_log["train_loss"] = float(t_loss)
-            if v_loss is not None:
-                self.val_losses.append(float(v_loss))
-                metrics_to_log["val_loss"] = float(v_loss)
-            if v_acc is not None:
-                self.val_accs.append(float(v_acc))
-                metrics_to_log["val_acc"] = float(v_acc)
+            if train_loss is not None:
+                epoch_idx = int(train_loss)
+            metrics = val_loss
         else:
-            self.train_losses.append(float(train_loss))
-            metrics_to_log["train_loss"] = float(train_loss)
-            if val_loss is not None:
-                self.val_losses.append(float(val_loss))
-                metrics_to_log["val_loss"] = float(val_loss)
-            if val_acc is not None:
-                self.val_accs.append(float(val_acc))
-                metrics_to_log["val_acc"] = float(val_acc)
+            metrics = {
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+            }
+
+        # One place that reads the three metrics, so the dict and keyword
+        # forms cannot drift apart - and one None guard covering all of them.
+        for key, series, aliases in (
+            ("train_loss", self.train_losses, ("train_loss", "loss")),
+            ("val_loss", self.val_losses, ("val_loss",)),
+            ("val_acc", self.val_accs, ("val_acc", "accuracy")),
+        ):
+            value = next((metrics[a] for a in aliases if metrics.get(a) is not None), None)
+            if value is None:
+                continue
+            series.append(float(value))
+            metrics_to_log[key] = float(value)
 
         nt = self._get_native_tracker()
         if nt and metrics_to_log:
-            try:
+            with contextlib.suppress(Exception):
                 nt.log_epoch(epoch_idx, metrics_to_log)
-            except Exception:
-                pass
 
     def report(self, checkpoint: str | Path | None = None) -> None:
         """Print formatted comprehensive training summary box on rank 0."""
@@ -359,20 +366,22 @@ class SummaryTracker:
         nt = self._get_native_tracker()
         if nt:
             try:
-                nt.log_summary({
-                    "duration": elapsed,
-                    "epochs": num_epochs,
-                    "throughput": throughput,
-                    "init_loss": init_loss,
-                    "final_loss": final_loss,
-                    "checkpoint": str(Path(checkpoint).resolve()) if checkpoint else None,
-                    "triage_diagnostics": self.triage_mon.diagnostics,
-                    "hardware": {
-                        "device": gpu_name,
-                        "memory": mem_str,
-                        "world_size": world_size,
+                nt.log_summary(
+                    {
+                        "duration": elapsed,
+                        "epochs": num_epochs,
+                        "throughput": throughput,
+                        "init_loss": init_loss,
+                        "final_loss": final_loss,
+                        "checkpoint": str(Path(checkpoint).resolve()) if checkpoint else None,
+                        "triage_diagnostics": self.triage_mon.diagnostics,
+                        "hardware": {
+                            "device": gpu_name,
+                            "memory": mem_str,
+                            "world_size": world_size,
+                        },
                     }
-                })
+                )
                 nt.close()
             except Exception:
                 pass
