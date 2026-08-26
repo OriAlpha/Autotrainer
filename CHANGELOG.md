@@ -4,6 +4,31 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.16.0] - 2026-08-20
+### Added
+- **Hardware Telemetry Curves & Resource Diagnostics (`#hwChart`)**:
+  - Live system resource meter footer with green pulse status indicator in sidebar.
+  - Dedicated hardware telemetry card displaying GPU VRAM (GB / %), GPU model name, and Host RAM / CPU utilization curves over training steps and epochs.
+  - REST endpoint `GET /api/hardware` with cross-platform memory and GPU detection.
+- **Run Tagging, Star Favoriting & Sidebar Organization**:
+  - Star favorite toggle (⭐) on individual runs with persistent metadata state.
+  - Sidebar filter tabs: `[ All ]` and `[ ⭐ Starred ]` with glow accents.
+  - Inline run tag chip management: `+ Tag` creator, `✕` tag pill deletion, and dynamic sidebar tag filter pills bar.
+  - REST endpoints: `POST /api/runs/<run_id>/tags` and `POST /api/runs/<run_id>/favorite`.
+- **Hyperparameter & Metric Parallel Coordinates Chart (`#parallelCanvas`)**:
+  - High-performance Canvas multi-axis parallel coordinates visualization in Compare Mode.
+  - Visualizes complex relationships and trajectories across `Learning Rate` -> `Batch Size` -> `First Loss` -> `Training Loss` -> `Validation Loss` across multiple selected runs.
+- **Run Annotations & Markdown Notes Drawer (`#notesCard`)**:
+  - Embedded Markdown drawer with `Edit` and live `Preview` rendering tabs.
+  - Auto-persisted to both `run.json` and `<run_dir>/notes.md` on disk.
+  - REST endpoint `POST /api/runs/<run_id>/notes`.
+- **1-Click Run Deletion & Archive**:
+  - Clean deletion of experiment runs and log directories from disk with modal confirmation.
+  - REST endpoints `DELETE /api/runs/<run_id>` and `POST /api/runs/<run_id>/archive`.
+- **Refined KPI Stat Cards**:
+  - Displays `FIRST LOSS`, `TRAINING LOSS`, `VALIDATION LOSS`, and `EPOCHS` with glowing accents.
+
 ### Security
 The Web UI added in 0.15.0 served a filesystem-mutating API with no
 authentication on every network interface. Each item below was confirmed by
@@ -80,30 +105,6 @@ exploiting a running server, and is now pinned by a test in
   entry-point table. `tests/test_docs.py` now checks this direction too; it
   only ever verified that `__all__` members appear in the docs, never that
   documented names are exported.
-
-## [0.16.0] - 2026-08-20
-### Added
-- **Hardware Telemetry Curves & Resource Diagnostics (`#hwChart`)**:
-  - Live system resource meter footer with green pulse status indicator in sidebar.
-  - Dedicated hardware telemetry card displaying GPU VRAM (GB / %), GPU model name, and Host RAM / CPU utilization curves over training steps and epochs.
-  - REST endpoint `GET /api/hardware` with cross-platform memory and GPU detection.
-- **Run Tagging, Star Favoriting & Sidebar Organization**:
-  - Star favorite toggle (⭐) on individual runs with persistent metadata state.
-  - Sidebar filter tabs: `[ All ]` and `[ ⭐ Starred ]` with glow accents.
-  - Inline run tag chip management: `+ Tag` creator, `✕` tag pill deletion, and dynamic sidebar tag filter pills bar.
-  - REST endpoints: `POST /api/runs/<run_id>/tags` and `POST /api/runs/<run_id>/favorite`.
-- **Hyperparameter & Metric Parallel Coordinates Chart (`#parallelCanvas`)**:
-  - High-performance Canvas multi-axis parallel coordinates visualization in Compare Mode.
-  - Visualizes complex relationships and trajectories across `Learning Rate` -> `Batch Size` -> `First Loss` -> `Training Loss` -> `Validation Loss` across multiple selected runs.
-- **Run Annotations & Markdown Notes Drawer (`#notesCard`)**:
-  - Embedded Markdown drawer with `Edit` and live `Preview` rendering tabs.
-  - Auto-persisted to both `run.json` and `<run_dir>/notes.md` on disk.
-  - REST endpoint `POST /api/runs/<run_id>/notes`.
-- **1-Click Run Deletion & Archive**:
-  - Clean deletion of experiment runs and log directories from disk with modal confirmation.
-  - REST endpoints `DELETE /api/runs/<run_id>` and `POST /api/runs/<run_id>/archive`.
-- **Refined KPI Stat Cards**:
-  - Displays `FIRST LOSS`, `TRAINING LOSS`, `VALIDATION LOSS`, and `EPOCHS` with glowing accents.
 
 ## [0.15.0] - 2026-08-19
 ### Added
