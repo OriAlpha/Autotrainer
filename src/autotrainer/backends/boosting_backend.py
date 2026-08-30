@@ -2,7 +2,7 @@
 
 Tree libraries have no batch size or gradient sync; parallelism means
 threads for tree construction. v0.4a: single-node thread auto-tuning,
-reusing the SLURM-aware CPU detection from the sklearn backend.
+reusing the SLURM-aware CPU detection every backend shares.
 
 Multi-node boosting (xgboost.dask / lightgbm.dask on a cluster built from
 the SLURM allocation) is planned as v0.4b.
@@ -17,12 +17,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .sklearn_backend import _available_cpus
+from ..utils import available_cpus
 
 
 def prepare(model: Any, n_jobs: int | None = None) -> Any:
     """Configure thread count on an XGBoost/LightGBM estimator (in place)."""
-    jobs = n_jobs if n_jobs is not None else _available_cpus()
+    jobs = n_jobs if n_jobs is not None else available_cpus()
     lib = type(model).__module__.split(".")[0]
 
     if hasattr(model, "set_params"):
@@ -53,7 +53,7 @@ def boost_params(params: dict[str, Any] | None = None, lib: str = "xgboost") -> 
         params = autotrainer.boost_params({"max_depth": 6})
         xgboost.train(params, dtrain)
     """
-    jobs = _available_cpus()
+    jobs = available_cpus()
     out = dict(params or {})
     out["nthread" if lib == "xgboost" else "num_threads"] = jobs
     _warn_if_multinode()

@@ -152,3 +152,42 @@ class TestGetModelDevice:
 
         model = nn.Linear(3, 2)
         assert get_model_device(model) == torch.device("cpu")
+
+
+class TestAvailableCpus:
+    """The allocation, not the machine - shared by the DataLoader worker
+    sizing and every estimator backend's n_jobs."""
+
+    def test_slurm_allocation_wins(self, monkeypatch):
+        from autotrainer.utils import available_cpus
+
+        monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+        assert available_cpus() == 8
+
+    def test_slurm_allocation_is_already_per_task(self, monkeypatch):
+        """world_size must not divide SLURM_CPUS_PER_TASK a second time -
+        each rank is its own task with its own 8 CPUs."""
+        from autotrainer.utils import available_cpus
+
+        monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+        assert available_cpus(world_size=4) == 8
+
+    def test_local_shards_across_local_ranks(self, monkeypatch):
+        """Off SLURM the affinity mask covers the whole machine and every
+        local rank shares it, so there it does divide."""
+        from autotrainer.utils import available_cpus
+
+        monkeypatch.delenv("SLURM_CPUS_PER_TASK", raising=False)
+        assert available_cpus(world_size=4) <= available_cpus(world_size=1)
+
+    def test_never_returns_zero(self, monkeypatch):
+        from autotrainer.utils import available_cpus
+
+        monkeypatch.delenv("SLURM_CPUS_PER_TASK", raising=False)
+        assert available_cpus(world_size=10_000) >= 1
+
+    def test_a_nonsense_allocation_does_not_return_zero(self, monkeypatch):
+        from autotrainer.utils import available_cpus
+
+        monkeypatch.setenv("SLURM_CPUS_PER_TASK", "0")
+        assert available_cpus() >= 1

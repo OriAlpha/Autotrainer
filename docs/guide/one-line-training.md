@@ -57,6 +57,12 @@ function trains fine and produces garbage:
 
 Override any of them by keyword: `loss=`, `optimizer=`, `lr=`, `schedule=`.
 
+The optimizer is built *after* the model reaches the GPU, so on CUDA it gets
+PyTorch's fused kernels — the whole parameter update in one launch instead of
+one per tensor. Measured +11-12% per step on ordinary nets, and over 2x when
+the optimizer step dominates. This only applies to the optimizer `auto()`
+builds; one you pass in is yours and is never modified.
+
 ## Data checks, before the compute
 
 `auto()` and `train()` already peek at your batches to infer the loss, so they

@@ -167,7 +167,7 @@ Autotrainer maintains a strict separation between **hardware execution throughpu
 
 | Dimension | What it Includes | How Autotrainer Treats It |
 |---|---|---|
-| **⚡ Hardware Throughput** | AMP (bf16/fp16), TF32, DataLoader Workers, Pin Memory, cuDNN Benchmark, DDP Spawning | **100% Automatic & Safe** — `prepare()` enables these out of the box because they accelerate compute execution without altering your loss function or model convergence. |
+| **⚡ Hardware Throughput** | AMP (bf16/fp16), TF32, channels_last, DataLoader Workers, Pin Memory, cuDNN Benchmark, DDP Spawning | **100% Automatic & Safe** — `prepare()` enables these out of the box because they accelerate compute execution without altering your loss function or model convergence. |
 | **🧠 Algorithmic / Math** | Gradient Clipping, Learning Rate, Optimizer Choice, Weight Decay, Loss Scaling | **Non-Invasive by Default** — Autotrainer never silently modifies your mathematical hyperparameters. Instead, the **AI Training Doctor** (`TrainingMonitor`) inspects live tensor dynamics and calculates concrete remediation steps. |
 
 ### Reach for something else when

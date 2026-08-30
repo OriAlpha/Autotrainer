@@ -456,6 +456,17 @@ def prepare(
     if amp is None:
         amp = optimize  # default: optimize= implies AMP, but stays overridable
 
+    # channels_last AFTER the amp decision, because it depends on it: NHWC is
+    # a big win through the tensor cores under mixed precision and a big loss
+    # without it (measured 3x slower in fp32/TF32 - cuDNN's fp32 fast paths
+    # are NCHW). Converting before the DDP wrap is fine: DDP references the
+    # same Parameter objects.
+    if optimize and use_cuda and amp:
+        from .._optimize import apply_channels_last
+
+        if apply_channels_last(model):
+            applied["channels_last"] = True
+
     # Set when _shard_loader installed the auto-epoch wrapper, so it can be
     # reapplied after the loader rebuilds below. See the unwrap comment there.
     auto_epoch = False
@@ -693,6 +704,12 @@ def prepare(
         summary.loss_fn = loss_fn
     if dataloader is not None and hasattr(dataloader, "batch_size") and summary.batch_size is None:
         summary.batch_size = getattr(dataloader, "batch_size", None)
+
+    if applied.get("channels_last"):
+        # Read by train_step() to convert 4D inputs to match. An attribute
+        # rather than a layout probe because train_step runs per step and
+        # walking modules() to find a conv is not free at that rate.
+        model._autotrainer_channels_last = True
 
     out = [model]
     if dataloader is not None:

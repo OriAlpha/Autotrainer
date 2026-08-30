@@ -19,6 +19,32 @@ def rank() -> int:
     return int(os.environ.get("RANK", "0"))
 
 
+def available_cpus(world_size: int = 1) -> int:
+    """CPUs this process may actually use - not the machine's core count.
+
+    The distinction is the whole point on a cluster. A job granted 8 CPUs of
+    a 128-core node must not size its worker pool from 128: SLURM's cgroup
+    will happily let the processes exist and then thrash them against the
+    allocation. ``psutil.cpu_count()`` reports the node; the two sources
+    below report the allocation.
+
+    ``SLURM_CPUS_PER_TASK`` is already *per task*, so ``world_size`` must not
+    divide it again - each rank is its own task with its own allocation.
+    Everywhere else the affinity mask covers the whole machine and all local
+    ranks share it, so it does divide.
+    """
+    slurm_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
+    if slurm_cpus:
+        return max(int(slurm_cpus), 1)
+    # sched_getaffinity respects cgroups/cpusets (so also Docker/k8s limits),
+    # unlike cpu_count. POSIX-only, hence the hasattr guard.
+    if hasattr(os, "sched_getaffinity"):
+        total = len(os.sched_getaffinity(0))
+    else:
+        total = os.cpu_count() or 1
+    return max(total // max(world_size, 1), 1)
+
+
 def cuda_device(local_rank: int = 0) -> torch.device:
     """The CUDA device for ``local_rank``, or CPU when no GPU is visible.
 

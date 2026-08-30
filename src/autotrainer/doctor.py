@@ -72,6 +72,56 @@ def _check_slurm(report: list[str]) -> None:
             f"{WARN} ntasks-per-node={ntasks} != gpus-on-node={gpus} - "
             "for DDP these should usually match (one task per GPU)"
         )
+    if "SLURM_CPUS_PER_TASK" not in os.environ:
+        report.append(
+            f"{WARN} SLURM_CPUS_PER_TASK unset - the DataLoader will size its "
+            "workers from the node's cores, not your allocation; "
+            "set --cpus-per-task=N"
+        )
+
+
+def _check_cpus(report: list[str]) -> None:
+    """The loader-worker budget, which is what actually starves the GPU.
+
+    Two ways to lose here, and neither raises: too few CPUs and the GPU waits
+    on the loader; workers sized from the node instead of the allocation and
+    they thrash against the cgroup.
+    """
+    from ._optimize import _DEFAULT_NUM_WORKERS_CAP
+    from .detect import detect
+    from .utils import available_cpus
+
+    env = detect()
+    per_rank = available_cpus(env.nproc_per_node)
+    workers = min(per_rank, _DEFAULT_NUM_WORKERS_CAP)
+    source = "SLURM allocation" if os.environ.get("SLURM_CPUS_PER_TASK") else "affinity mask"
+    line = f"{per_rank} CPU(s) per rank ({source}) -> num_workers={workers}"
+    if per_rank <= 1:
+        report.append(
+            f"{WARN} {line} - one CPU cannot keep a GPU fed; "
+            "raise --cpus-per-task (4-8 per GPU is a reasonable start)"
+        )
+    else:
+        report.append(f"{OK} {line}")
+
+
+def _check_scratch(report: list[str]) -> None:
+    """Writing checkpoints and the compile cache to NFS is the classic
+    HPC footgun - it works, it is just slow for everyone on the mount."""
+    from .slurm import _looks_networked, node_scratch
+
+    try:
+        scratch = node_scratch()
+    except OSError as e:
+        report.append(f"{WARN} could not create a scratch dir: {e}")
+        return
+    if _looks_networked(scratch):
+        report.append(
+            f"{WARN} scratch {scratch} looks networked (NFS/Lustre/GPFS) - "
+            "set TMPDIR to node-local storage before training"
+        )
+    else:
+        report.append(f"{OK} scratch {scratch} looks node-local")
 
 
 def _check_port(report: list[str]) -> None:
@@ -92,7 +142,9 @@ def run_doctor() -> int:
     ]
     _check_frameworks(report)
     _check_gpu(report)
+    _check_cpus(report)
     _check_slurm(report)
+    _check_scratch(report)
     _check_port(report)
 
     print("\n".join(report))

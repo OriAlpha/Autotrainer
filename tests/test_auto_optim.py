@@ -13,11 +13,12 @@ from torch.utils.data import (  # noqa: E402
 )
 
 from autotrainer.auto_optim import (  # noqa: E402
+    _build_optimizer,
+    _choose_optimizer,
     _find_lr_synced,
     _gather_targets,
     _infer_loss,
     _make_loss,
-    _make_optimizer,
     _param_groups,
     auto,
 )
@@ -167,22 +168,42 @@ class TestMakeOptimizer:
     def test_cnn_model_picks_sgd(self):
         # A model with a Conv2d should default to SGD (the classic CNN recipe).
         model = nn.Sequential(nn.Conv2d(1, 4, 3), nn.Flatten(), nn.Linear(4 * 26 * 26, 2))
-        opt, name, _ = _make_optimizer(model, None, lr=0.1, weight_decay=0.0)
+        name, _ = _choose_optimizer(model, None)
         assert name == "sgd"
-        assert isinstance(opt, torch.optim.SGD)
+        assert isinstance(_build_optimizer(model, name, 0.1, 0.0), torch.optim.SGD)
 
     def test_plain_linear_picks_adamw(self):
         model = nn.Linear(5, 2)
-        opt, name, _ = _make_optimizer(model, None, lr=0.1, weight_decay=0.0)
+        name, _ = _choose_optimizer(model, None)
         assert name == "adamw"
-        assert isinstance(opt, torch.optim.AdamW)
+        assert isinstance(_build_optimizer(model, name, 0.1, 0.0), torch.optim.AdamW)
 
     def test_user_override_respected(self):
         model = nn.Linear(5, 2)
         # Even though it's not a CNN, user asks for sgd explicitly.
-        opt, name, reason = _make_optimizer(model, "sgd", lr=0.1, weight_decay=0.0)
+        name, reason = _choose_optimizer(model, "sgd")
         assert name == "sgd"
         assert "override" in reason.lower()
+
+    def test_cpu_params_get_no_fused_kwarg(self):
+        """fused needs CUDA params at construction; a CPU model must still
+        build, just without it."""
+        from autotrainer.auto_optim import _fused_kwargs
+
+        model = nn.Linear(5, 2)
+        assert _fused_kwargs(model) == {}
+        assert _build_optimizer(model, "adamw", 0.1, 0.0) is not None
+
+    @pytest.mark.cuda
+    def test_cuda_params_get_fused(self):
+        if not torch.cuda.is_available():
+            pytest.skip("needs CUDA")
+        from autotrainer.auto_optim import _fused_kwargs
+
+        model = nn.Linear(5, 2).cuda()
+        assert _fused_kwargs(model) == {"fused": True}
+        opt = _build_optimizer(model, "adamw", 0.1, 0.0)
+        assert opt.param_groups[0].get("fused") is True
 
 
 class TestParamGroups:

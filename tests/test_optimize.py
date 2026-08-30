@@ -91,6 +91,161 @@ class TestBuildLoaderDefaults:
         # Sharding across more ranks means fewer workers per rank.
         assert quad["num_workers"] <= single["num_workers"]
 
+    def test_workers_respect_the_slurm_allocation(self, monkeypatch):
+        """The bug this replaced: sizing from the node's core count.
+
+        A job granted 2 CPUs on a 128-core node used to get the cap (8)
+        workers per rank, four times its whole allocation.
+        """
+        torch = pytest.importorskip("torch")
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setenv("SLURM_CPUS_PER_TASK", "2")
+        from autotrainer._optimize import build_loader_defaults
+
+        out = build_loader_defaults(self._loader(torch), world_size=4)
+        # CPUS_PER_TASK is already per task - world_size must not divide it.
+        assert out["num_workers"] == 2
+
+    def test_slurm_allocation_still_obeys_the_cap(self, monkeypatch):
+        torch = pytest.importorskip("torch")
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setenv("SLURM_CPUS_PER_TASK", "64")
+        from autotrainer._optimize import build_loader_defaults
+
+        assert build_loader_defaults(self._loader(torch), world_size=1)["num_workers"] == 8
+
+
+class TestChannelsLast:
+    """NHWC is a big win under AMP and a big LOSS without it (measured 3x
+    slower in fp32/TF32), so the gate matters as much as the conversion."""
+
+    @staticmethod
+    def _seq(nn, *layers):
+        return nn.Sequential(*layers)
+
+    def test_conv2d_net_is_converted(self):
+        torch = pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer._optimize import apply_channels_last
+
+        m = self._seq(nn, nn.Conv2d(3, 8, 3), nn.BatchNorm2d(8), nn.ReLU())
+        assert apply_channels_last(m) is True
+        assert m[0].weight.is_contiguous(memory_format=torch.channels_last)
+
+    def test_conv3d_net_is_left_alone(self):
+        """channels_last is a 4D layout; a 3D net wants channels_last_3d."""
+        pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer._optimize import apply_channels_last
+
+        assert apply_channels_last(self._seq(nn, nn.Conv3d(3, 8, 3))) is False
+
+    def test_conv1d_net_is_left_alone(self):
+        pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer._optimize import apply_channels_last
+
+        assert apply_channels_last(self._seq(nn, nn.Conv1d(3, 8, 3))) is False
+
+    def test_mixed_conv_dims_are_left_alone(self):
+        """One Conv3d among the Conv2ds makes the whole conversion ambiguous."""
+        pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer._optimize import apply_channels_last
+
+        assert apply_channels_last(self._seq(nn, nn.Conv2d(3, 8, 3), nn.Conv3d(8, 8, 3))) is False
+
+    def test_mlp_is_left_alone(self):
+        pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer._optimize import apply_channels_last
+
+        assert apply_channels_last(self._seq(nn, nn.Linear(4, 4), nn.ReLU())) is False
+
+    def test_not_applied_without_amp(self, monkeypatch):
+        """The gate that matters: no AMP, no conversion. Without it this is a
+        3x slowdown, not an optimization."""
+        torch = pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer.backends.torch_backend import prepare
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        m = nn.Sequential(nn.Conv2d(3, 8, 3), nn.ReLU())
+        out = prepare(m, None, None, optimize=True, amp=False)
+        assert getattr(out, "_autotrainer_channels_last", False) is False
+
+    def test_not_applied_when_optimize_is_off(self, monkeypatch):
+        torch = pytest.importorskip("torch")
+        import torch.nn as nn
+
+        from autotrainer.backends.torch_backend import prepare
+
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        m = nn.Sequential(nn.Conv2d(3, 8, 3), nn.ReLU())
+        out = prepare(m, None, None, optimize=False)
+        assert getattr(out, "_autotrainer_channels_last", False) is False
+
+
+class TestChannelsLastInputs:
+    """train_step matches the input layout to the model's, and leaves
+    everything that isn't a 4D float tensor alone."""
+
+    def test_4d_float_input_is_converted(self):
+        torch = pytest.importorskip("torch")
+
+        from autotrainer.loop import _to_channels_last
+
+        out = _to_channels_last(torch.randn(2, 3, 8, 8))
+        assert out.is_contiguous(memory_format=torch.channels_last)
+
+    def test_2d_input_passes_through(self):
+        torch = pytest.importorskip("torch")
+
+        from autotrainer.loop import _to_channels_last
+
+        x = torch.randn(2, 3)
+        assert _to_channels_last(x) is x
+
+    def test_integer_input_passes_through(self):
+        torch = pytest.importorskip("torch")
+
+        from autotrainer.loop import _to_channels_last
+
+        x = torch.randint(0, 5, (2, 3, 8, 8))
+        assert _to_channels_last(x) is x
+
+    def test_dicts_and_tuples_are_walked(self):
+        torch = pytest.importorskip("torch")
+
+        from autotrainer.loop import _to_channels_last
+
+        d = _to_channels_last({"img": torch.randn(2, 3, 8, 8), "n": 5})
+        assert d["img"].is_contiguous(memory_format=torch.channels_last)
+        assert d["n"] == 5
+        t = _to_channels_last((torch.randn(2, 3, 8, 8), "meta"))
+        assert isinstance(t, tuple) and t[1] == "meta"
+        assert t[0].is_contiguous(memory_format=torch.channels_last)
+
+    def test_unmarked_model_leaves_inputs_alone(self):
+        """No marker (the CPU / no-AMP / non-conv case) means no conversion."""
+        torch = pytest.importorskip("torch")
+        import torch.nn as nn
+
+        import autotrainer
+
+        m = nn.Conv2d(3, 4, 3)
+        assert getattr(m, "_autotrainer_channels_last", False) is False
+        opt = torch.optim.SGD(m.parameters(), lr=0.01)
+        x = torch.randn(2, 3, 8, 8)
+        autotrainer.train_step(m, lambda o, t: o.sum(), x, None, opt)
+        assert not x.is_contiguous(memory_format=torch.channels_last)
+
 
 class TestApplyGpuFlags:
     def test_no_op_on_cpu(self, monkeypatch):
