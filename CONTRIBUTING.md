@@ -115,6 +115,12 @@ pre-commit install
   top level - the base `pip install autotrainer` must work with no ML
   framework installed.
 - **Update `CHANGELOG.md`** under an `[Unreleased]` heading.
+- **Web UI markup lives in `src/autotrainer/templates/*.html`**, not in
+  `ui.py`. Values are filled at render by `_render()` via `__AT_NAME__` slots -
+  plain substitution, because the files are full of CSS braces and JavaScript
+  `${...}` literals that `str.format` would require escaping. A new template
+  file must be added to `package-data` in `pyproject.toml` or it will work
+  from a checkout and be missing from the wheel.
 
 ## Public API and deprecation policy
 

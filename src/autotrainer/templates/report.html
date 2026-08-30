@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autotrainer Executive Report - __AT_RUN_ID__</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card-bg: rgba(18, 26, 43, 0.85);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(56, 189, 248, 0.4);
+            --accent-cyan: #38bdf8;
+            --accent-purple: #c084fc;
+            --accent-green: #34d399;
+            --accent-pink: #fb7185;
+            --accent-amber: #fbbf24;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font-sans); }
+
+        body {
+            background: radial-gradient(circle at 10% 10%, #111827 0%, var(--bg) 100%);
+            color: var(--text-main);
+            padding: 36px 48px;
+            line-height: 1.5;
+        }
+
+        .report-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            cursor: pointer;
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.04);
+            transition: all 0.2s ease;
+            text-decoration: none;
+            user-select: none;
+        }
+
+        .btn:hover {
+            background: rgba(56, 189, 248, 0.12);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(192, 132, 252, 0.2) 100%);
+            border-color: rgba(56, 189, 248, 0.4);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+        }
+
+        .btn-sm { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 12px;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-green { background: rgba(52, 211, 153, 0.12); color: var(--accent-green); border: 1px solid rgba(52, 211, 153, 0.25); }
+        .badge-purple { background: rgba(192, 132, 252, 0.12); color: var(--accent-purple); border: 1px solid rgba(192, 132, 252, 0.25); }
+        .badge-cyan { background: rgba(56, 189, 248, 0.12); color: var(--accent-cyan); border: 1px solid rgba(56, 189, 248, 0.25); }
+        .badge-amber { background: rgba(251, 191, 36, 0.12); color: var(--accent-amber); border: 1px solid rgba(251, 191, 36, 0.25); }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 20px;
+        }
+
+        .brand-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-meta {
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Health Doctor */
+        .doctor-card {
+            background: linear-gradient(135deg, rgba(16, 24, 39, 0.9) 0%, rgba(24, 33, 56, 0.8) 100%);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .doctor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .doctor-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .doctor-bullet-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-left: 4px;
+        }
+
+        .doctor-bullet-item {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            color: #fde68a;
+        }
+
+        .doctor-bullet-icon { color: var(--accent-amber); font-size: 1.1rem; line-height: 1; flex-shrink: 0; }
+
+        .doctor-bullet-text code {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: rgba(0, 0, 0, 0.35);
+            color: var(--accent-cyan);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.25);
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 18px 20px;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-top: 6px;
+            letter-spacing: -0.5px;
+        }
+
+        .stat-card.cyan .stat-value { background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-card.green .stat-value { background: linear-gradient(135deg, #34d399 0%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-card.purple .stat-value { background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-card.white .stat-value { background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+        /* Charts */
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .chart-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 280px;
+            width: 100%;
+        }
+
+        /* Paths Grid */
+        .paths-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
+        }
+
+        .path-box {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--card-border);
+            padding: 12px 14px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .path-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .path-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+        }
+
+        .path-val {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.85rem;
+            color: var(--text-main);
+        }
+
+        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+        @media print {
+            body { background: #ffffff; color: #0f172a; padding: 20px; }
+            .btn-group { display: none; }
+            .stat-card, .chart-card, .doctor-card { background: #ffffff; border: 1px solid #cbd5e1; box-shadow: none; }
+            .stat-card.cyan .stat-value { color: #0284c7; -webkit-text-fill-color: #0284c7; }
+            .stat-card.green .stat-value { color: #059669; -webkit-text-fill-color: #059669; }
+            .stat-card.purple .stat-value { color: #7c3aed; -webkit-text-fill-color: #7c3aed; }
+            .stat-card.white .stat-value { color: #0f172a; -webkit-text-fill-color: #0f172a; }
+            .path-box { background: #f8fafc; border-color: #e2e8f0; }
+            .path-val { color: #334155; }
+            th { background: #f1f5f9; color: #475569; }
+            td { color: #0f172a; border-color: #e2e8f0; }
+            .brand-title { -webkit-text-fill-color: #0f172a; }
+        }
+
+        @media (max-width: 900px) {
+            body { padding: 20px; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-wrapper">
+        <div class="header">
+            <div>
+                <div class="brand-title">⚡ Autotrainer Executive Report</div>
+                <div class="header-meta">
+                    <span>Run: <strong>__AT_RUN_ID__</strong></span>
+                    <span>&bull;</span>
+                    <span class="badge badge-purple">👤 __AT_USER_NAME__</span>
+                    <span>&bull;</span>
+                    <span>Generated: __AT_START_TIME__</span>
+                </div>
+            </div>
+            <div class="btn-group" style="display:flex; gap:8px;">
+                <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ Print / Save PDF</button>
+                <button class="btn btn-sm" id="btnCopyJson" onclick="copyRawJson('btnCopyJson')">📋 Copy JSON</button>
+            </div>
+        </div>
+
+        <div class="doctor-card">
+            <div class="doctor-header">
+                <div class="doctor-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    AI Training Doctor & Health Triage Assessment
+                </div>
+                <div class="badge badge-green" id="doctorBadge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                    All Systems Healthy
+                </div>
+            </div>
+            <div id="doctorContent" style="font-size: 0.85rem; color: var(--text-muted);">
+                Analyzing numerical stability, loss convergence, and hardware execution...
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="stat-card cyan">
+                <div class="stat-label">First Loss</div>
+                <div class="stat-value" id="valFirstLoss">--</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-label">Training Loss</div>
+                <div class="stat-value" id="valTrainLoss">--</div>
+            </div>
+            <div class="stat-card purple">
+                <div class="stat-label">Validation Loss</div>
+                <div class="stat-value" id="valValLoss">--</div>
+            </div>
+            <div class="stat-card white">
+                <div class="stat-label">Epochs</div>
+                <div class="stat-value" id="valEpochs">--</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <div class="chart-title">📈 Loss Trajectory (Train & Validation)</div>
+                <div class="chart-wrapper">
+                    <canvas id="lossChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">🎯 Validation Metrics & Accuracy</div>
+                <div class="chart-wrapper">
+                    <canvas id="metricsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">📁 File Locations & Saved Model Checkpoint</div>
+            <div class="paths-grid">
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Logs Directory</span>
+                        <button class="btn btn-sm" id="btnCopyLogs" onclick="copyFieldText('pathLogsDir', 'btnCopyLogs')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathLogsDir">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Saved Model Checkpoint</span>
+                        <button class="btn btn-sm" id="btnCopyModel" onclick="copyModelCode('btnCopyModel')">Copy Code</button>
+                    </div>
+                    <div class="path-val" id="pathSavedModel">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Metrics CSV Log</span>
+                        <button class="btn btn-sm" id="btnCopyCsv" onclick="copyFieldText('pathCsv', 'btnCopyCsv')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathCsv">--</div>
+                </div>
+                <div class="path-box">
+                    <div class="path-label-row">
+                        <span class="path-label">Metrics JSONL Log</span>
+                        <button class="btn btn-sm" id="btnCopyJsonl" onclick="copyFieldText('pathJsonl', 'btnCopyJsonl')">Copy</button>
+                    </div>
+                    <div class="path-val" id="pathJsonl">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">⚙️ Run Details & Applied Optimizations</div>
+            <table id="detailsTable">
+                <thead>
+                    <tr><th>Parameter / Optimization Flag</th><th>Value / Applied Status</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const runData = __AT_JSON_STR__;
+        const meta = runData.metadata || {};
+        const summary = meta.summary || {};
+        const paths = runData.paths || {};
+
+        // Render Paths
+        document.getElementById('pathLogsDir').innerText = paths.logs_dir || 'N/A';
+        document.getElementById('pathSavedModel').innerText = paths.saved_model || 'N/A';
+        document.getElementById('pathCsv').innerText = paths.metrics_csv || 'N/A';
+        document.getElementById('pathJsonl').innerText = paths.metrics_jsonl || 'N/A';
+
+        // Render Triage Doctor
+        const triageList = summary.triage_diagnostics || [];
+        const doctorBadge = document.getElementById('doctorBadge');
+        const doctorContent = document.getElementById('doctorContent');
+
+        function formatDoctorMessage(rawMsg) {
+            let msg = rawMsg.replace(/^\[autotrainer\]\s*triage:\s*/i, '');
+            msg = msg.replace(/(torch\.nn\.utils\.clip_grad_norm_\([^)]+\))/g, '<code>$1</code>');
+            msg = msg.replace(/(\b(?:lr=\S+|lr\/\d+|bf16|fp16)\b)/g, '<code>$1</code>');
+            return msg;
+        }
+
+        if (triageList.length > 0) {
+            doctorBadge.className = 'badge badge-amber';
+            doctorBadge.innerHTML = `⚠️ ${triageList.length} Anomaly Flagged`;
+            const itemsHtml = triageList.map(msg => `
+                <li class="doctor-bullet-item">
+                    <span class="doctor-bullet-icon">•</span>
+                    <div class="doctor-bullet-text">${formatDoctorMessage(msg)}</div>
+                </li>
+            `).join('');
+            doctorContent.innerHTML = `<ul class="doctor-bullet-list">${itemsHtml}</ul>`;
+        } else {
+            doctorBadge.className = 'badge badge-green';
+            doctorBadge.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> All Systems Healthy`;
+            doctorContent.innerHTML = `<div style="color: var(--text-muted); padding-left: 2px;">No numerical anomalies, vanishing gradients, or dataloader starvation detected.</div>`;
+        }
+
+        // Render Records & Charts
+        const epochRecords = runData.metrics.filter(m => m.epoch !== undefined);
+        const stepRecords = runData.metrics.filter(m => m.step !== undefined && m.epoch === undefined);
+        const records = epochRecords.length > 0 ? epochRecords : stepRecords;
+
+        let labels, trainLosses, valLosses, valAccs;
+        if (epochRecords.length > 0) {
+            labels = epochRecords.map(m => `Epoch ${m.epoch}`);
+            trainLosses = epochRecords.map(m => m.train_loss !== undefined ? m.train_loss : m.loss);
+            valLosses = epochRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
+            valAccs = epochRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+        } else {
+            labels = stepRecords.map(m => `Step ${m.step}`);
+            trainLosses = stepRecords.map(m => m.loss !== undefined ? m.loss : m.train_loss);
+            valLosses = stepRecords.map(m => m.val_loss !== undefined ? m.val_loss : null);
+            valAccs = stepRecords.map(m => m.val_acc !== undefined ? m.val_acc : null);
+        }
+
+        const validTrain = trainLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
+        const validVal = valLosses.filter(l => l !== undefined && l !== null && !isNaN(l));
+
+        const firstLoss = summary.init_loss !== undefined ? summary.init_loss.toFixed(4) : (validTrain.length > 0 ? validTrain[0].toFixed(4) : '--');
+        const trainLoss = validTrain.length > 0 ? validTrain[validTrain.length - 1].toFixed(4) : (summary.final_loss !== undefined ? summary.final_loss.toFixed(4) : '--');
+        const valLoss = validVal.length > 0 ? validVal[validVal.length - 1].toFixed(4) : (summary.val_loss !== undefined ? summary.val_loss.toFixed(4) : '--');
+
+        document.getElementById('valFirstLoss').innerText = firstLoss;
+        document.getElementById('valTrainLoss').innerText = trainLoss;
+        document.getElementById('valValLoss').innerText = valLoss;
+        document.getElementById('valEpochs').innerText = summary.epochs || records.length;
+
+        // Tooltip Config
+        const tooltipConfig = {
+            backgroundColor: 'rgba(11, 15, 25, 0.95)',
+            titleColor: '#f8fafc',
+            bodyColor: '#cbd5e1',
+            borderColor: 'rgba(56, 189, 248, 0.4)',
+            borderWidth: 1,
+            padding: 10,
+            usePointStyle: true
+        };
+
+        // Loss Chart
+        new Chart(document.getElementById('lossChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Train Loss', borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.12)', data: trainLosses, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7 },
+                    { label: 'Val Loss', borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.12)', borderDash: [6, 4], data: valLosses, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', weight: 600 } } },
+                    tooltip: tooltipConfig
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b' } },
+                    y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b' } }
+                }
+            }
+        });
+
+        // Metrics Chart
+        new Chart(document.getElementById('metricsChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Val Metric (%)', borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.15)', data: valAccs, tension: 0.4, fill: true, pointRadius: 4, pointHoverRadius: 7 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', weight: 600 } } },
+                    tooltip: tooltipConfig
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b' } },
+                    y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b' } }
+                }
+            }
+        });
+
+        // Table
+        const tbody = document.querySelector('#detailsTable tbody');
+        const combined = { user: meta.user || 'default', ...(meta.params || {}), ...summary };
+        for (const [k, v] of Object.entries(combined)) {
+            if (k === 'triage_diagnostics') continue;
+            const tr = document.createElement('tr');
+            const valDisplay = typeof v === 'boolean' 
+                ? `<span class="badge badge-cyan">${v ? 'Enabled' : 'Disabled'}</span>`
+                : (typeof v === 'object' ? JSON.stringify(v) : v);
+            tr.innerHTML = `<td style="font-weight: 600;">${k}</td><td>${valDisplay}</td>`;
+            tbody.appendChild(tr);
+        }
+
+        // Helpers
+        function copyFieldText(elemId, btnId) {
+            const text = document.getElementById(elemId).innerText;
+            if (text && text !== '--' && text !== 'N/A') {
+                navigator.clipboard.writeText(text);
+                const btn = document.getElementById(btnId);
+                const old = btn.innerText;
+                btn.innerText = '✓ Copied';
+                btn.classList.add('badge-green');
+                setTimeout(() => { btn.innerText = old; btn.classList.remove('badge-green'); }, 1800);
+            }
+        }
+
+        function copyModelCode(btnId) {
+            const modelPath = document.getElementById('pathSavedModel').innerText;
+            if (modelPath && modelPath !== '--' && modelPath !== 'N/A') {
+                const code = `import torch\nmodel.load_state_dict(torch.load("${modelPath.replace(/\\/g, '/')}"))`;
+                navigator.clipboard.writeText(code);
+                const btn = document.getElementById(btnId);
+                const old = btn.innerText;
+                btn.innerText = '✓ Code Copied';
+                btn.classList.add('badge-green');
+                setTimeout(() => { btn.innerText = old; btn.classList.remove('badge-green'); }, 1800);
+            }
+        }
+
+        function copyRawJson(btnId) {
+            navigator.clipboard.writeText(JSON.stringify(runData, null, 2));
+            const btn = document.getElementById(btnId);
+            const old = btn.innerText;
+            btn.innerText = '✓ JSON Copied';
+            btn.classList.add('badge-green');
+            setTimeout(() => { btn.innerText = old; btn.classList.remove('badge-green'); }, 1800);
+        }
+    </script>
+</body>
+</html>

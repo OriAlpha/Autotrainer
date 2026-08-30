@@ -59,7 +59,7 @@ where = ["src"]
 
 # Ship the PEP 561 marker so downstream type checkers pick up our annotations.
 [tool.setuptools.package-data]
-autotrainer = ["py.typed"]
+autotrainer = ["py.typed", "templates/*.html"]
 
 [tool.ruff]
 line-length = 100

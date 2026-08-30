@@ -32,6 +32,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   job.
 
 ### Changed
+- **The Web UI's markup moved out of `ui.py` into
+  `src/autotrainer/templates/`.** `ui.py` was 4,629 lines, of which 3,707 were
+  two HTML documents held as string literals - the export report as an
+  f-string, so every one of its 122 CSS brace pairs was doubled and none of it
+  could be linted or highlighted as HTML. The templates are now `.html` files
+  filled by `_render()` at request time, and `ui.py` is 954 lines of server
+  code. Rendered output is byte-identical; both files ship in the wheel and
+  the sdist.
 - `auto()` builds the optimizer after `prepare()` has placed the model, so the
   params are on the GPU in time for the fused kernels. `_make_optimizer` split
   into `_choose_optimizer` (the decision, on the raw model) and
