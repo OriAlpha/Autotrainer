@@ -15,18 +15,27 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.14.1"
+__version__ = "0.16.0"
 
 # The public API. Everything not listed here (submodules, _-prefixed
 # helpers) is internal and may change without a deprecation cycle.
 __all__ = [
+    "AutotrainerCallback",
+    "AutotrainerHuggingFaceCallback",
+    "AutotrainerKerasCallback",
+    "AutotrainerLightningCallback",
     "BottleneckMonitor",
+    "CSVTracker",
     "GradScaler",
+    "JSONLTracker",
+    "NativeTracker",
     "__version__",
     "accumulate",
     "auto",
     "autocast_context",
     "augment_batch",
+    "autotrainer_lightgbm_callback",
+    "autotrainer_xgboost_callback",
     "barrier",
     "boost_params",
     "configure_nccl",
@@ -42,6 +51,7 @@ __all__ = [
     "prepare",
     "print0",
     "rank",
+    "run_ui_server",
     "save0",
     "scale_batch_size",
     "scope",
@@ -59,6 +69,14 @@ __all__ = [
 
 from .augment import augment_batch  # noqa: E402,F401
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
+from .callbacks import (  # noqa: E402,F401
+    AutotrainerCallback,
+    AutotrainerHuggingFaceCallback,
+    AutotrainerKerasCallback,
+    AutotrainerLightningCallback,
+    autotrainer_lightgbm_callback,
+    autotrainer_xgboost_callback,
+)
 from .fitting import train  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
@@ -68,7 +86,9 @@ from .slurm import (
 )
 from .summary import SummaryTracker, finish, log_epoch, step  # noqa: E402,F401
 from .throughput import ThroughputMonitor  # noqa: E402,F401
+from .trackers import CSVTracker, JSONLTracker, NativeTracker  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401
+from .ui import run_ui_server  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401
     GradScaler,
     autocast_context,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autotrainer"
-version = "0.14.1"
+version = "0.16.0"
 description = "Automatic distributed training for ML models: detects hardware, picks a strategy, tunes batch size."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -77,6 +77,14 @@ ignore = ["E402"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
+# ui.py embeds the dashboard's HTML/CSS/JS as a Python string, so ~200 of
+# these are markup lines, not Python style - and rewrapping markup to satisfy
+# a Python linter risks breaking the page for no readability gain. Scoped to
+# the three whitespace/length rules so everything else still applies here.
+# The real fix is extracting the frontend to a static asset, which would make
+# it lintable on its own terms; until then this keeps the gate honest for the
+# Python code around it.
+"src/autotrainer/ui.py" = ["E501", "W291", "W293"]
 
 [tool.ruff.format]
 quote-style = "double"

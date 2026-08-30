@@ -4,7 +4,69 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.16.0] - 2026-08-20
+### Added
+- **Hardware Telemetry Curves & Resource Diagnostics (`#hwChart`)**:
+  - Live system resource meter footer with green pulse status indicator in sidebar.
+  - Dedicated hardware telemetry card displaying GPU VRAM (GB / %), GPU model name, and Host RAM / CPU utilization curves over training steps and epochs.
+  - REST endpoint `GET /api/hardware` with cross-platform memory and GPU detection.
+- **Run Tagging, Star Favoriting & Sidebar Organization**:
+  - Star favorite toggle (⭐) on individual runs with persistent metadata state.
+  - Sidebar filter tabs: `[ All ]` and `[ ⭐ Starred ]` with glow accents.
+  - Inline run tag chip management: `+ Tag` creator, `✕` tag pill deletion, and dynamic sidebar tag filter pills bar.
+  - REST endpoints: `POST /api/runs/<run_id>/tags` and `POST /api/runs/<run_id>/favorite`.
+- **Hyperparameter & Metric Parallel Coordinates Chart (`#parallelCanvas`)**:
+  - High-performance Canvas multi-axis parallel coordinates visualization in Compare Mode.
+  - Visualizes complex relationships and trajectories across `Learning Rate` -> `Batch Size` -> `First Loss` -> `Training Loss` -> `Validation Loss` across multiple selected runs.
+- **Run Annotations & Markdown Notes Drawer (`#notesCard`)**:
+  - Embedded Markdown drawer with `Edit` and live `Preview` rendering tabs.
+  - Auto-persisted to both `run.json` and `<run_dir>/notes.md` on disk.
+  - REST endpoint `POST /api/runs/<run_id>/notes`.
+- **1-Click Run Deletion & Archive**:
+  - Clean deletion of experiment runs and log directories from disk with modal confirmation.
+  - REST endpoints `DELETE /api/runs/<run_id>` and `POST /api/runs/<run_id>/archive`.
+- **Refined KPI Stat Cards**:
+  - Displays `FIRST LOSS`, `TRAINING LOSS`, `VALIDATION LOSS`, and `EPOCHS` with glowing accents.
+
+### Security
+The Web UI added in 0.15.0 served a filesystem-mutating API with no
+authentication on every network interface. Each item below was confirmed by
+exploiting a running server, and is now pinned by a test in
+`tests/test_ui_security.py`.
+
+- **Unauthenticated remote directory deletion.** `run_id` was joined onto the
+  logs root with no containment check, so `DELETE /api/runs/../<path>`
+  resolved outside it and reached `shutil.rmtree`. A live server answered
+  `{"success": true}` and the directory was gone. All six lookups — plus a
+  seventh inlined in `_get_run_data` and two more behind the HTML/Markdown
+  export writes, which made it an arbitrary-**write** primitive too — now go
+  through one `_safe_run_dir()` that rejects separators and anything
+  resolving outside a configured root.
+- **`autotrainer ui` bound `0.0.0.0`.** On a shared SLURM login node that
+  published rename/archive/delete to every user who could route to the port.
+  It now binds `127.0.0.1`; `--host` widens it deliberately and prints a
+  warning naming what is exposed.
+- **No authentication.** A session token is now generated per run and printed
+  as part of the URL, carried afterwards by an `HttpOnly; SameSite=Strict`
+  cookie (also accepted as `?token=` or `X-Autotrainer-Token`) and compared
+  with `secrets.compare_digest`. `--no-token` opts out. `SameSite` plus an
+  `Origin` check on mutating verbs closes the CSRF hole that let any page a
+  user visited drive the delete endpoint.
+- **`POST /api/sources` accepted any absolute path**, turning the dashboard
+  into a filesystem browser — a home directory listed 45 "runs". It now
+  requires a directory that actually contains run folders.
+- **Stored XSS via run tags.** Tags were interpolated raw into `innerHTML`,
+  including inside `onclick="removeTagFromCurrentRun('${tag}')"`. Tags and
+  usernames are escaped, `escapeHtml` now covers quotes, and the tag remove
+  control binds a listener instead of building a JS string.
+
 ### Fixed
+- **`AutotrainerCallback.on_epoch_end()` crashed on its own defaults.**
+  Omitting `train_loss` — normal for a callback that only has a validation
+  number — reached `float(None)` and raised `TypeError`, killing the run it
+  was meant to be observing. `log_epoch` now treats every metric as optional
+  and reads its three call shapes through one code path.
 - **`optimize=True` silently disabled per-epoch reshuffling.** `prepare()`
   wraps a sharded loader in `_AutoEpochDataLoader` so
   `DistributedSampler.set_epoch()` advances on its own, but the `optimize`
@@ -43,6 +105,68 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
   entry-point table. `tests/test_docs.py` now checks this direction too; it
   only ever verified that `__all__` members appear in the docs, never that
   documented names are exported.
+
+## [0.15.0] - 2026-08-19
+### Added
+- **Zero-Dependency Executive Web UI Dashboard (`autotrainer ui`)**:
+  - Live interactive training execution dashboard serving on port 8501 without external heavy dependencies.
+  - Multi-user workspace filtering: dynamically tags runs by user (`AUTOTRAINER_USER`, `SLURM_JOB_USER`, OS username) and formats workspace selectors (`👥 All Users (X users, Y runs)`).
+  - Dynamic multi-path directory aggregation: monitor single or multiple local/shared cluster paths (`autotrainer ui ./logs /cluster/runs`) with interactive paths management modal in the sidebar.
+  - Interactive dual telemetry charts (Training & Validation loss curves, Validation accuracy / metric progression) with custom hover tooltips and chart enlargement modal.
+  - AI Training Doctor & Health Triage diagnostics card with real-time health badges and actionable bulleted remediation steps.
+  - 1-click run renaming directly from the dashboard with directory synchronization.
+- **Multi-Format Reports & Exports**:
+  - **Standalone Interactive HTML Report (`.html`)**: Self-contained executive report with dark glassmorphic styling, embedded interactive Chart.js curves, triage diagnostics, KPI cards, and print/PDF optimization.
+  - **Markdown Summary (`.md`)**: Clean markdown formatted telemetry and hyperparameter tables ready for GitHub PRs, Slack, or Notion.
+  - **Metrics CSV (`.csv`)** and **Full Telemetry JSON (`.json`)** downloads.
+- **Native ML Framework Callbacks Suite (`autotrainer.callbacks`)**:
+  - `AutotrainerCallback`: General-purpose callback for custom and vanilla PyTorch loops.
+  - `AutotrainerHuggingFaceCallback`: Native `transformers.TrainerCallback` integration.
+  - `AutotrainerLightningCallback`: Native PyTorch Lightning callback integration.
+  - `AutotrainerKerasCallback`: Native TensorFlow / Keras callback integration.
+  - `autotrainer_xgboost_callback()` & `autotrainer_lightgbm_callback()`: Native boosting callbacks.
+- **Native Local Experiment Trackers (`autotrainer.trackers`)**:
+  - `NativeTracker`, `CSVTracker`, and `JSONLTracker` with user attribution, metadata persistence, and thread-safe streaming.
+### Fixed
+- **`prepare()` auto-launch no longer kills notebook kernels.** Auto-launch
+  re-executes `sys.argv` once per GPU and exits the parent, but only checked
+  `RANK`, `SLURM_JOB_ID` and `detect()`. In a notebook on a multi-GPU box
+  `argv[0]` is the kernel launcher, so it spawned N launchers and killed the
+  kernel mid-cell with nothing to diagnose; `python -m pkg` was re-executed as
+  a bare file path, losing the package context. It now requires a plain
+  `python script.py` invocation and explains itself when it stands down.
+- **The summary reports what autotrainer did, not what it guessed.** The
+  "Active Optimizations" list was derived from global torch flags and env
+  vars, which cannot distinguish a setting autotrainer made from one the user
+  made. It claimed a multi-worker pinned-memory DataLoader pipeline for
+  loaders left at `num_workers=0`; a "Weight Decay Exclude" norm/bias
+  param-group split that autotrainer has never performed, for any nonzero
+  `weight_decay`; "Grad Clipping" from `optimizer.defaults["max_norm"]`, which
+  no torch optimizer defines; "SLURM Node Scratch" from `SLURM_JOB_ID` rather
+  than from `configure_scratch()` running; and FlashAttention/bf16, which are
+  a torch default and a hardware capability. `prepare()`, `configure_nccl()`
+  and `configure_scratch()` now record what they applied, and the report
+  renders **Autotrainer Applied** from that record alone. Facts observed but
+  not caused move to a new **Environment Detected** section. `weight_decay`
+  now appears on the optimizer recipe line, reported rather than claimed.
+- **`atexit` no longer destroys the process group.** Teardown ran during
+  interpreter shutdown, which is unreliable and duplicates torch's own
+  cleanup; the exit hook now only prints. Explicit
+  `finish(cleanup_dist=True)` is unchanged.
+- **A second run in one process gets its own summary.** `finish()` now
+  releases the global tracker, instead of leaving a reported tracker that
+  silently suppressed the next run's summary. `fit()` still emits one summary
+  for the whole run rather than reporting the search and dropping the final
+  training.
+- **`train()` reports its LR schedule.** The scheduler inferred by `auto()`
+  was never handed to the summary, so the `LR Schedule` line was blank on the
+  one path that always has one.
+- **`train()` dispatches by framework.** Routing probed for `.fit` / `.forward`
+  attributes, so any object with a `fit()` method was sent to the sklearn
+  backend and everything else fell through to the PyTorch path, failing deep
+  inside it. It now uses the same module-prefix rule as `prepare()` and
+  `tune()`, raises a clear `TypeError` for models it cannot route, and sends
+  boosting estimators to the boosting backend's thread config.
 
 ## [0.14.1] - 2026-08-05
 ### Fixed

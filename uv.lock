@@ -137,13 +137,27 @@ wheels = [
 
 [[package]]
 name = "autotrainer"
-version = "0.14.0"
+version = "0.14.1"
 source = { editable = "." }
 dependencies = [
     { name = "psutil" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "lightgbm" },
+    { name = "optuna" },
+    { name = "scikit-learn", version = "1.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "tensorflow", version = "2.21.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "torch", version = "2.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "xgboost", version = "2.1.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "xgboost", version = "3.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10' and python_full_version < '3.12'" },
+    { name = "xgboost", version = "3.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
 boosting = [
     { name = "lightgbm" },
     { name = "xgboost", version = "2.1.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -168,6 +182,12 @@ sklearn = [
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
     { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+suhas = [
+    { name = "psutil" },
+]
+suhas-goravale-siddaramu = [
+    { name = "psutil" },
+]
 tf = [
     { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "tensorflow", version = "2.21.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -183,21 +203,29 @@ tune = [
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = "!=1.5.1" },
+    { name = "lightgbm", marker = "extra == 'all'", specifier = ">=4.0" },
     { name = "lightgbm", marker = "extra == 'boosting'", specifier = ">=4.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
+    { name = "optuna", marker = "extra == 'all'", specifier = ">=3.0" },
     { name = "optuna", marker = "extra == 'tune'", specifier = ">=3.0" },
     { name = "pdoc", marker = "extra == 'dev'", specifier = ">=14" },
     { name = "psutil", specifier = ">=5.9" },
+    { name = "psutil", marker = "extra == 'suhas'" },
+    { name = "psutil", marker = "extra == 'suhas-goravale-siddaramu'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },
     { name = "ruff", marker = "extra == 'dev'" },
+    { name = "scikit-learn", marker = "extra == 'all'", specifier = ">=1.3" },
     { name = "scikit-learn", marker = "extra == 'sklearn'", specifier = ">=1.3" },
+    { name = "tensorflow", marker = "extra == 'all'", specifier = ">=2.13" },
     { name = "tensorflow", marker = "extra == 'tf'", specifier = ">=2.13" },
+    { name = "torch", marker = "extra == 'all'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'torch'", specifier = ">=2.0" },
     { name = "twine", marker = "extra == 'dev'" },
+    { name = "xgboost", marker = "extra == 'all'", specifier = ">=2.0" },
     { name = "xgboost", marker = "extra == 'boosting'", specifier = ">=2.0" },
 ]
-provides-extras = ["torch", "sklearn", "tf", "boosting", "tune", "dev"]
+provides-extras = ["torch", "sklearn", "tf", "boosting", "tune", "all", "suhas", "suhas-goravale-siddaramu", "dev"]
 
 [[package]]
 name = "backports-tarfile"
