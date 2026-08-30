@@ -27,6 +27,35 @@ def main() -> None:
     sub.add_parser("suhas", help="Display Autotrainer creator credits")
     sub.add_parser("credits", help="Display Autotrainer creator credits")
 
+    ui_p = sub.add_parser("ui", help="Launch the Autotrainer Web UI dashboard")
+    ui_p.add_argument(
+        "logs_dirs",
+        nargs="*",
+        default=["logs"],
+        help="One or more paths to logs directories (default: logs)",
+    )
+    ui_p.add_argument(
+        "--port", type=int, default=8501, help="Port to run the UI server on (default: 8501)"
+    )
+    ui_p.add_argument("--no-browser", action="store_true", help="Do not auto-open the browser")
+    ui_p.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help=(
+            "Interface to bind (default: 127.0.0.1). The UI can rename and "
+            "delete runs, so anything other than loopback exposes that to the "
+            "network - on a shared cluster, to every other user."
+        ),
+    )
+    ui_p.add_argument(
+        "--no-token",
+        action="store_true",
+        help=(
+            "Disable the session token. Only sensible when every local user "
+            "is trusted; without it any process on the box can drive the API."
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.command in ("suhas", "credits"):
@@ -35,6 +64,18 @@ def main() -> None:
         print("  Designed & Built by Suhas Goravale Siddaramu (OriAlpha)")
         print("  GitHub: https://github.com/OriAlpha/Autotrainer")
         print("=" * 66)
+        return
+
+    if args.command == "ui":
+        from .ui import run_ui_server
+
+        run_ui_server(
+            logs_dirs=args.logs_dirs,
+            port=args.port,
+            open_browser=not args.no_browser,
+            host=args.host,
+            token=None if args.no_token else "",
+        )
         return
 
     if args.command == "doctor":

@@ -28,6 +28,11 @@ def clean_env(monkeypatch):
     for k in list(os.environ):
         if k.startswith(("SLURM_", "RANK", "LOCAL_RANK", "WORLD_SIZE", "AUTOTRAINER_")):
             monkeypatch.delenv(k, raising=False)
+    # Opt out of on-disk run tracking so the suite doesn't litter logs/.
+    # Set here rather than having summary.py sniff PYTEST_CURRENT_TEST: library
+    # code branching on "am I under test" means the tested path is not the
+    # shipped path, which is the one thing a test suite must not do.
+    monkeypatch.setenv("AUTOTRAINER_DISABLE_TRACKING", "1")
 
 
 # The complete public ``torch.cuda`` surface the optimize path reads. This is
@@ -47,6 +52,8 @@ CUDA_OPTIMIZE_SURFACE = frozenset(
         "get_device_properties",
         "max_memory_allocated",
         "max_memory_reserved",
+        "memory_allocated",
+        "memory_reserved",
         "empty_cache",
         "synchronize",
     }
@@ -82,9 +89,10 @@ def pretend_cuda(monkeypatch):
             name=fakes.device_name, major=8, minor=0, total_memory=80 * 1024**3
         ),
     )
+    monkeypatch.setattr(torch.cuda, "memory_allocated", lambda _d=None: 2 * 1024**3)
+    monkeypatch.setattr(torch.cuda, "memory_reserved", lambda _d=None: 4 * 1024**3)
     monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _d=None: 10 * 1024**3)
     monkeypatch.setattr(torch.cuda, "max_memory_reserved", lambda _d=None: 10 * 1024**3)
-    monkeypatch.setattr(torch.cuda, "max_memory_allocated", lambda _d=None: 5 * 1024**3)
     monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda _d=None: None)
 
