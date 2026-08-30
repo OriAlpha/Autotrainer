@@ -201,9 +201,7 @@ def _make_scheduler(
 ) -> Any:
     """Build a per-batch LR scheduler by name (``None`` means constant LR).
 
-    Shared by ``tune``/``fit`` so a searched ``scheduler`` choice trains the
-    same way in the short trials and in the final retrain. Step it once per
-    optimizer step (per batch). Names:
+    Step it once per optimizer step (per batch). Names:
 
       * ``"cosine"`` - optional linear warmup then cosine anneal (the default).
         ``warmup_frac`` of the steps are warmup; ``0`` disables warmup.

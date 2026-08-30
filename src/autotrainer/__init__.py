@@ -33,7 +33,6 @@ __all__ = [
     "accumulate",
     "auto",
     "autocast_context",
-    "augment_batch",
     "autotrainer_lightgbm_callback",
     "autotrainer_xgboost_callback",
     "barrier",
@@ -44,7 +43,6 @@ __all__ = [
     "find_batch_size",
     "find_lr",
     "finish",
-    "fit",
     "is_main",
     "log_epoch",
     "node_scratch",
@@ -63,11 +61,9 @@ __all__ = [
     "train_mode",
     "TrainingMonitor",
     "train_step",
-    "tune",
     "zero_grad",
 ]
 
-from .augment import augment_batch  # noqa: E402,F401
 from .bottleneck import BottleneckMonitor  # noqa: E402,F401
 from .callbacks import (  # noqa: E402,F401
     AutotrainerCallback,
@@ -77,7 +73,6 @@ from .callbacks import (  # noqa: E402,F401
     autotrainer_lightgbm_callback,
     autotrainer_xgboost_callback,
 )
-from .fitting import train  # noqa: E402,F401
 from .loop import accumulate, eval_mode, train_mode, train_step, zero_grad  # noqa: E402,F401
 from .slurm import apply as configure_scratch  # noqa: E402,F401
 from .slurm import (
@@ -87,6 +82,7 @@ from .slurm import (
 from .summary import SummaryTracker, finish, log_epoch, step  # noqa: E402,F401
 from .throughput import ThroughputMonitor  # noqa: E402,F401
 from .trackers import CSVTracker, JSONLTracker, NativeTracker  # noqa: E402,F401
+from .training import train  # noqa: E402,F401
 from .triage import TrainingMonitor  # noqa: E402,F401
 from .ui import run_ui_server  # noqa: E402,F401
 from .utils import (  # noqa: E402,F401
@@ -100,7 +96,7 @@ from .utils import (  # noqa: E402,F401
     set_epoch,
 )
 
-# Single source of truth for framework dispatch, shared with fitting.train()
+# Single source of truth for framework dispatch, shared with training.train()
 # so every entry point classifies a model the same way.
 from .utils import (  # noqa: E402,F401
     is_sklearn_estimator as _is_sklearn_estimator,
@@ -187,48 +183,3 @@ def find_lr(model: Any, dataloader: Any, loss_fn: Any, **kwargs: Any) -> float:
     from .auto_optim import find_lr as _f
 
     return _f(model, dataloader, loss_fn, **kwargs)
-
-
-def tune(model: Any, train: Any = None, val: Any = None, **kwargs: Any) -> tuple[Any, ...]:
-    """Search hyperparameters for a model (dispatches by framework).
-
-    PyTorch modules: pass DataLoaders; searches the training recipe
-    (lr, weight decay, optimizer, batch size). Trials are scored on the
-    validation loss unless ``metric=`` names something else
-    (``"accuracy"``/``"f1"``/``"auc"``/``"r2"``, or a callable).
-    sklearn-API estimators (scikit-learn, XGBoost, LightGBM): pass
-    ``(X, y)`` tuples; searches the model's hyperparameters, with curated
-    default spaces for the common families, scored by ``scoring=``.
-    """
-    # The pre-0.10 names ``train_loader=``/``val_loader=`` were deprecated in
-    # 0.10 and removed; they were misleading for estimator inputs (which take
-    # arrays, not loaders). Give a clear error pointing at the new names
-    # rather than letting them flow into **kwargs and fail cryptically downstream.
-    for old, new in (("train_loader", "train"), ("val_loader", "val")):
-        if old in kwargs:
-            raise TypeError(
-                f"tune() no longer accepts {old}=; it was removed in 0.12 "
-                f"(deprecated since 0.10). Use {new}= instead."
-            )
-    if train is None or val is None:
-        raise TypeError("tune() requires train and val data")
-
-    mod = type(model).__module__ or ""
-    if mod.startswith("torch") or _is_torch_module(model):
-        from .tuning import tune as _t
-
-        return _t(model, train, val, **kwargs)
-    if mod.startswith(("xgboost", "lightgbm", "sklearn")) or _is_sklearn_estimator(model):
-        from .tuning_estimator import tune_estimator as _te
-
-        return _te(model, train, val, **kwargs)
-    raise TypeError(
-        f"tune() supports PyTorch modules and sklearn-API estimators, got {type(model)!r}."
-    )
-
-
-def fit(model: Any, train_loader: Any, val_loader: Any, **kwargs: Any) -> tuple[Any, ...]:
-    """PyTorch: tune the recipe, then fully train the winner (with early stopping)."""
-    from .fitting import fit as _f
-
-    return _f(model, train_loader, val_loader, **kwargs)

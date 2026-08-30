@@ -40,7 +40,7 @@ def _ensure_process_group() -> bool:
         kwargs: dict[str, Any] = {}
         timeout_s = os.environ.get("AUTOTRAINER_TIMEOUT")
         if timeout_s:
-            # Long rank-0 phases (e.g. fit()'s tuning) can outlive the
+            # A long rank-0 phase (e.g. a rank-0-only eval) can outlive the
             # default collective timeout while the other ranks wait.
             from datetime import timedelta
 
@@ -659,7 +659,7 @@ def prepare(
     # (autocast + GradScaler) still lives in the user's training loop - we
     # can't wrap an arbitrary loop from here. Print the exact two lines so
     # the user knows what to add; the helpers are no-ops on CPU so the
-    # snippet is safe to copy verbatim. (fit() already does this internally
+    # snippet is safe to copy verbatim. (train() already does this internally
     # in its own loop, so this only matters for the manual-loop path.)
     if optimize and use_cuda and amp:
         from ..utils import print0

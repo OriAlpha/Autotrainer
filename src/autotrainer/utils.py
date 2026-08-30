@@ -167,7 +167,7 @@ def split_xy(batch: Any) -> tuple[Any, Any]:
     """Split one dataloader batch into ``(inputs, targets)``.
 
     Handles the batch shapes real datasets yield, not just the ``(xb, yb)``
-    2-tuple the examples use - so ``auto``/``fit``/``tune`` don't die on an
+    2-tuple the examples use - so ``auto()``/``train()`` don't die on an
     opaque unpack error the first time someone brings their own loader:
 
       * ``(xb, yb)`` or ``(xb, yb, ...)`` - first is input, second is target;

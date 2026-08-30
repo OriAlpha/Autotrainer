@@ -4,6 +4,35 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Removed
+- **Hyperparameter search (`fit()`, `tune()`) is gone.** Autotrainer is the
+  execution layer: it makes *your* recipe run correctly and fast on the
+  hardware you have. Searching for a better recipe is a different job, and
+  Optuna and Ray Tune already do it well - use either one and call
+  `prepare()` inside the objective. What this removes:
+  - `autotrainer.fit()` and `autotrainer.tune()`, and the `autotrainer.tuning`,
+    `autotrainer.tuning_estimator`, `autotrainer.metrics`, `autotrainer.fitting`
+    and `autotrainer._fit_search` modules.
+  - The `metric=` selection knob (accuracy/f1/auc/r2), the Optuna
+    journal-file parallel search, and the phase-1/phase-2 checkpoint format.
+  - `autotrainer.augment_batch()` and the `autotrainer.augment` module; it
+    existed to give the search a scalar regularizer to tune.
+  - `sanity.overlap()` - the train/val leak check. Nothing takes both a train
+    and a validation loader any more, so it was unreachable.
+  - The `tune` extra (`pip install "autotrainer[tune]"`). Optuna is no longer
+    a dependency of any extra, including `all`.
+- `docs/guide/fit.md`, `examples/pytorch_fit.py`, `examples/pytorch_tune.py`.
+
+### Changed
+- `autotrainer.train()` moved from `autotrainer.fitting` to
+  `autotrainer.training` (both are internal modules; `autotrainer.train`
+  is unchanged).
+- New [One-line training](docs/guide/one-line-training.md) guide covering
+  `train()`, `auto()`, and the data checks, replacing `docs/guide/fit.md`.
+  Preemption (`autotrainer.preempt`) now documented in the scaling guide.
+
+Unaffected: `prepare()`, `auto()`, `train()`, `train_step()`, the launcher,
+SLURM support, the monitors, the trackers, and the UI.
 
 ## [0.16.0] - 2026-08-20
 ### Added

@@ -178,7 +178,7 @@ def train_step(
             modes (use :func:`autotrainer.eval_mode` for validation).
         loss_fn: called as ``loss_fn(output, targets)``; must return a scalar.
         inputs: the model input - a tensor, or a tuple/list/dict of them
-            (called with the same robust dispatch ``auto``/``fit`` use:
+            (called with the same robust dispatch ``auto()`` uses:
             ``model(**inputs)`` for a dict, ``model(*inputs)`` for a
             list/tuple, ``model(inputs)`` otherwise).
         targets: the labels passed as the loss's second argument.

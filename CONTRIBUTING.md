@@ -14,10 +14,10 @@ cd autotrainer
 # Using uv (recommended):
 uv venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-uv pip install -e ".[dev,torch,sklearn,boosting,tune]"
+uv pip install -e ".[dev,torch,sklearn,boosting]"
 
 # Or with standard pip:
-pip install -e ".[dev,torch,sklearn,boosting,tune]"
+pip install -e ".[dev,torch,sklearn,boosting]"
 ```
 
 The `tf` extra is optional and heavy - install it only when working on
@@ -38,7 +38,7 @@ source /tmp/$USER-venv/bin/activate
 uv pip install --link-mode=copy -e ".[all,dev]" 
 
 # Everything EXCEPT TensorFlow + Dev tools (Recommended default for dev setup
-uv pip install --link-mode=copy -e ".[dev,torch,sklearn,boosting,tune]"
+uv pip install --link-mode=copy -e ".[dev,torch,sklearn,boosting]"
 
 # (Optional) For fastest performance, create .venv on local node storage:
 uv venv /tmp/$USER-venv
@@ -119,7 +119,7 @@ pre-commit install
 ## Public API and deprecation policy
 
 The public API is exactly what `autotrainer.__all__` exports. Submodules
-(`autotrainer.tuning`, `autotrainer.fitting`, ...) and `_`-prefixed helpers
+(`autotrainer.auto_optim`, `autotrainer.training`, ...) and `_`-prefixed helpers
 are internal and may change without notice.
 
 From 1.0 onward:
@@ -129,8 +129,8 @@ From 1.0 onward:
   minor release before removal, with the replacement named in the warning.
 - Breaking changes land only in **major** versions; new features in minor
   versions; fixes in patches ([SemVer](https://semver.org/)).
-- On-disk formats (the `fit()` checkpoint) carry a `format_version` and are
-  rejected loudly - never silently misread - when incompatible.
+- On-disk formats carry a `format_version` and are rejected loudly - never
+  silently misread - when incompatible.
 
 ## Commit messages
 

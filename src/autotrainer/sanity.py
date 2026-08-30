@@ -1,19 +1,16 @@
 """Data sanity checks: the failures that aren't the framework's fault.
 
-autotrainer can distribute a run perfectly, search a wide recipe, and hand
-back the best model it found - and the whole thing can still be worthless
-because the data was wrong. Those failures are quiet: un-normalized inputs
-look like a bad learning rate, class imbalance looks like a model that
-"works" at 95% accuracy, and a train/val split that overlaps looks like an
-excellent validation score. Each one costs an allocation to discover the
-hard way.
+autotrainer can distribute a run perfectly and hand back a trained model -
+and the whole thing can still be worthless because the data was wrong. Those
+failures are quiet: un-normalized inputs look like a bad learning rate, and
+class imbalance looks like a model that "works" at 95% accuracy. Each one
+costs an allocation to discover the hard way.
 
 The information needed to catch them is already on hand - ``auto()`` and
-``tune()`` both peek at batches to infer the loss - so these checks are
+``train()`` both peek at batches to infer the loss - so these checks are
 nearly free. They run on a SAMPLE of the data (whatever the loss inference
-already gathered, plus a bounded scan for the overlap test), which is why
-every message says what it looked at. They only ever warn: nothing here
-changes the loss, the recipe, or the data.
+already gathered), which is why every message says what it looked at. They
+only ever warn: nothing here changes the loss, the recipe, or the data.
 
 Each function returns a list of message strings rather than printing, so the
 caller decides whether and how to surface them.
@@ -27,11 +24,6 @@ from typing import Any
 _IMBALANCE_RATIO = 10.0
 # How far |mean| or std may drift before inputs look un-standardized.
 _SCALE_LIMIT = 10.0
-# Rows to sample from each loader for the train/val overlap test.
-_OVERLAP_SAMPLE = 512
-# Below this many features, byte-identical rows happen by chance (think a
-# handful of categorical columns), so value-based overlap means nothing.
-_MIN_FEATURES_FOR_OVERLAP = 4
 
 _PREFIX = "data check"
 
@@ -134,91 +126,5 @@ def _check_classes(targets: Any) -> list[str]:
         f"{_PREFIX}: class imbalance {biggest / smallest:.0f}:1 in the {n} "
         f"targets sampled - the largest class is {share:.0%} of them, so a "
         f"model that only ever predicts it scores {share:.0%} accuracy. "
-        "Consider metric='f1' so the search doesn't reward that, and class "
-        "weights in your loss."
+        "Consider class weights in your loss."
     ]
-
-
-def overlap(train_loader: Any, val_loader: Any, sample: int = _OVERLAP_SAMPLE) -> list[str]:
-    """Look for validation samples that were also trained on.
-
-    This is the check worth the most: an overlapping split doesn't fail, it
-    reports an excellent validation score - and then the recipe search spends
-    every trial optimizing against that flattered number.
-
-    Uses exact indices when both loaders are ``Subset``s of one dataset, and
-    otherwise falls back to comparing a bounded sample of rows byte-for-byte.
-    """
-    train_ds = getattr(train_loader, "dataset", None)
-    val_ds = getattr(val_loader, "dataset", None)
-    if train_ds is None or val_ds is None:
-        return []
-
-    from torch.utils.data import IterableDataset, Subset
-
-    # Streaming datasets can't be re-read cheaply (or at all), and a check must
-    # never consume the data it is checking.
-    if isinstance(train_ds, IterableDataset) or isinstance(val_ds, IterableDataset):
-        return []
-
-    if (
-        isinstance(train_ds, Subset)
-        and isinstance(val_ds, Subset)
-        and train_ds.dataset is val_ds.dataset
-    ):
-        shared = set(map(int, train_ds.indices)) & set(map(int, val_ds.indices))
-        if not shared:
-            return []
-        return [
-            f"{_PREFIX}: train and validation share {len(shared)} of the "
-            f"validation set's {len(val_ds.indices)} samples (same indices of "
-            "the same dataset). The val score - and everything the search "
-            "picks from it - is optimistic by however much that leaks."
-        ]
-
-    if train_ds is val_ds:
-        return [
-            f"{_PREFIX}: the train and validation loaders wrap the SAME dataset "
-            "object, so every validation sample is also trained on. The val "
-            "score measures memorization, not generalization."
-        ]
-
-    return _overlap_by_value(train_loader, val_loader, sample)
-
-
-def _overlap_by_value(train_loader: Any, val_loader: Any, sample: int) -> list[str]:
-    val_rows = _sample_rows(val_loader, sample)
-    if not val_rows:
-        return []
-    train_rows = _sample_rows(train_loader, sample)
-    if not train_rows:
-        return []
-    hits = len(set(val_rows) & set(train_rows))
-    if hits < 2:  # one coincidence is not evidence
-        return []
-    return [
-        f"{_PREFIX}: {hits} of the {len(val_rows)} validation rows sampled are "
-        f"identical to rows among {len(train_rows)} sampled from train. Both "
-        "are samples, so the real overlap is likely larger - check the split "
-        "before trusting the val score."
-    ]
-
-
-def _sample_rows(loader: Any, limit: int) -> list[bytes] | None:
-    """Up to ``limit`` input rows as opaque bytes, or ``None`` if unusable."""
-    import torch
-
-    from .utils import split_xy
-
-    rows: list[bytes] = []
-    for batch in loader:
-        x, _ = split_xy(batch)
-        if not torch.is_tensor(x) or not torch.is_floating_point(x) or x.ndim < 2:
-            return None
-        if x[0].numel() < _MIN_FEATURES_FOR_OVERLAP:
-            return None
-        for row in x.detach().cpu().float():
-            rows.append(row.contiguous().numpy().tobytes())
-            if len(rows) >= limit:
-                return rows
-    return rows
