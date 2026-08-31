@@ -1,5 +1,12 @@
 # autotrainer documentation
 
+## Start here
+
+- [Entry points](api-map.md) - which function to call for what.
+- [Performance](performance.md) - what the optimizations measurably buy.
+- [How it compares](comparison.md) - vs Lightning, Accelerate, Ray, `torchrun`.
+- [Roadmap](roadmap.md) - what is planned toward 1.0 and after.
+
 ## Guide
 
 Task-oriented walkthroughs. Start at whichever question you actually have:
