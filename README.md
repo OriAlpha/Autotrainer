@@ -6,10 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/OriAlpha/Autotrainer/blob/main/LICENSE)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v0.json)](https://github.com/astral-sh/ruff)
 
-**Automatic distributed training and optimization for ML models.**
-Give it a model and data — it detects your hardware (local GPUs or a SLURM
-cluster), picks the distribution strategy, applies the hardware wins, and can
-infer the loss function, optimizer, learning rate, and schedule.
+**Run your training loop fast on the hardware you have.**
+Autotrainer is the execution layer: it detects your hardware (local GPUs or a
+SLURM cluster), picks the distribution strategy, applies the throughput wins
+people forget, and tells you when a run is slow or broken — **without touching
+your lr, loss, schedule, or optimizer**. It can infer those too, if you ask.
 
 Supports **PyTorch** (DDP, SLURM multi-node), **TensorFlow/Keras**
 (Mirrored / MultiWorker strategies), **scikit-learn**, **XGBoost**, and
@@ -82,13 +83,38 @@ autotrainer.finish()
 ```
 
 
-On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, sensible
-`num_workers` / `pin_memory` / `persistent_workers`, and AMP — **without
-touching your lr, loss, schedule, or optimizer**. It is a no-op on CPU, so the
-same script runs unchanged on a laptop and on an A100. Pass `optimize=False` to
-opt out, and see
+On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, `channels_last`
+for conv nets, sensible `num_workers` / `pin_memory` / `persistent_workers`,
+and AMP — **without touching your lr, loss, schedule, or optimizer**. It is a
+no-op on CPU, so the same script runs unchanged on a laptop and on an A100.
+Pass `optimize=False` to opt out, and see
 [Getting throughput out of your GPUs](docs/guide/gpu-optimization.md) for what
 that replaces.
+
+Worker counts come from the CPUs you were actually *allocated* —
+`SLURM_CPUS_PER_TASK`, then the affinity mask — not the node's core count, so a
+job granted 8 CPUs of a 128-core node does not spawn workers for all 128.
+
+### What that actually buys
+
+Measured on one RTX 5070 Laptop GPU. Your mileage varies with model, GPU and
+data — these are the shape of the win, not a promise:
+
+| Change | Effect | Measured on |
+|---|---|---|
+| `channels_last`, **AMP on** | **+28%** per step, **+34%** when `train_step()` also converts the input | 4-conv net, 64x3x128x128 |
+| `channels_last`, **AMP off** | **−68%** — which is why it is gated on AMP and never applied without it | same |
+| Fused optimizer kernels in `auto()` | **+11–12%** per step | MLP stacks, 40x64 and 20x512 |
+| Fused optimizer kernels in `auto()` | **+123%** when the optimizer step dominates | MLP stack, 4x2048 |
+| `optimize=True` vs torch defaults, end to end | **+22%** | 4-conv net, 64x3x128x128 |
+
+Nothing here changes your maths. `channels_last` is a memory layout and fused
+optimizers are the same update in one kernel instead of one launch per tensor —
+identical results, fewer cycles. Every one of them is printed when it fires:
+
+```
+[autotrainer] optimize: TF32, cudnn.benchmark, channels_last, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
+```
 
 Then launch. On a multi-GPU box `prepare()` spawns one worker per GPU the first
 time it's called, so a bare `python train.py` uses them all with no launcher:
@@ -117,6 +143,7 @@ autotrainer info                  # show what was detected
 | To know if the loader is the bottleneck | `BottleneckMonitor()` | [Monitors](docs/guide/monitors.md) |
 | Samples/sec and a rough MFU estimate | `ThroughputMonitor()` | [Monitors](docs/guide/monitors.md) |
 | To know if training is going wrong | `TrainingMonitor()` | [Monitors](docs/guide/monitors.md) |
+| To check the environment before it costs an allocation | `autotrainer doctor` | [Scaling up](docs/guide/scaling.md) |
 | To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |
 | XGBoost/LightGBM params with sane threads | `boost_params(lib="xgboost")` | — |
 | TensorFlow strategy scope | `scope()`, `scale_batch_size(n)` | — |
@@ -146,12 +173,14 @@ Concretely, four things are unusual here:
 2. **Your hyperparameters are never touched silently.** lr, loss, schedule, and
    optimizer choice are yours unless you explicitly call `auto()` or `train()`
    to have them inferred. Everything `optimize=True` does — TF32,
-   `cudnn.benchmark`, workers, AMP — is throughput, not recipe. And it prints
-   every change it makes, so nothing is a surprise.
+   `cudnn.benchmark`, `channels_last`, workers, AMP — is throughput, not
+   recipe. And it prints every change it makes, so nothing is a surprise.
 3. **No launcher to configure.** `python train.py` spawns one worker per GPU on
    its own. There is no config file to generate and no separate launch command,
    and under SLURM the auto-spawn correctly stands down so `srun autotrainer
-   run` behaves.
+   run` behaves. `autotrainer doctor` checks the setup first — the CPU budget
+   and the `num_workers` it implies, `--ntasks-per-node` against your GPU
+   count, whether scratch is on NFS, and whether the rendezvous port is free.
 4. **It tells you why the run is bad.** `ThroughputMonitor` reports MFU,
    `BottleneckMonitor` says whether the loader is starving the GPU, and
    `TrainingMonitor` names the numerical failure (NaN loss, divergence, fp16
@@ -167,7 +196,7 @@ Autotrainer maintains a strict separation between **hardware execution throughpu
 
 | Dimension | What it Includes | How Autotrainer Treats It |
 |---|---|---|
-| **⚡ Hardware Throughput** | AMP (bf16/fp16), TF32, channels_last, DataLoader Workers, Pin Memory, cuDNN Benchmark, DDP Spawning | **100% Automatic & Safe** — `prepare()` enables these out of the box because they accelerate compute execution without altering your loss function or model convergence. |
+| **⚡ Hardware Throughput** | AMP (bf16/fp16), TF32, channels_last, Fused Optimizer Kernels, DataLoader Workers, Pin Memory, cuDNN Benchmark, DDP Spawning | **100% Automatic & Safe** — `prepare()` enables these out of the box because they accelerate compute execution without altering your loss function or model convergence. |
 | **🧠 Algorithmic / Math** | Gradient Clipping, Learning Rate, Optimizer Choice, Weight Decay, Loss Scaling | **Non-Invasive by Default** — Autotrainer never silently modifies your mathematical hyperparameters. Instead, the **AI Training Doctor** (`TrainingMonitor`) inspects live tensor dynamics and calculates concrete remediation steps. |
 
 ### Reach for something else when
@@ -244,8 +273,8 @@ More breadth:
 
 - **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
   allocation) — currently single-node threads only.
-- **Architecture-aware search**: width/depth remain out of scope (a bigger,
-  opt-in commitment that would step beyond "the model is yours").
+- **More of the throughput bundle**: `channels_last_3d` for volumetric convs,
+  and a measured default for `prefetch_factor`.
 
 
 Open or upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to
