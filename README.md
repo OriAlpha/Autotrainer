@@ -7,67 +7,38 @@
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v0.json)](https://github.com/astral-sh/ruff)
 
 **Run your training loop fast on the hardware you have.**
-Autotrainer is the execution layer: it detects your hardware (local GPUs or a
-SLURM cluster), picks the distribution strategy, applies the throughput wins
-people forget, and tells you when a run is slow or broken — **without touching
-your lr, loss, schedule, or optimizer**. It can infer those too, if you ask.
 
-Supports **PyTorch** (DDP, SLURM multi-node), **TensorFlow/Keras**
-(Mirrored / MultiWorker strategies), **scikit-learn**, **XGBoost**, and
-**LightGBM** — all through one API.
+Autotrainer detects your hardware (local GPUs or a SLURM cluster), picks the
+distribution strategy, applies the throughput wins people forget, and tells you
+when a run is slow or broken — **without touching your lr, loss, schedule, or
+optimizer**.
 
-```python
-import autotrainer
-
-# 1-Line Full Train: infers recipe, hardware wins, saves model, & prints summary!
-autotrainer.train(model, loader, epochs=5, save_path="model.pt")
-
-# Or prepare your custom training loop (DDP + AMP + TF32 + DataLoader workers):
-model, loader, opt = autotrainer.prepare(model, loader, opt)
-```
-
-```bash
-python train.py                  # local: prepare() auto-distributes across GPUs
-srun autotrainer run train.py    # SLURM multi-node (srun starts the tasks)
-autotrainer doctor               # diagnose your environment first
-```
+Works with **PyTorch** (DDP, SLURM multi-node), **TensorFlow/Keras**,
+**scikit-learn**, **XGBoost**, and **LightGBM** through one API.
 
 ## Install
 
 ```bash
-uv pip install "autotrainer[torch]"            # PyTorch (recommended)
-uv pip install "autotrainer[torch,boosting]"   # PyTorch + XGBoost/LightGBM
-uv pip install "autotrainer[all]"              # Everything (PyTorch, TensorFlow, Sklearn, XGBoost)
-
-# Or with standard pip:
-pip install "autotrainer[all]"
+pip install "autotrainer[torch]"   # PyTorch (recommended)
+pip install "autotrainer[all]"     # + TensorFlow, sklearn, XGBoost, LightGBM
 ```
 
-Only `psutil` is required by default; each ML framework is an opt-in extra
+Only `psutil` is required by default; each framework is an opt-in extra
 (`torch`, `sklearn`, `tf`, `boosting`, `all`). Install only what you use.
 
-> **Tip for HPC / SLURM Clusters**: On shared network file systems (NFS/Lustre), speed up installation by routing the `uv` cache to local node storage (`export UV_CACHE_DIR=/tmp/$USER-uv-cache`) and passing `--link-mode=copy` (or creating `.venv` in `/tmp`).
+## Use it
 
-Setting up for development instead? See
-[CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
-
-## Quickstart
-
-### 1-Line Complete Training (Easiest)
-
-Infers loss/optimizer/schedule, applies hardware acceleration, trains for $N$ epochs, saves the model checkpoint, and prints the performance summary:
-
+**Two lines, full training run** — infers loss/optimizer/schedule, applies the
+hardware wins, saves the checkpoint, prints a summary:
 
 ```python
 import autotrainer
 
-# 1 Line: trains model, saves checkpoint, and prints performance summary!
 model = autotrainer.train(model, loader, epochs=5, save_path="model.pt")
 ```
 
-### Custom Training Loop with `prepare()`
-
-Or wrap your existing PyTorch training loop to auto-enable hardware acceleration (DDP, AMP, TF32, DataLoader thread pools) without altering your recipe:
+**Or keep your own loop** — `prepare()` returns the same three objects you
+passed in, now distributed and optimized:
 
 ```python
 import autotrainer
@@ -75,156 +46,61 @@ import autotrainer
 model, loader, optimizer = autotrainer.prepare(model, loader, optimizer)
 
 for epoch in range(epochs):
-    autotrainer.set_epoch(loader, epoch)  # optional: prepare()'s loader
-    # ... your normal training loop      # already reshuffles each epoch
+    autotrainer.set_epoch(loader, epoch)   # reshuffle each epoch
+    ...                                    # your normal training loop
 
-# At the end: prints comprehensive training summary & cleans up process groups
-autotrainer.finish()
+autotrainer.finish()                       # summary + process-group cleanup
 ```
 
-
-On a GPU, `prepare()` also enables TF32, `cudnn.benchmark`, `channels_last`
-for conv nets, sensible `num_workers` / `pin_memory` / `persistent_workers`,
-and AMP — **without touching your lr, loss, schedule, or optimizer**. It is a
-no-op on CPU, so the same script runs unchanged on a laptop and on an A100.
-Pass `optimize=False` to opt out, and see
-[Getting throughput out of your GPUs](docs/guide/gpu-optimization.md) for what
-that replaces.
-
-Worker counts come from the CPUs you were actually *allocated* —
-`SLURM_CPUS_PER_TASK`, then the affinity mask — not the node's core count, so a
-job granted 8 CPUs of a 128-core node does not spawn workers for all 128.
-
-### What that actually buys
-
-Measured on one RTX 5070 Laptop GPU. Your mileage varies with model, GPU and
-data — these are the shape of the win, not a promise:
-
-| Change | Effect | Measured on |
-|---|---|---|
-| `channels_last`, **AMP on** | **+28%** per step, **+34%** when `train_step()` also converts the input | 4-conv net, 64x3x128x128 |
-| `channels_last`, **AMP off** | **−68%** — which is why it is gated on AMP and never applied without it | same |
-| Fused optimizer kernels in `auto()` | **+11–12%** per step | MLP stacks, 40x64 and 20x512 |
-| Fused optimizer kernels in `auto()` | **+123%** when the optimizer step dominates | MLP stack, 4x2048 |
-| `optimize=True` vs torch defaults, end to end | **+22%** | 4-conv net, 64x3x128x128 |
-
-Nothing here changes your maths. `channels_last` is a memory layout and fused
-optimizers are the same update in one kernel instead of one launch per tensor —
-identical results, fewer cycles. Every one of them is printed when it fires:
-
-```
-[autotrainer] optimize: TF32, cudnn.benchmark, channels_last, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
-```
-
-Then launch. On a multi-GPU box `prepare()` spawns one worker per GPU the first
-time it's called, so a bare `python train.py` uses them all with no launcher:
+Then run it. No launcher to configure — on a multi-GPU box `prepare()` spawns
+one worker per GPU by itself:
 
 ```bash
-python train.py                   # local: auto-spawns per-GPU workers
-autotrainer run train.py          # equivalent, explicit (same spawn machinery)
-autotrainer info                  # show what was detected
+python train.py                  # local: auto-distributes across GPUs
+srun autotrainer run train.py    # SLURM multi-node
+autotrainer doctor               # check the environment before you burn an allocation
+autotrainer ui                   # zero-dependency dashboard for your runs
 ```
 
-## Which entry point do I want?
+## Why use it
 
-| You want | Call | Guide |
-|---|---|---|
-| 1-line train, recipe infer, & model save across PyTorch/Sklearn/XGBoost/TF | `train(model, loader, save_path="model.pt")` | [One-line training](docs/guide/one-line-training.md) |
-| My loop, but using the hardware properly | `prepare(model, loader, opt)` | [GPU optimization](docs/guide/gpu-optimization.md) |
-| The whole step written for me | `train_step(...)` | [GPU optimization](docs/guide/gpu-optimization.md#even-simpler-train_step-runs-the-whole-step) |
-| Loss / optimizer / LR / schedule inferred | `auto(model, loader)` | [One-line training](docs/guide/one-line-training.md) |
-| A learning rate suggestion | `find_lr(model, loader, loss_fn)` | [Training loop](docs/guide/training-loop.md#finding-a-learning-rate) |
-| The largest batch size that fits | `find_batch_size(model, step_fn)` | [Training loop](docs/guide/training-loop.md#batch-size) |
-| Zero-dependency Web UI dashboard | `autotrainer ui`, `run_ui_server()` | [Monitors](docs/guide/monitors.md#autotrainer-ui) |
-| Native experiment tracking (CSV, JSONL, metadata) | `NativeTracker()`, `CSVTracker()`, `JSONLTracker()` | [Monitors](docs/guide/monitors.md#native-experiment-trackers) |
-| Multi-framework callbacks | `AutotrainerCallback()`, `AutotrainerHuggingFaceCallback()`, `AutotrainerLightningCallback()`, `AutotrainerKerasCallback()`, `autotrainer_xgboost_callback()`, `autotrainer_lightgbm_callback()` | [Monitors](docs/guide/monitors.md#multi-framework-callbacks) |
-| Multi-format exports (HTML, Markdown, CSV, JSON) | `autotrainer ui` &rarr; Export Dropdown | [Monitors](docs/guide/monitors.md#multi-format-exports) |
-| Multi-user workspaces & directory aggregation | `autotrainer ui ./logs /cluster/runs` | [Monitors](docs/guide/monitors.md#multi-user-workspace) |
-| To know if the loader is the bottleneck | `BottleneckMonitor()` | [Monitors](docs/guide/monitors.md) |
-| Samples/sec and a rough MFU estimate | `ThroughputMonitor()` | [Monitors](docs/guide/monitors.md) |
-| To know if training is going wrong | `TrainingMonitor()` | [Monitors](docs/guide/monitors.md) |
-| To check the environment before it costs an allocation | `autotrainer doctor` | [Scaling up](docs/guide/scaling.md) |
-| To shard a model too big for one GPU | `prepare(..., fsdp=True)` | [Scaling up](docs/guide/scaling.md) |
-| XGBoost/LightGBM params with sane threads | `boost_params(lib="xgboost")` | — |
-| TensorFlow strategy scope | `scope()`, `scale_batch_size(n)` | — |
+- **Your loop stays yours.** No base class, no trainer object, no callback
+  system. Deleting the import leaves a working script.
+- **Your hyperparameters are never touched silently.** lr, loss, schedule, and
+  optimizer are yours unless you call `auto()` or `train()`. `optimize=True`
+  only does throughput — TF32, `cudnn.benchmark`, `channels_last`, workers,
+  AMP, fused optimizers — and prints every change it makes.
+- **It's faster.** +22% end to end vs torch defaults on a 4-conv net, +123% on
+  optimizer-bound MLPs. [Measurements](docs/performance.md).
+- **No launcher to configure.** `python train.py` uses every GPU; under SLURM
+  the auto-spawn stands down so `srun autotrainer run` behaves.
+- **It tells you why the run is bad.** MFU and samples/sec, whether the loader
+  is starving the GPU, and NaN / divergence / fp16-overflow named in plain
+  language with the fix.
+- **One API across frameworks.** PyTorch, TensorFlow/Keras, scikit-learn,
+  XGBoost, LightGBM — most alternatives are PyTorch-only.
 
-
-Everything in `autotrainer.__all__` is public and stable; the rest is internal.
-
-## How this differs from the alternatives
-
-Most tools in this space ask you to hand over your training loop, your launcher,
-or both. Autotrainer's bet is that you shouldn't have to give up either to use
-your hardware properly.
-
-| Tool | What it gives you | What you change to adopt it |
-|---|---|---|
-| `torch.distributed` + `torchrun` | The primitives | Write the DDP wrap, the sampler, the launcher flags — every time |
-| HF Accelerate | Device/precision/distribution abstraction | Restructure around `accelerator.*`; configure and use `accelerate launch` |
-| PyTorch Lightning | A full training framework | Move your code into a `LightningModule` + `Trainer` |
-| Ray Train | Distributed execution | Adopt the Ray runtime and wrap your function in it |
-| **autotrainer** | **All of the above paths, on your existing loop** | **One line: `prepare(model, loader, opt)`** |
-
-Concretely, four things are unusual here:
-
-1. **Your loop stays yours.** `prepare()` returns the same three objects you
-   passed in. There is no base class to inherit, no trainer object to configure,
-   and no callback system to learn. Deleting the import leaves a working script.
-2. **Your hyperparameters are never touched silently.** lr, loss, schedule, and
-   optimizer choice are yours unless you explicitly call `auto()` or `train()`
-   to have them inferred. Everything `optimize=True` does — TF32,
-   `cudnn.benchmark`, `channels_last`, workers, AMP — is throughput, not
-   recipe. And it prints every change it makes, so nothing is a surprise.
-3. **No launcher to configure.** `python train.py` spawns one worker per GPU on
-   its own. There is no config file to generate and no separate launch command,
-   and under SLURM the auto-spawn correctly stands down so `srun autotrainer
-   run` behaves. `autotrainer doctor` checks the setup first — the CPU budget
-   and the `num_workers` it implies, `--ntasks-per-node` against your GPU
-   count, whether scratch is on NFS, and whether the rendezvous port is free.
-4. **It tells you why the run is bad.** `ThroughputMonitor` reports MFU,
-   `BottleneckMonitor` says whether the loader is starving the GPU, and
-   `TrainingMonitor` names the numerical failure (NaN loss, divergence, fp16
-   overflow, vanishing grads) in plain language with the fix. Getting a
-   straight answer to "why is this slow / broken" is usually the actual job.
-
-It is also framework-plural: PyTorch, TensorFlow/Keras, scikit-learn, XGBoost,
-and LightGBM go through one API, where most of the tools above are PyTorch-only.
-
-## The Core Philosophy: Hardware vs. Math
-
-Autotrainer maintains a strict separation between **hardware execution throughput** and **mathematical modeling recipe**:
-
-| Dimension | What it Includes | How Autotrainer Treats It |
-|---|---|---|
-| **⚡ Hardware Throughput** | AMP (bf16/fp16), TF32, channels_last, Fused Optimizer Kernels, DataLoader Workers, Pin Memory, cuDNN Benchmark, DDP Spawning | **100% Automatic & Safe** — `prepare()` enables these out of the box because they accelerate compute execution without altering your loss function or model convergence. |
-| **🧠 Algorithmic / Math** | Gradient Clipping, Learning Rate, Optimizer Choice, Weight Decay, Loss Scaling | **Non-Invasive by Default** — Autotrainer never silently modifies your mathematical hyperparameters. Instead, the **AI Training Doctor** (`TrainingMonitor`) inspects live tensor dynamics and calculates concrete remediation steps. |
-
-### Reach for something else when
-
-- **You're already happy on Lightning, Accelerate, or Ray.** Autotrainer doesn't
-  integrate with them — it's an alternative to that layer, not an addition. If
-  their abstractions already fit your work, switching buys you little.
-- **You need multi-node beyond SLURM**, or a scheduler-agnostic cluster
-  abstraction. Ray covers ground autotrainer doesn't.
-- **You need heavy cloud-hosted model registries.** Autotrainer provides a local
-  zero-dependency Web UI (`autotrainer ui`) and local file trackers (CSV, JSONL, run metadata), but does not run external hosted cloud services.
-- **You need hyperparameter or architecture search.** Deliberately out of
-  scope — the recipe and the model are yours. Reach for Optuna or Ray Tune,
-  and use `prepare()` inside the objective.
-- **You can't take pre-1.0 churn.** The public API has been frozen since 0.10,
-  but this is 0.x and multi-node SLURM validation is still the open item before
-  1.0 (see [Roadmap](#roadmap)).
+Worker counts come from the CPUs you were actually *allocated*
+(`SLURM_CPUS_PER_TASK`, then the affinity mask), so a job granted 8 CPUs of a
+128-core node does not spawn 128 workers.
 
 ## Documentation
 
+**Start here**
+
+- [Entry points](docs/api-map.md) — which function do I call for what.
+- [Performance](docs/performance.md) — what the optimizations measurably buy.
+- [How it compares](docs/comparison.md) — vs Lightning, Accelerate, Ray,
+  `torchrun`, and when to reach for something else.
+
 **Guide**
 
-- [Getting throughput out of your GPUs](docs/guide/gpu-optimization.md) —
-  what `optimize=True` replaces, and `train_step()`.
+- [Getting throughput out of your GPUs](docs/guide/gpu-optimization.md) — what
+  `optimize=True` replaces, and `train_step()`.
 - [Training-loop helpers](docs/guide/training-loop.md) — `set_epoch`,
   `zero_grad`, `eval_mode`, `accumulate`, batch size, `find_lr`.
-- [Monitors](docs/guide/monitors.md) — bottleneck, throughput, and training
-  health.
+- [Monitors](docs/guide/monitors.md) — bottleneck, throughput, training health,
+  the web UI, trackers, and framework callbacks.
 - [Scaling up](docs/guide/scaling.md) — launching, `torch.compile`, FSDP, CPU
   offload, SLURM.
 - [One-line training](docs/guide/one-line-training.md) — `train()`, `auto()`,
@@ -232,50 +108,15 @@ Autotrainer maintains a strict separation between **hardware execution throughpu
 
 **Reference**
 
-- [API reference](https://orialpha.github.io/Autotrainer/) — published from CI
-  on every push to main; build locally with `pdoc -o docs/build src/autotrainer`.
-- [Examples](examples/) — runnable scripts for each framework and SLURM
-  `.sbatch` templates.
+- [API reference](https://orialpha.github.io/Autotrainer/) — generated from the
+  source on every push to main.
+- [Examples](examples/) — runnable scripts per framework, SLURM `.sbatch`
+  templates.
 - [Environment variables](.env.example) — every knob autotrainer reads.
-- [CHANGELOG](CHANGELOG.md) — version history.
-- [Public API & deprecation policy](CONTRIBUTING.md#public-api-and-deprecation-policy)
-  | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) |
-  [Code of Conduct](CODE_OF_CONDUCT.md).
+- [Roadmap](docs/roadmap.md) · [CHANGELOG](CHANGELOG.md) ·
+  [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) ·
+  [Code of Conduct](CODE_OF_CONDUCT.md)
 
-## Roadmap
-
-Toward 1.0:
-
-- **Stabilization**: the public API is frozen as of 0.10; 1.0 blocks on real multi-node SLURM validation.
-- **Unified Execution & Explanations (Shipped in 0.14.0)**:
-  - 1-line unified `train()` API across PyTorch, Scikit-Learn, XGBoost, LightGBM, CatBoost, and TensorFlow.
-  - Comprehensive Executive Training Summaries (`SummaryTracker`) reporting cluster hardware, active GPU/CPU optimizations, throughput (samples/sec), loss reduction, and triage diagnostics.
-  - Framework environment diagnostics in `autotrainer doctor`.
-
-Understanding your training run (Post-1.0 features):
-
-- **Preflight estimation** (`doctor --profile`): dry-run a few batches, then
-  report projected training time, memory headroom, and cost per GPU count —
-  answer "how many GPUs do I actually need?" before burning an allocation.
-- **Training cards**: every `train()` emits a reproducibility card (recipe,
-  seeds, environment, loss curve) and `replay` reruns it.
-
-Deeper SLURM ergonomics:
-
-- **`autotrainer sbatch train.py --nodes 2 --time 4h`**: generate and submit a
-  correct sbatch script (no more `--ntasks-per-node` != GPUs footguns).
-- **Automatic requeue**: `autotrainer.preempt` already stops your loop cleanly
-  at an epoch boundary when preempted, but resubmitting is still yours to do
-  (`--requeue`, or `scontrol requeue`). Issuing it from inside the handler is
-  the remaining step.
-
-More breadth:
-
-- **Multi-node boosting** (xgboost.dask / lightgbm.dask across a SLURM
-  allocation) — currently single-node threads only.
-- **More of the throughput bundle**: `channels_last_3d` for volumetric convs,
-  and a measured default for `prefetch_factor`.
-
-
-Open or upvote [issues](https://github.com/OriAlpha/Autotrainer/issues) to
-prioritize these.
+> **HPC tip**: on shared network filesystems (NFS/Lustre), route the `uv` cache
+> to local node storage (`export UV_CACHE_DIR=/tmp/$USER-uv-cache`) and pass
+> `--link-mode=copy`, or create `.venv` in `/tmp`.
