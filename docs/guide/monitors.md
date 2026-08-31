@@ -151,4 +151,5 @@ Use built-in callbacks to stream telemetry directly from your favorite ML framew
 
 ## Next
 
-- [One-call training](fit.md) — `fit()` runs its own checks before spending the compute.
+- [One-line training](one-line-training.md) — `train()` and `auto()` run
+  their own data checks before spending the compute.

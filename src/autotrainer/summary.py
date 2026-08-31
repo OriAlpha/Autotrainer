@@ -4,14 +4,14 @@ Two ways in, and they are separate on purpose:
 
 * The module-level helpers (:func:`step`, :func:`log_epoch`, :func:`finish`)
   drive one process-global tracker, created on first use. This is the
-  one-liner path the README documents, and what ``prepare()`` / ``fit()`` /
+  one-liner path the README documents, and what ``prepare()`` and
   ``train()`` feed into.
 * :class:`SummaryTracker` instances are standalone - construct one and call
   its own ``step`` / ``log_epoch`` / ``report``. The module-level helpers do
   not see it, which is what you want when tracking two runs at once.
 
 :func:`finish` releases the global tracker when it is done, so a second run
-in the same process (a notebook, a test suite, ``fit()`` then ``train()``)
+in the same process (a notebook, a test suite, two ``train()`` calls)
 starts from a clean one instead of inheriting the finished run's losses,
 timings and applied-optimization record.
 """
@@ -534,8 +534,8 @@ def finish(checkpoint: str | Path | None = None, cleanup_dist: bool = False) -> 
     Args:
         checkpoint: path to report as the saved artifact, if any.
         cleanup_dist: also call ``destroy_process_group()``. Default ``False``
-            so ``fit()`` / ``tune()`` pipelines that call finish() between
-            phases keep their process group alive.
+            so multi-phase pipelines that call finish() between phases keep
+            their process group alive.
 
     Releases the process-global tracker on the way out, so the next run in
     this process starts fresh rather than reusing a reported tracker (which

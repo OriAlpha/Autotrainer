@@ -101,7 +101,8 @@ lr = autotrainer.find_lr(model, loader, loss_fn)   # -> float
 ```
 
 It reports a suggestion; what you do with it is yours. If you'd rather have the
-whole recipe searched instead of just the lr, that's [`fit()`](fit.md).
+whole recipe inferred instead of just the lr, that's
+[`auto()`](one-line-training.md).
 
 ## Post-training summary (`finish`, `log_epoch`, `step`, `SummaryTracker`)
 
@@ -121,4 +122,4 @@ autotrainer.finish(checkpoint="best_model.pt")
 ## Next
 
 - [Monitors](monitors.md) — is it fast? is it healthy?
-- [One-call training](fit.md) — skip the loop entirely.
+- [One-line training](one-line-training.md) — skip the loop entirely.

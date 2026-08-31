@@ -349,3 +349,61 @@ def test_native_tracker_metadata_features(tmp_path: Path):
     notes_file = tmp_path / "meta_features_run" / "notes.md"
     assert notes_file.exists()
     assert "cosine" in notes_file.read_text(encoding="utf-8")
+
+
+class TestTemplates:
+    """The dashboard and the export report live in autotrainer/templates/.
+
+    Moving them out of ui.py bought two new ways to break that a string
+    literal could not: the files can go missing from the built wheel, and a
+    placeholder can be added to a template without being passed at render.
+    Both are silent at import time, so they are pinned here.
+    """
+
+    def test_templates_are_packaged_and_readable(self):
+        from autotrainer.ui import _template
+
+        for name in ("dashboard.html", "report.html"):
+            body = _template(name)
+            assert body.startswith("<!DOCTYPE html>"), name
+            assert body.rstrip().endswith("</html>"), name
+
+    def test_dashboard_has_no_unfilled_slots(self):
+        """It takes no values, so a slot in it would ship to the browser."""
+        from autotrainer.ui import _template
+
+        assert "__AT_" not in _template("dashboard.html")
+
+    def test_every_report_slot_is_filled_at_render(self):
+        from autotrainer.ui import _render, _template
+
+        out = _render(
+            _template("report.html"),
+            run_id="r1",
+            user_name="u",
+            start_time="t",
+            json_str="{}",
+        )
+        # A leftover slot means the template grew one the caller doesn't pass.
+        assert "__AT_" not in out
+        assert "r1" in out
+
+    def test_render_leaves_css_braces_and_js_literals_alone(self):
+        """Why this uses plain replacement and not str.format/Template: the
+        templates are full of `{...}` CSS rules and `${...}` JS literals."""
+        from autotrainer.ui import _render, _template
+
+        out = _render(
+            _template("report.html"),
+            run_id="r1",
+            user_name="u",
+            start_time="t",
+            json_str="{}",
+        )
+        assert "${" in out  # JS template literals survived
+        assert "{{" not in out  # no escaped-brace residue from the old f-string
+
+    def test_template_is_cached(self):
+        from autotrainer.ui import _template
+
+        assert _template("dashboard.html") is _template("dashboard.html")

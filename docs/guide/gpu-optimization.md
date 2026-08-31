@@ -1,10 +1,10 @@
 # Getting throughput out of your GPUs
 
 `prepare()` makes your model and loader distribution-ready and — by default on
-a GPU — also flips on the wins people forget: TF32, `cudnn.benchmark` for CNNs,
-sane `num_workers` / `pin_memory` / `persistent_workers` defaults on bare
-loaders, and AMP — **without touching your lr, loss, schedule, or optimizer
-choice**.
+a GPU — also flips on the wins people forget: TF32, `cudnn.benchmark` and
+`channels_last` for CNNs, sane `num_workers` / `pin_memory` /
+`persistent_workers` defaults on bare loaders, and AMP — **without touching
+your lr, loss, schedule, or optimizer choice**.
 
 It is a no-op on CPU (every flag gates on a visible CUDA device), so CPU-only
 scripts see no change. Pass `optimize=False` to opt out.
@@ -107,7 +107,7 @@ way. The helpers are no-ops on CPU, so the snippet it prints is safe verbatim:
 ```
 [autotrainer] mode=local_multi_gpu nodes=1 procs/node=4 world_size=4
 [autotrainer] DistributedSampler installed (shuffle=True) - epoch shuffling auto-managed
-[autotrainer] optimize: TF32, cudnn.benchmark, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
+[autotrainer] optimize: TF32, cudnn.benchmark, channels_last, num_workers=8, pin_memory, persistent_workers, AMP (hyperparameters untouched)
 [autotrainer] optimize: AMP is on. Simplest - one call per step:
     scaler = autotrainer.GradScaler()   # once, before the loop
     loss = autotrainer.train_step(model, loss_fn, xb, yb, opt, scaler=scaler)
@@ -116,6 +116,27 @@ way. The helpers are no-ops on CPU, so the snippet it prints is safe verbatim:
         out = model(x); loss = loss_fn(out, y)
     scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
 ```
+
+## `channels_last` for conv nets
+
+Tensor cores want NHWC. When `optimize=True`, AMP is on, and every convolution
+in the model is a `Conv2d`, `prepare()` converts the model to
+`channels_last` — measured **+28%** per step on a small conv net (RTX 5070),
+and **+34%** when `train_step()` also hands the first conv an input already in
+that layout, which it does automatically.
+
+All three conditions are load-bearing:
+
+- **AMP must be on.** Without it the same conversion measured **3x slower** —
+  cuDNN's fp32 fast paths are NCHW, so the layout only buys transposes. This is
+  why it is tied to `amp` rather than to `optimize` alone.
+- **Conv2d only.** `channels_last` is a 4D layout: a `Conv1d` net would get a
+  silent no-op and a `Conv3d` net wants `channels_last_3d`. A model mixing
+  dimensions is left alone.
+- **It is a memory layout, not maths.** Results are unchanged.
+
+On your own loop you still get the model conversion; only the per-step input
+conversion is specific to `train_step()`.
 
 ## Next
 
