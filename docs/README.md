@@ -43,7 +43,15 @@ The reference covers everything exported in `autotrainer.__all__`:
 - **Training-loop helpers:** `train_step`, `accumulate`, `zero_grad`,
   `eval_mode`, `train_mode`, `set_epoch`, `GradScaler`, `autocast_context`.
 - **Rank-aware utilities:** `rank`, `is_main`, `print0`, `save0`, `barrier`.
-- **Monitors:** `ThroughputMonitor`, `BottleneckMonitor`, `TrainingMonitor`, `SummaryTracker`.
+- **Monitors:** `ThroughputMonitor`, `BottleneckMonitor`, `TrainingMonitor`,
+  `SummaryTracker`, plus `log_epoch` and `step` for recording into the active
+  summary.
+- **Trackers and UI:** `NativeTracker`, `CSVTracker`, `JSONLTracker`,
+  `run_ui_server`.
+- **Framework callbacks:** `AutotrainerCallback`,
+  `AutotrainerHuggingFaceCallback`, `AutotrainerLightningCallback`,
+  `AutotrainerKerasCallback`, `autotrainer_xgboost_callback`,
+  `autotrainer_lightgbm_callback`.
 - **SLURM helpers:** `configure_scratch`, `configure_nccl`, `node_scratch`.
 
 
