@@ -49,7 +49,7 @@ for epoch in range(epochs):
     autotrainer.set_epoch(loader, epoch)   # reshuffle each epoch
     ...                                    # your normal training loop
 
-autotrainer.finish()                       # summary + process-group cleanup
+autotrainer.finish()                       # prints the training summary
 ```
 
 Then run it. No launcher to configure — on a multi-GPU box `prepare()` spawns
