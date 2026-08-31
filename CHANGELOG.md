@@ -4,6 +4,77 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+### Fixed
+- **DataLoader workers ignored the SLURM allocation.** The worker count was
+  sized from the node's physical core count (`psutil.cpu_count`), which does
+  not respect cgroups or cpusets. A job granted 2 CPUs on a 128-core node got
+  the cap of 8 workers per rank - four times its whole allocation - and they
+  thrashed against the cgroup. Worker sizing now uses `SLURM_CPUS_PER_TASK`
+  and falls back to `os.sched_getaffinity`, matching what the sklearn and
+  boosting backends already did for `n_jobs`. All three now share
+  `utils.available_cpus()`, so they can no longer disagree about the
+  allocation.
+
+### Added
+- **`channels_last` for conv nets** under `prepare(optimize=True)`, gated on
+  AMP: measured +28% per step on a small conv net (RTX 5070), rising to +34%
+  when `train_step()` also converts the input. Gated deliberately - the same
+  conversion measured **3x slower** in fp32/TF32, where cuDNN's fast paths are
+  NCHW. Applied only when every convolution is a `Conv2d`, since the layout is
+  4D. Reported in the `optimize:` line like every other change.
+- **Fused optimizers in `auto()`** on CUDA: +11-12% per step on ordinary nets,
+  and over 2x when the optimizer step dominates. Only for the optimizer
+  `auto()` builds; one you pass in is never modified.
+- **`autotrainer doctor` now checks the two things that silently halve
+  throughput on a cluster**: the per-rank CPU budget (with the `num_workers` it
+  implies, and a warning when one CPU has to feed a GPU) and whether scratch
+  looks networked. It also warns when `SLURM_CPUS_PER_TASK` is unset inside a
+  job.
+
+### Changed
+- **The Web UI's markup moved out of `ui.py` into
+  `src/autotrainer/templates/`.** `ui.py` was 4,629 lines, of which 3,707 were
+  two HTML documents held as string literals - the export report as an
+  f-string, so every one of its 122 CSS brace pairs was doubled and none of it
+  could be linted or highlighted as HTML. The templates are now `.html` files
+  filled by `_render()` at request time, and `ui.py` is 954 lines of server
+  code. Rendered output is byte-identical; both files ship in the wheel and
+  the sdist.
+- `auto()` builds the optimizer after `prepare()` has placed the model, so the
+  params are on the GPU in time for the fused kernels. `_make_optimizer` split
+  into `_choose_optimizer` (the decision, on the raw model) and
+  `_build_optimizer` (the construction, after placement). Both are internal;
+  the inferred recipe is unchanged.
+
+### Removed
+- **Hyperparameter search (`fit()`, `tune()`) is gone.** Autotrainer is the
+  execution layer: it makes *your* recipe run correctly and fast on the
+  hardware you have. Searching for a better recipe is a different job, and
+  Optuna and Ray Tune already do it well - use either one and call
+  `prepare()` inside the objective. What this removes:
+  - `autotrainer.fit()` and `autotrainer.tune()`, and the `autotrainer.tuning`,
+    `autotrainer.tuning_estimator`, `autotrainer.metrics`, `autotrainer.fitting`
+    and `autotrainer._fit_search` modules.
+  - The `metric=` selection knob (accuracy/f1/auc/r2), the Optuna
+    journal-file parallel search, and the phase-1/phase-2 checkpoint format.
+  - `autotrainer.augment_batch()` and the `autotrainer.augment` module; it
+    existed to give the search a scalar regularizer to tune.
+  - `sanity.overlap()` - the train/val leak check. Nothing takes both a train
+    and a validation loader any more, so it was unreachable.
+  - The `tune` extra (`pip install "autotrainer[tune]"`). Optuna is no longer
+    a dependency of any extra, including `all`.
+- `docs/guide/fit.md`, `examples/pytorch_fit.py`, `examples/pytorch_tune.py`.
+
+### Changed
+- `autotrainer.train()` moved from `autotrainer.fitting` to
+  `autotrainer.training` (both are internal modules; `autotrainer.train`
+  is unchanged).
+- New [One-line training](docs/guide/one-line-training.md) guide covering
+  `train()`, `auto()`, and the data checks, replacing `docs/guide/fit.md`.
+  Preemption (`autotrainer.preempt`) now documented in the scaling guide.
+
+Unaffected: `prepare()`, `auto()`, `train()`, `train_step()`, the launcher,
+SLURM support, the monitors, the trackers, and the UI.
 
 ## [0.16.0] - 2026-08-20
 ### Added

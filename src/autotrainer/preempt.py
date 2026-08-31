@@ -2,10 +2,8 @@
 
 SLURM gives a job advance notice before it is preempted or requeued - with
 ``#SBATCH --signal=B:USR1@120`` the job gets ``SIGUSR1`` two minutes before it
-is killed. ``fit()`` already writes a full resumable checkpoint after every
-epoch, so the only thing missing was catching that signal: without it a job
-preempted mid-epoch throws away the epoch it was in the middle of, and a job
-preempted during phase 1 threw away the whole search.
+is killed. Catching it is the difference between resuming from the last
+epoch boundary and throwing away everything since the last checkpoint.
 
 This module is deliberately tiny and observation-only. The handler sets a
 flag - it does not raise, exit, or unwind - so the training loop decides when
@@ -21,8 +19,6 @@ Usage inside a loop of your own::
         save_checkpoint()
         if preempted():
             break        # requeue will resume from the checkpoint
-
-``fit(checkpoint=...)`` does this for you.
 """
 
 from __future__ import annotations

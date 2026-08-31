@@ -2,9 +2,9 @@
 
 These spawn actual worker processes through the same rendezvous env vars the
 launcher sets, then assert the cross-rank properties that single-process
-unit tests cannot see: sampler sharding, LR-broadcast parity, and fit()
-weight parity. Each worker deliberately seeds its loader shuffle with its
-rank - the exact condition that used to desynchronize the ranks.
+unit tests cannot see: sampler sharding and LR-broadcast parity. Each worker
+deliberately seeds its loader shuffle with its rank - the exact condition that
+used to desynchronize the ranks.
 """
 
 from __future__ import annotations
@@ -135,39 +135,6 @@ lr = opt.param_groups[0]["lr"]
 print(f"RESULT rank={rank} lr={lr:.12e} shard={len(loader.sampler)}")
 """
 
-_FIT_WORKER = """
-import os
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-
-import autotrainer
-
-rank = int(os.environ["RANK"])
-torch.manual_seed(0)
-x = torch.randn(64, 3)
-y = x.sum(dim=1, keepdim=True)
-g = torch.Generator().manual_seed(rank)
-train = DataLoader(TensorDataset(x, y), batch_size=8, shuffle=True, generator=g)
-val = DataLoader(TensorDataset(x, y), batch_size=8)
-
-model = nn.Linear(3, 1)
-out, params, study = autotrainer.fit(
-    model, train, val,
-    trials=4, epochs=2, epochs_per_trial=1,
-    space={"lr": ("loguniform", 1e-3, 1e-1)},
-    study_storage=os.environ["TEST_STUDY_STORAGE"],
-    verbose=False,
-)
-assert (study is not None) == (rank == 0), "study must exist on rank 0 only"
-if study is not None:
-    # Both ranks' trials must land in the one shared study (2 each).
-    assert len(study.trials) == 4, f"expected 4 shared trials, got {len(study.trials)}"
-assert not isinstance(out, nn.parallel.DistributedDataParallel)
-w = torch.cat([p.detach().flatten() for p in out.parameters()]).double()
-print(f"RESULT rank={rank} wsum={w.sum().item():.12e} lr={params['lr']:.12e}")
-"""
-
 
 class TestTwoRankGloo:
     def test_auto_shards_loader_and_broadcasts_lr(self):
@@ -178,13 +145,6 @@ class TestTwoRankGloo:
         lr0 = r0.split("lr=")[1].split()[0]
         lr1 = r1.split("lr=")[1].split()[0]
         assert lr0 == lr1
-
-    def test_fit_parallel_search_and_identical_weights_on_all_ranks(self, tmp_path):
-        pytest.importorskip("optuna")
-        storage = str(tmp_path / "study.log")
-        r0, r1 = _run_two_ranks(_FIT_WORKER, extra_env={"TEST_STUDY_STORAGE": storage})
-        # Same broadcast recipe + synced DDP training = bit-identical models.
-        assert r0.split("rank=0 ")[1] == r1.split("rank=1 ")[1]
 
 
 # Exercises the DDP-opts path (prepare(static_graph=True)) over the same

@@ -117,9 +117,34 @@ multi-node collectives.
 For long runs under multi-process launches, raise the collective timeout with
 `AUTOTRAINER_TIMEOUT` (seconds) — see [`.env.example`](../../.env.example).
 
+## Surviving preemption
+
+SLURM gives a job advance notice before it is preempted or requeued. With
+
+```bash
+#SBATCH --signal=B:USR1@120
+```
+
+the job gets `SIGUSR1` two minutes before it is killed. Watch for it and stop
+at the next epoch boundary, *after* your checkpoint is written, instead of
+losing the epoch you were in the middle of:
+
+```python
+from autotrainer.preempt import watch, preempted
+
+watch()
+for epoch in range(epochs):
+    train_one_epoch()
+    save_checkpoint()
+    if preempted():
+        break        # requeue resumes from the checkpoint
+```
+
+The handler only sets a flag — it never raises or unwinds — so your loop
+decides when it is safe to stop.
+
 ## Next
 
-- [One-call training](fit.md) — including surviving preemption on a requeued
-  SLURM job.
+- [One-line training](one-line-training.md) — `train()` and `auto()`.
 - [runner-setup.md](../runner-setup.md) — self-hosted GPU CI runner setup.
 

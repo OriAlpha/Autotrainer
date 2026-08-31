@@ -12,7 +12,6 @@ Everything here is a no-op on CPU or when the flag is off, so the existing
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 # Loader keys _loader_kwargs already carries over. These are the ones it
@@ -27,14 +26,38 @@ def _looks_like_cnn(model: Any) -> bool:
     return any(isinstance(m, (nn.Conv2d, nn.Conv3d)) for m in model.modules())
 
 
-def _physical_cpus() -> int:
-    """Physical (not logical) core count, falling back to os.cpu_count()."""
-    try:
-        import psutil
+def _is_conv2d_net(model: Any) -> bool:
+    """True for a net whose convolutions are *all* ``Conv2d``.
 
-        return psutil.cpu_count(logical=False) or os.cpu_count() or 1
-    except ImportError:
-        return os.cpu_count() or 1
+    ``channels_last`` is a 4D layout. A Conv1d net would get a silent no-op,
+    and a Conv3d net wants ``channels_last_3d`` instead - converting it to the
+    4D format is not what the caller means. Requiring every conv to be 2D
+    keeps the conversion to the case where it is unambiguously right.
+    """
+    import torch.nn as nn
+
+    convs = [m for m in model.modules() if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d))]
+    return bool(convs) and all(isinstance(m, nn.Conv2d) for m in convs)
+
+
+def apply_channels_last(model: Any) -> bool:
+    """Convert a conv net to NHWC, which is what the tensor cores want.
+
+    ONLY call this when AMP is on. The layout is a large win under mixed
+    precision (~+28% on a 4-conv net, RTX 5070) and a large LOSS without it:
+    measured 3x SLOWER in fp32/TF32, because the fp32 kernels are the ones
+    cuDNN has NCHW fast paths for and the conversion just adds transposes.
+    A "free win" that triples fp32 step time is not a free win, so the caller
+    gates on ``amp`` and this stays a no-op everywhere else.
+
+    Returns whether the conversion was applied.
+    """
+    import torch
+
+    if not _is_conv2d_net(model):
+        return False
+    model.to(memory_format=torch.channels_last)
+    return True
 
 
 def apply_gpu_flags(model: Any, *, cnn: bool | None = None) -> None:
@@ -85,11 +108,13 @@ def build_loader_defaults(dataloader: Any, world_size: int) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
 
     # num_workers=0 is torch's default and the #1 silent cause of GPU
-    # starvation. Don't divide below 1 worker.
+    # starvation. One worker per CPU this rank may actually use - which under
+    # SLURM is the allocation, not the node's core count. Sizing from the node
+    # spawns 8 workers into a 2-CPU allocation and they thrash.
     if dataloader.num_workers == 0 and not dataloader.persistent_workers:
-        # One worker per physical core, sharded by world size, capped.
-        per_rank = max(_physical_cpus() // max(world_size, 1), 1)
-        kwargs["num_workers"] = min(per_rank, _DEFAULT_NUM_WORKERS_CAP)
+        from .utils import available_cpus
+
+        kwargs["num_workers"] = min(available_cpus(world_size), _DEFAULT_NUM_WORKERS_CAP)
 
     # pin_memory defaults to False; free H2D overlap on CUDA.
     if not dataloader.pin_memory:
@@ -128,6 +153,8 @@ def summarize(
         parts.append("TF32")
     if applied.get("cudnn_benchmark"):
         parts.append("cudnn.benchmark")
+    if applied.get("channels_last"):
+        parts.append("channels_last")
     if applied.get("num_workers") is not None:
         parts.append(f"num_workers={applied['num_workers']}")
     if applied.get("pin_memory"):
