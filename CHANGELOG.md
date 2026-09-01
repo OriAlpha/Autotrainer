@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Fixed
+- **A `.json` `save_path` on an sklearn-API booster wrote a pickle.** The
+  estimator branch of `train()` always called `joblib.dump`, so
+  `train(XGBClassifier(...), X, y, save_path="model.json")` - what
+  `examples/xgboost_example.py` does, and what the example docstrings
+  advertise - produced a joblib pickle named `.json` that `xgboost` could not
+  load back. A `.json`/`.ubj` path on an estimator with its own `save_model`
+  now uses that native writer; everything else (LightGBM's wrapper included,
+  which has no `save_model`) still pickles as before.
 - **`train(optimizer=...)` and `auto(optimizer=...)` discarded a passed
   optimizer.** Only a name (`"adamw"` / `"sgd"`) was ever honored: an
   optimizer *instance* went to `_choose_optimizer` as if it were a name, came

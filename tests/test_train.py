@@ -243,13 +243,10 @@ class TestBoosting:
         clf = autotrainer.train(XGBClassifier(n_estimators=5), X, y)
         assert clf.get_booster().num_boosted_rounds() == 5
 
-    @pytest.mark.xfail(
-        reason="the sklearn-API branch always joblib.dumps, so a .json save_path "
-        "(what examples/xgboost_example.py passes, and what the example docstrings "
-        "advertise) gets a pickle with a .json name that xgboost cannot load back.",
-        strict=True,
-    )
     def test_json_save_path_writes_xgboost_json(self, tmp_path):
+        """A .json save_path must be real JSON that xgboost loads back, not a
+        joblib pickle wearing the suffix - what examples/xgboost_example.py
+        passes and what the example docstrings advertise."""
         pytest.importorskip("xgboost")
         import numpy as np
         from xgboost import XGBClassifier
@@ -259,8 +256,29 @@ class TestBoosting:
         X = np.random.RandomState(0).randn(64, 4)
         y = (X[:, 0] > 0).astype(int)
         path = tmp_path / "clf.json"
-        autotrainer.train(XGBClassifier(n_estimators=5), X, y, save_path=str(path))
-        json.loads(path.read_text())
+        clf = autotrainer.train(XGBClassifier(n_estimators=5), X, y, save_path=str(path))
+        assert "learner" in json.loads(path.read_text())
+        reloaded = XGBClassifier()
+        reloaded.load_model(str(path))
+        assert (reloaded.predict(X) == clf.predict(X)).all()
+
+    def test_joblib_save_path_still_pickles(self, tmp_path):
+        """The default for everything without a native writer - including
+        LightGBM, whose sklearn wrapper has no save_model."""
+        pytest.importorskip("xgboost")
+        import numpy as np
+        from xgboost import XGBClassifier
+
+        import autotrainer
+
+        X = np.random.RandomState(0).randn(64, 4)
+        y = (X[:, 0] > 0).astype(int)
+        path = tmp_path / "clf.joblib"
+        clf = autotrainer.train(XGBClassifier(n_estimators=5), X, y, save_path=str(path))
+        # Round-trip of a file written by the line above, not untrusted input.
+        import joblib
+
+        assert (joblib.load(path).predict(X) == clf.predict(X)).all()
 
 
 class TestNativeXGBoost:
