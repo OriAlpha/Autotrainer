@@ -426,8 +426,8 @@ def auto(
     model: Any,
     dataloader: Any,
     *,
-    loss: str | None = None,
-    optimizer: str | None = None,
+    loss: Any | None = None,
+    optimizer: Any | None = None,
     lr: float | None = None,
     weight_decay: float = 0.01,
     schedule: bool = True,
@@ -446,10 +446,14 @@ def auto(
         dataloader: a training DataLoader; one batch is peeked to infer the
             loss from the target dtype/shape.
         loss: override the inferred loss; one of ``"cross_entropy"``,
-            ``"bce"``, ``"mse"``, ``"huber"``. If ``None``, inferred.
-        optimizer: ``"adamw"`` or ``"sgd"``; if ``None``, picked from the
-            architecture (SGD for CNNs, AdamW otherwise).
-        lr: learning rate; if ``None``, found via an LR range test.
+            ``"bce"``, ``"mse"``, ``"huber"``, or a loss module to use as-is.
+            If ``None``, inferred.
+        optimizer: ``"adamw"`` or ``"sgd"`` to name one to build, or an
+            optimizer instance to use as-is (its lr is then respected unless
+            ``lr`` is also given). If ``None``, picked from the architecture
+            (SGD for CNNs, AdamW otherwise).
+        lr: learning rate; if ``None``, taken from a passed optimizer, else
+            found via an LR range test.
         weight_decay: decoupled weight decay (excluded from biases/norms).
         schedule: if True, build a warmup(5%)+cosine schedule.
         epochs: assumed epoch count, used to size the schedule.
@@ -496,8 +500,20 @@ def auto(
         for msg in report(xb, targets, loss_name):
             print0(f"[autotrainer] auto: {msg}")
 
+    # An optimizer INSTANCE is the user's own and is used verbatim - the same
+    # passthrough _make_loss does for a loss instance. Only a NAME reaches the
+    # choose/build path below, which constructs a fresh one. Without this the
+    # instance was handed to _choose_optimizer as if it were a name, returned
+    # verbatim, then compared to "sgd" by _build_optimizer - so every passed
+    # optimizer was silently replaced by a default AdamW, along with its lr.
+    user_opt = None if optimizer is None or isinstance(optimizer, str) else optimizer
+
     if lr is not None:
         lr_val, lr_why = lr, "user override"
+    elif user_opt is not None:
+        # Their optimizer already carries an lr; a range test would only
+        # overwrite a decision they had made explicitly.
+        lr_val, lr_why = user_opt.param_groups[0]["lr"], "from your optimizer"
     else:
         lr_val = _find_lr_synced(model, dataloader, loss_fn, optimizer or "adamw")
         lr_why = "LR range test (steepest descent / 10, rank 0)"
@@ -506,7 +522,9 @@ def auto(
     # build after prepare() has moved the params to the GPU - only then can
     # the fused optimizer kernels be used. The LR range test above also has
     # to see the unwrapped model, since it deep-copies it.
-    opt_name, opt_why = _choose_optimizer(model, optimizer)
+    opt_name, opt_why = _choose_optimizer(model, optimizer if user_opt is None else None)
+    if user_opt is not None:
+        opt_name, opt_why = type(user_opt).__name__, "yours, used as-is"
 
     print0(f"[autotrainer] auto: loss={loss_name} ({loss_why})")
     print0(
@@ -516,7 +534,15 @@ def auto(
     print0(f"[autotrainer] auto: lr={lr_val:.2e} ({lr_why})")
 
     model, dataloader = prepare(model, dataloader)
-    opt = _build_optimizer(model, opt_name, lr_val, weight_decay)
+    if user_opt is not None:
+        opt = user_opt
+        if lr is not None:
+            # They asked for both an optimizer and an lr, so apply the lr to
+            # the optimizer rather than silently honoring only one of them.
+            for group in opt.param_groups:
+                group["lr"] = lr
+    else:
+        opt = _build_optimizer(model, opt_name, lr_val, weight_decay)
     # prepare() records the optimizer in the summary when it is handed one;
     # it isn't, on this path, because it did not exist yet.
     from .summary import get_active_summary

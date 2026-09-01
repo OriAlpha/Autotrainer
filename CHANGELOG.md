@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 ### Fixed
+- **`train(optimizer=...)` and `auto(optimizer=...)` discarded a passed
+  optimizer.** Only a name (`"adamw"` / `"sgd"`) was ever honored: an
+  optimizer *instance* went to `_choose_optimizer` as if it were a name, came
+  back verbatim, and `_build_optimizer` then compared it to `"sgd"` and
+  constructed a fresh AdamW - so a passed `Adam(lr=7e-3)` silently trained as
+  AdamW at whatever the LR range test returned. Instances are now used as-is,
+  the same passthrough `_make_loss` already did for a loss instance, and the
+  lr on the passed optimizer is respected unless `lr=` is also given (in which
+  case it is applied to that optimizer rather than one of the two being
+  dropped). `examples/pytorch_ddp.py` advertised this and never got it.
 - **DataLoader workers ignored the SLURM allocation.** The worker count was
   sized from the node's physical core count (`psutil.cpu_count`), which does
   not respect cgroups or cpusets. A job granted 2 CPUs on a 128-core node got

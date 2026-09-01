@@ -127,23 +127,47 @@ class TestTorchTraining:
         unwrapped = getattr(trained, "module", trained)
         assert set(loaded) == set(unwrapped.state_dict())
 
-    @pytest.mark.xfail(
-        reason="train(optimizer=<instance>) discards it: auto() passes the instance to "
-        "_choose_optimizer as a name, which returns it verbatim, and _build_optimizer "
-        "then compares it to 'sgd' and builds a fresh AdamW. The lr baked into the "
-        "passed optimizer is dropped with it.",
-        strict=True,
-    )
-    def test_explicit_optimizer_instance_is_used(self, model, separable):
+    def test_explicit_optimizer_instance_is_used(self, model, separable, capsys):
+        """The passed optimizer must be the one that steps, not a rebuilt default.
+
+        Asserted through its ``state``: torch populates that dict on the first
+        step, so a non-empty state proves this instance ran the updates. When
+        auto() rebuilt its own AdamW instead, this stayed empty.
+        """
         torch = pytest.importorskip("torch")
         import autotrainer
-        from autotrainer.summary import get_active_summary
 
         mine = torch.optim.Adam(model.parameters(), lr=7e-3)
+        assert not mine.state
         autotrainer.train(
             model, separable, epochs=1, loss_fn=torch.nn.CrossEntropyLoss(), optimizer=mine
         )
-        assert get_active_summary().optimizer is mine
+        assert mine.state, "the passed optimizer never stepped"
+        out = capsys.readouterr().out
+        assert "optimizer=Adam (yours, used as-is)" in out
+        # Its lr stands in for the range test, which must not have run.
+        assert "lr=7.00e-03 (from your optimizer)" in out
+
+    def test_explicit_lr_applies_to_a_passed_optimizer(self, model, separable):
+        """Both given: the lr is applied to their optimizer rather than one of
+        the two being silently dropped."""
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        # momentum, so there is per-parameter state to prove it stepped -
+        # plain SGD keeps none.
+        mine = torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.9)
+        autotrainer.train(
+            model,
+            separable,
+            epochs=1,
+            lr=1e-3,
+            loss_fn=torch.nn.CrossEntropyLoss(),
+            optimizer=mine,
+        )
+        assert mine.state
+        # The scheduler moves lr from there, so check the base, not the current.
+        assert all(g["initial_lr"] == 1e-3 for g in mine.param_groups)
 
     def test_cpu_path_trains_without_a_gradscaler(self, model, separable, monkeypatch, capsys):
         """The no-CUDA branch. It is the only one CPU-only CI ever executes, and
