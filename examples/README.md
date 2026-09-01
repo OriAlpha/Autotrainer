@@ -13,5 +13,10 @@ Most examples below call `autotrainer.train()` — the one-line entry point.
 | `xgboost_example.py` | train() on both XGBoost APIs (sklearn estimator and native `DMatrix`) | `python xgboost_example.py` |
 
 SLURM job scripts are in `slurm/` — submit with `sbatch slurm/<file>.sbatch`.
+To check that multi-node DDP genuinely works on your cluster, submit
+`slurm/validate_multinode.sbatch`: it runs `slurm/validate_multinode.py`, which
+asserts the ranks landed on different nodes, that collectives cross between
+them, that DDP really syncs gradients, and that the sampler shards the data -
+one PASS/FAIL line each, with the whole environment captured in the same file.
 Key rule for PyTorch DDP jobs: `--ntasks-per-node` must equal GPUs per node.
 Run `autotrainer doctor` inside a job if anything misbehaves.
