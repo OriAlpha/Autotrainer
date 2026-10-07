@@ -29,14 +29,15 @@ def train(
 
     Infers loss function, optimizer, LR schedule, and mixed precision scaling,
     runs all training epochs, prints the performance summary, optionally saves the model,
-    and returns the trained model. Supports PyTorch, Scikit-Learn, and XGBoost models.
+    and returns the trained model. Supports PyTorch, Scikit-Learn, XGBoost, LightGBM,
+    and TensorFlow/Keras models.
 
     Usage:
         # PyTorch:
         model = autotrainer.train(model, loader, epochs=5, save_path="model.pt")
 
         # Scikit-Learn / XGBoost:
-        search = autotrainer.train(search, X, y)
+        estimator = autotrainer.train(estimator, X, y)
 
     Note ``epochs`` means passes over the data for PyTorch and Keras, and
     ``num_boost_round`` for the native-XGBoost path (a params dict + DMatrix),
@@ -44,7 +45,7 @@ def train(
     """
     from .utils import framework_of
 
-    # Routed the same way as prepare() and tune(): by module prefix with an
+    # Routed the same way as prepare(): by module prefix with an
     # isinstance fallback, rather than by probing for `.fit` / `.forward`
     # attributes - duck-typing here misroutes anything that happens to define
     # a fit() method, and silently picked the sklearn path for it.

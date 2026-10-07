@@ -2,11 +2,12 @@
 
 Toward 1.0:
 
-- **Stabilization**: the public API is frozen as of 0.10; 1.0 blocks on real multi-node SLURM validation.
-- **Unified Execution & Explanations (Shipped in 0.14.0)**:
-  - 1-line unified `train()` API across PyTorch, Scikit-Learn, XGBoost, LightGBM, CatBoost, and TensorFlow.
-  - Comprehensive Executive Training Summaries (`SummaryTracker`) reporting cluster hardware, active GPU/CPU optimizations, throughput (samples/sec), loss reduction, and triage diagnostics.
-  - Framework environment diagnostics in `autotrainer doctor`.
+- **Stabilization**: the public execution-layer API is frozen as of 0.17.0 (`prepare()`, `train()`, `auto()`, `train_step()`). 1.0 blocks on physical multi-node SLURM verification using the self-checking validation suite (`examples/slurm/validate_multinode.sbatch`).
+- **Unified Execution Layer (Shipped in 0.14.0 - 0.17.0)**:
+  - 1-line unified `train()` API across PyTorch, Scikit-Learn, XGBoost, LightGBM, and TensorFlow/Keras.
+  - Zero-dependency local Web UI (`autotrainer ui`), trackers (`CSVTracker`, `JSONLTracker`, `SummaryTracker`), and framework callbacks.
+  - Hardware throughput bundle: TF32, AMP, cuDNN benchmark, `channels_last` for 2D convs, fused optimizers in `auto()`, and allocation-aware worker sizing (`SLURM_CPUS_PER_TASK`).
+  - Diagnostics and cluster triage in `autotrainer doctor`.
 
 Understanding your training run (Post-1.0 features):
 
