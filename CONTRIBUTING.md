@@ -71,11 +71,11 @@ All must pass before merge (except `test-cuda`, which is best-effort — see bel
 ruff check src/ tests/          # lint
 ruff format --check src/ tests/ # formatting
 mypy src/autotrainer            # type checking
-pytest tests/ -m "not cuda"     # tests + coverage (75% floor), skipping GPU tests
+pytest tests/ -m "not cuda"     # tests + coverage (80% floor), skipping GPU tests
 ```
 
 `pytest` runs with coverage automatically (configured in `pyproject.toml`).
-If coverage drops below 75%, the run fails - add tests for any new behavior.
+If coverage drops below 80%, the run fails - add tests for any new behavior.
 
 ### The `cuda` pytest marker and the GPU runner
 
@@ -106,7 +106,7 @@ pre-commit install
 
 - **One feature or fix per pull request** - keeps review focused.
 - **Add tests for new behavior.** Untested public functions won't merge.
-- **Keep coverage at or above 75%.** The CI enforces this.
+- **Keep coverage at or above 80%.** The CI enforces this.
 - **New framework backends** go in `src/autotrainer/backends/` and are routed
   from the dispatcher in `__init__.py`. Follow the pattern of existing
   backends: auto-detect the environment, print every decision the backend
