@@ -108,9 +108,8 @@ source = ["src/autotrainer"]
 branch = true
 
 [tool.coverage.report]
-# Set after measuring actual coverage with the expanded suite. Leave at 0
-# until the suite lands, then raise to the achieved floor.
-fail_under = 75
+# Raised to 80 following test expansion (current achieved coverage ~86.5%).
+fail_under = 80
 show_missing = true
 skip_covered = false
 
