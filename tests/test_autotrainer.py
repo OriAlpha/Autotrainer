@@ -34,6 +34,60 @@ class TestDetect:
         env = detect()
         assert env.nproc_per_node == 4
 
+    def test_slurm_master_addr_parsing(self, monkeypatch):
+        from autotrainer.detect import _slurm_master_addr
+
+        # 1. With scontrol returning hostnames
+        monkeypatch.setattr(
+            "autotrainer.detect.shutil.which",
+            lambda cmd: "/usr/bin/scontrol" if cmd == "scontrol" else None,
+        )
+        monkeypatch.setattr(
+            "autotrainer.detect.subprocess.run",
+            lambda *a, **kw: type("Res", (), {"stdout": "host01\nhost02\n"})(),
+        )
+        monkeypatch.setenv("SLURM_NODELIST", "host[01-02]")
+        assert _slurm_master_addr() == "host01"
+
+        # 2. Without scontrol, bracketed nodelist
+        monkeypatch.setattr("autotrainer.detect.shutil.which", lambda cmd: None)
+        monkeypatch.setenv("SLURM_NODELIST", "node[05-08]")
+        assert _slurm_master_addr() == "node"
+
+        # 3. Comma-separated nodelist
+        monkeypatch.setenv("SLURM_NODELIST", "alpha01,alpha02")
+        assert _slurm_master_addr() == "alpha01"
+
+        # 4. Empty nodelist fallback
+        monkeypatch.setenv("SLURM_NODELIST", "")
+        assert _slurm_master_addr() == "127.0.0.1"
+
+    def test_local_multi_gpu_mode(self, monkeypatch):
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr("autotrainer.detect._gpu_count", lambda: 4)
+        env = detect()
+        assert env.mode == "local_multi_gpu"
+        assert env.nproc_per_node == 4
+        assert env.gpus == 4
+
+    def test_nvidia_smi_fallback(self, monkeypatch):
+        import sys
+
+        from autotrainer.detect import _gpu_count
+
+        monkeypatch.setitem(sys.modules, "torch", None)
+        monkeypatch.setattr(
+            "autotrainer.detect.shutil.which",
+            lambda cmd: "/usr/bin/nvidia-smi" if cmd == "nvidia-smi" else None,
+        )
+        fake_out = "GPU 0: NVIDIA A100\nGPU 1: NVIDIA A100\n"
+        monkeypatch.setattr(
+            "autotrainer.detect.subprocess.run",
+            lambda *a, **kw: type("Res", (), {"stdout": fake_out})(),
+        )
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        assert _gpu_count() == 2
+
 
 class TestGpuCount:
     def test_cvd_hidden_means_zero(self, monkeypatch):
@@ -93,6 +147,34 @@ class TestDispatcher:
     def test_unknown_model_raises(self):
         with pytest.raises(TypeError):
             autotrainer.prepare(object())
+
+    def test_tf_model_raises_instructive_error(self):
+        class FakeKerasModel:
+            __module__ = "tensorflow.keras.models"
+
+        with pytest.raises(TypeError, match="TensorFlow models must be created inside"):
+            autotrainer.prepare(FakeKerasModel())
+
+    def test_top_level_wrappers(self, monkeypatch):
+        # find_batch_size wrapper
+        monkeypatch.setattr(
+            "autotrainer.backends.torch_backend.find_batch_size", lambda m, f, **kw: 64
+        )
+        assert autotrainer.find_batch_size(None, None) == 64
+
+        # find_lr wrapper
+        monkeypatch.setattr("autotrainer.auto_optim.find_lr", lambda m, d, loss_fn, **kw: 0.05)
+        assert autotrainer.find_lr(None, None, None) == 0.05
+
+        # auto wrapper
+        monkeypatch.setattr(
+            "autotrainer.auto_optim.auto", lambda m, d, **kw: (m, d, None, None, None)
+        )
+        assert len(autotrainer.auto(1, 2)) == 5
+
+        # tf scale_batch_size wrapper
+        monkeypatch.setattr("autotrainer.backends.tf_backend.scale_batch_size", lambda b: b * 2)
+        assert autotrainer.scale_batch_size(32) == 64
 
 
 class TestBoostParams:

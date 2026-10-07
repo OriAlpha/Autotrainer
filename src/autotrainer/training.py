@@ -113,11 +113,20 @@ def train(
             else:
                 estimator.fit(loader)
         if save_path is not None:
-            import joblib
-
-            joblib.dump(estimator, save_path)
             from .utils import print0
 
+            # Honor the extension the caller asked for. XGBoost's sklearn-API
+            # estimators can write their own portable .json/.ubj, and a user
+            # who names one means that format - joblib.dump would hand them a
+            # pickle wearing a .json suffix, which xgboost cannot load back.
+            # LightGBM's wrapper has no save_model, so it falls through here.
+            native = str(save_path).endswith((".json", ".ubj")) and hasattr(estimator, "save_model")
+            if native:
+                estimator.save_model(save_path)
+            else:
+                import joblib
+
+                joblib.dump(estimator, save_path)
             print0(f"[autotrainer] saved estimator to {save_path}")
         from .summary import finish
 
