@@ -319,6 +319,93 @@ def test_ui_api_delete_run_endpoint(ui_server):
     assert not (logs_dir / "run_to_delete").exists()
 
 
+def test_ui_api_archive_endpoint(ui_server):
+    base_url, logs_dir = ui_server
+    tracker = NativeTracker(base_dir=logs_dir, run_name="run_to_archive")
+    tracker.log_epoch(1, {"train_loss": 0.5})
+    tracker.close()
+
+    # 1. Archive with explicit boolean
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/run_to_archive/archive",
+        data=json.dumps({"archived": True}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["success"] is True
+        assert data["archived"] is True
+
+    # 2. Toggle archive (no body)
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/run_to_archive/archive",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["success"] is True
+        assert data["archived"] is False
+
+
+def test_ui_api_errors_for_nonexistent_runs(ui_server):
+    import urllib.error
+
+    base_url, _ = ui_server
+
+    # Delete non-existent
+    req = urllib.request.Request(f"{base_url}/api/runs/does_not_exist", method="DELETE")
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(req)
+    assert exc.value.code == 404
+
+    # Archive non-existent
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/does_not_exist/archive",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(req)
+    assert exc.value.code == 404
+
+    # Notes non-existent
+    req = urllib.request.Request(
+        f"{base_url}/api/runs/does_not_exist/notes",
+        data=b'{"notes": "test"}',
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(req)
+    assert exc.value.code == 404
+
+
+def test_run_ui_server_initialization(tmp_path: Path, monkeypatch, capsys):
+    import socketserver
+
+    from autotrainer.ui import run_ui_server
+
+    def mock_serve_forever(self):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(socketserver.BaseServer, "serve_forever", mock_serve_forever)
+
+    # 1. Loopback with single logs_dir
+    run_ui_server(
+        logs_dir=tmp_path, port=9999, open_browser=False, host="127.0.0.1", token="my_token"
+    )
+    out = capsys.readouterr().out
+    assert "Web UI running at http://localhost:9999/?token=my_token" in out
+
+    # 2. Non-loopback warning with token=None
+    run_ui_server(logs_dirs=[tmp_path], port=9999, open_browser=False, host="0.0.0.0", token=None)
+    out = capsys.readouterr().out
+    assert "WARNING: bound to 0.0.0.0" in out
+    assert "Authentication is DISABLED" in out
+
+
 def test_native_tracker_metadata_features(tmp_path: Path):
     tracker = NativeTracker(base_dir=tmp_path, run_name="meta_features_run")
     tracker.add_tag("vit")

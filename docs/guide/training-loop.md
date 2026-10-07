@@ -106,7 +106,14 @@ whole recipe inferred instead of just the lr, that's
 
 ## Post-training summary (`finish`, `log_epoch`, `step`, `SummaryTracker`)
 
-At the end of your training script, call `autotrainer.finish()` to print a comprehensive training summary box (hardware topology, VRAM usage, optimizer, batch size, throughput, duration, and health diagnostic) managed by `SummaryTracker` and cleanly close distributed process groups across all supported frameworks.
+At the end of your training script, call `autotrainer.finish()` to print a
+comprehensive training summary box (hardware topology, VRAM usage, optimizer,
+batch size, throughput, duration, and health diagnostic) managed by
+`SummaryTracker`.
+
+It does **not** tear down the process group by default, so a pipeline that
+calls `finish()` between phases keeps its group alive. Pass
+`cleanup_dist=True` on the last call to also run `destroy_process_group()`.
 
 You can also record epoch metrics or step losses directly into the active summary tracker using `autotrainer.log_epoch` or `autotrainer.step`:
 
@@ -115,8 +122,8 @@ You can also record epoch metrics or step losses directly into the active summar
 autotrainer.log_epoch(train_loss=0.25, val_loss=0.30)
 autotrainer.step(loss=0.25)
 
-# Print summary box & clean up distributed process groups
-autotrainer.finish(checkpoint="best_model.pt")
+# Print the summary box; cleanup_dist also destroys the process group
+autotrainer.finish(checkpoint="best_model.pt", cleanup_dist=True)
 ```
 
 ## Next

@@ -308,3 +308,90 @@ class TestAuto:
         # The overridden LR should appear verbatim (not a range-test result).
         assert "1.00e-03" in captured
         assert len(out) == 5
+
+
+class TestMakeScheduler:
+    def test_constant_returns_none(self):
+        from autotrainer.auto_optim import _make_scheduler
+
+        model = nn.Linear(2, 2)
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        sched = _make_scheduler("constant", opt, total_steps=100)
+        assert sched is None
+
+    def test_onecycle_with_adequate_steps(self):
+        from autotrainer.auto_optim import _make_scheduler
+
+        model = nn.Linear(2, 2)
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        sched = _make_scheduler("onecycle", opt, total_steps=10)
+        assert isinstance(sched, torch.optim.lr_scheduler.OneCycleLR)
+
+    def test_onecycle_with_too_few_steps_falls_back(self):
+        from autotrainer.auto_optim import _make_scheduler
+
+        model = nn.Linear(2, 2)
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        sched = _make_scheduler("onecycle", opt, total_steps=2)
+        # Falls back to cosine because steps < 3
+        assert not isinstance(sched, torch.optim.lr_scheduler.OneCycleLR)
+
+    def test_cosine_zero_warmup(self):
+        from autotrainer.auto_optim import _make_scheduler
+
+        model = nn.Linear(2, 2)
+        opt = torch.optim.SGD(model.parameters(), lr=0.1)
+        sched = _make_scheduler("cosine", opt, total_steps=50, warmup_frac=0.0)
+        assert isinstance(sched, torch.optim.lr_scheduler.CosineAnnealingLR)
+
+
+class TestScaleLrForBatch:
+    def test_mode_none_or_missing_returns_base_lr(self):
+        from autotrainer.auto_optim import _scale_lr
+
+        assert _scale_lr(0.01, 64, "adamw", mode="none") == 0.01
+        assert _scale_lr(0.01, None, "adamw") == 0.01
+        assert _scale_lr(0.01, 64, None) == 0.01
+
+    def test_ref_batch_returns_base_lr(self):
+        from autotrainer.auto_optim import _scale_lr
+
+        assert _scale_lr(0.01, 32, "sgd") == 0.01
+
+    def test_sgd_linear_scaling(self):
+        from autotrainer.auto_optim import _scale_lr
+
+        # 64 / 32 = 2.0
+        assert _scale_lr(0.01, 64, "sgd") == pytest.approx(0.02)
+
+    def test_adamw_sqrt_scaling(self):
+        from autotrainer.auto_optim import _scale_lr
+
+        # 128 / 32 = 4.0 -> sqrt(4.0) = 2.0
+        assert _scale_lr(0.01, 128, "adamw") == pytest.approx(0.02)
+
+    def test_unrecognized_optimizer_returns_base_lr(self):
+        from autotrainer.auto_optim import _scale_lr
+
+        assert _scale_lr(0.01, 128, "custom_opt") == 0.01
+
+
+class TestBuildOptimizerFallback:
+    def test_unfused_fallback_on_type_error(self, monkeypatch):
+        model = nn.Linear(4, 2)
+        real_adamw = torch.optim.AdamW
+
+        monkeypatch.setattr("autotrainer.auto_optim._fused_kwargs", lambda m: {"fused": True})
+
+        calls = []
+
+        def mock_adamw(*args, **kwargs):
+            calls.append(kwargs)
+            if "fused" in kwargs:
+                raise TypeError("fused not supported")
+            return real_adamw(*args, **kwargs)
+
+        monkeypatch.setattr(torch.optim, "AdamW", mock_adamw)
+        opt = _build_optimizer(model, "adamw", lr=1e-3, weight_decay=0.01)
+        assert isinstance(opt, real_adamw)
+        assert len(calls) == 2  # first failed with fused, second succeeded without fused

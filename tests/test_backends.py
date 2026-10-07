@@ -189,3 +189,116 @@ class TestBoostingBackend:
 
         with pytest.raises(TypeError, match="Expected a scikit-learn-API estimator"):
             prepare(object())  # plain object has no set_params
+
+
+class TestTorchPrepareWarnings:
+    def test_single_process_fsdp_and_offload_warns(self, capsys):
+        pytest.importorskip("torch")
+        import torch.nn as nn
+
+        model = nn.Linear(4, 2)
+        # 1. fsdp on world_size == 1
+        prepare(model, fsdp=True)
+        out = capsys.readouterr().out
+        assert "world_size == 1, FSDP is a no-op" in out
+
+        # 2. fsdp with cpu_offload on world_size == 1
+        prepare(model, fsdp=True, cpu_offload=True)
+        out = capsys.readouterr().out
+        assert "cpu_offload: ignored (world_size == 1)" in out
+
+        # 3. cpu_offload without fsdp
+        prepare(model, fsdp=False, cpu_offload=True)
+        out = capsys.readouterr().out
+        assert "cpu_offload: ignored (world_size == 1 and fsdp=False" in out
+
+        # 4. static_graph on single process
+        prepare(model, static_graph=True)
+        out = capsys.readouterr().out
+        assert "static_graph: ignored (world_size == 1" in out
+
+    def test_compile_fallback_warns_on_failure(self, pretend_cuda, monkeypatch, capsys):
+        torch = pytest.importorskip("torch")
+        import torch.nn as nn
+
+        model = nn.Linear(4, 2)
+
+        def mock_compile(m, *a, **kw):
+            raise RuntimeError("Inductor backend failure simulation")
+
+        monkeypatch.setattr(torch, "compile", mock_compile)
+        res = prepare(model, compile=True)
+        out = capsys.readouterr().out
+        assert "compile failed" in out
+        assert "continuing with the uncompiled model" in out
+        assert res is model
+
+
+class TestTFBackend:
+    def test_slurm_hostnames_resolution(self, monkeypatch):
+        from autotrainer.backends.tf_backend import _slurm_hostnames
+
+        # 1. With scontrol
+        monkeypatch.setattr(
+            "shutil.which", lambda cmd: "/usr/bin/scontrol" if cmd == "scontrol" else None
+        )
+        monkeypatch.setattr(
+            "subprocess.run", lambda *a, **kw: type("Res", (), {"stdout": "worker1\nworker2\n"})()
+        )
+        monkeypatch.setenv("SLURM_NODELIST", "worker[1-2]")
+        assert _slurm_hostnames() == ["worker1", "worker2"]
+
+        # 2. Fallback without scontrol
+        monkeypatch.setattr("shutil.which", lambda cmd: None)
+        monkeypatch.setenv("SLURM_NODELIST", "node1,node2")
+        assert _slurm_hostnames() == ["node1", "node2"]
+
+    def test_scope_single_device(self, capsys):
+        pytest.importorskip("tensorflow")
+        from autotrainer.backends.tf_backend import scope
+
+        with scope():
+            pass
+        out = capsys.readouterr().out
+        assert "tf backend: default strategy" in out
+
+    def test_scope_slurm_multiworker(self, monkeypatch, capsys):
+        tf = pytest.importorskip("tensorflow")
+        from autotrainer.backends.tf_backend import scope
+
+        monkeypatch.setenv("SLURM_JOB_ID", "12345")
+        monkeypatch.setenv("SLURM_NNODES", "2")
+        monkeypatch.setenv("SLURM_NODELIST", "node01,node02")
+        monkeypatch.setenv("SLURM_NODEID", "0")
+
+        # Mock MultiWorkerMirroredStrategy to avoid real cluster networking in tests
+        class MockStrategy:
+            num_replicas_in_sync = 2
+
+            def scope(self):
+                return tf.distribute.get_strategy().scope()
+
+        monkeypatch.setattr(tf.distribute, "MultiWorkerMirroredStrategy", MockStrategy)
+        with scope():
+            pass
+        out = capsys.readouterr().out
+        assert "MultiWorkerMirroredStrategy (2 nodes, 2 replicas)" in out
+
+    def test_scope_mirrored_multi_gpu(self, monkeypatch, capsys):
+        tf = pytest.importorskip("tensorflow")
+        from autotrainer.backends.tf_backend import scope
+
+        monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+        monkeypatch.setattr(
+            tf.config, "list_physical_devices", lambda dev: [1, 2] if dev == "GPU" else []
+        )
+
+        class MockMirroredStrategy:
+            def scope(self):
+                return tf.distribute.get_strategy().scope()
+
+        monkeypatch.setattr(tf.distribute, "MirroredStrategy", MockMirroredStrategy)
+        with scope():
+            pass
+        out = capsys.readouterr().out
+        assert "MirroredStrategy (2 GPUs)" in out

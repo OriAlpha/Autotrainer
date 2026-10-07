@@ -4,7 +4,32 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.17.0] - 2026-10-07
+### Added
+- **Test suite expansion & quality gates**: Overall test coverage expanded to **86.5%**
+  (coverage floor raised to 80% in `pyproject.toml`), adding exhaustive unit coverage
+  across `cli`, `__init__`, `detect`, `auto_optim`, `tf_backend`, and `ui` endpoints.
+
 ### Fixed
+- **A `.json` `save_path` on an sklearn-API booster wrote a pickle.** The
+  estimator branch of `train()` always called `joblib.dump`, so
+  `train(XGBClassifier(...), X, y, save_path="model.json")` - what
+  `examples/xgboost_example.py` does, and what the example docstrings
+  advertise - produced a joblib pickle named `.json` that `xgboost` could not
+  load back. A `.json`/`.ubj` path on an estimator with its own `save_model`
+  now uses that native writer; everything else (LightGBM's wrapper included,
+  which has no `save_model`) still pickles as before.
+- **`train(optimizer=...)` and `auto(optimizer=...)` discarded a passed
+  optimizer.** Only a name (`"adamw"` / `"sgd"`) was ever honored: an
+  optimizer *instance* went to `_choose_optimizer` as if it were a name, came
+  back verbatim, and `_build_optimizer` then compared it to `"sgd"` and
+  constructed a fresh AdamW - so a passed `Adam(lr=7e-3)` silently trained as
+  AdamW at whatever the LR range test returned. Instances are now used as-is,
+  the same passthrough `_make_loss` already did for a loss instance, and the
+  lr on the passed optimizer is respected unless `lr=` is also given (in which
+  case it is applied to that optimizer rather than one of the two being
+  dropped). `examples/pytorch_ddp.py` advertised this and never got it.
 - **DataLoader workers ignored the SLURM allocation.** The worker count was
   sized from the node's physical core count (`psutil.cpu_count`), which does
   not respect cgroups or cpusets. A job granted 2 CPUs on a 128-core node got

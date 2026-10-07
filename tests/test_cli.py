@@ -50,6 +50,98 @@ class TestPythonDashM:
         assert r.returncode == 0, r.stderr
         assert "mode" in r.stdout
 
+    def test_main_module_in_process(self, monkeypatch):
+        import runpy
+
+        called = []
+        monkeypatch.setattr("autotrainer.cli.main", lambda: called.append(True))
+        runpy.run_module("autotrainer.__main__", run_name="__main__")
+        assert called == [True]
+
+        # Also exercise cli.py's own __name__ == '__main__' block
+        import warnings
+
+        monkeypatch.setattr(sys, "argv", ["autotrainer", "info"])
+        monkeypatch.setattr(
+            "autotrainer.cli.detect",
+            lambda: type(
+                "Env",
+                (),
+                {
+                    "mode": "s",
+                    "nnodes": 1,
+                    "nproc_per_node": 1,
+                    "world_size": 1,
+                    "gpus": 0,
+                    "master_addr": "localhost",
+                    "master_port": 29500,
+                    "notes": [],
+                },
+            )(),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            runpy.run_module("autotrainer.cli", run_name="__main__")
+
+
+class TestCLICredits:
+    def test_credits_prints_architecture_info(self, capsys, monkeypatch):
+        for cmd in ("credits", "suhas"):
+            monkeypatch.setattr(sys, "argv", ["autotrainer", cmd])
+            main()
+            out = capsys.readouterr().out
+            assert "Autotrainer Core Architecture" in out
+            assert "Suhas Goravale Siddaramu" in out
+
+
+class TestCLIInfoNotes:
+    def test_info_prints_notes(self, capsys, monkeypatch):
+        from autotrainer.detect import Environment
+
+        dummy_env = Environment(mode="single")
+        dummy_env.notes.append("Custom diagnostic note for testing")
+        monkeypatch.setattr("autotrainer.cli.detect", lambda: dummy_env)
+        monkeypatch.setattr(sys, "argv", ["autotrainer", "info"])
+        main()
+        out = capsys.readouterr().out
+        assert "Custom diagnostic note for testing" in out
+
+
+class TestCLIUI:
+    def test_ui_subcommand_dispatches_with_flags(self, monkeypatch):
+        called_args = {}
+
+        def fake_run_ui_server(logs_dirs, port, open_browser, host, token):
+            called_args["logs_dirs"] = logs_dirs
+            called_args["port"] = port
+            called_args["open_browser"] = open_browser
+            called_args["host"] = host
+            called_args["token"] = token
+
+        monkeypatch.setattr("autotrainer.ui.run_ui_server", fake_run_ui_server)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "autotrainer",
+                "ui",
+                "dir1",
+                "dir2",
+                "--port",
+                "9876",
+                "--host",
+                "0.0.0.0",
+                "--no-browser",
+                "--no-token",
+            ],
+        )
+        main()
+        assert called_args["logs_dirs"] == ["dir1", "dir2"]
+        assert called_args["port"] == 9876
+        assert called_args["host"] == "0.0.0.0"
+        assert called_args["open_browser"] is False
+        assert called_args["token"] is None
+
 
 class TestCLIRun:
     def test_run_dispatches_to_launch(self, monkeypatch):
