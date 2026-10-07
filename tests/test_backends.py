@@ -217,7 +217,7 @@ class TestTorchPrepareWarnings:
         out = capsys.readouterr().out
         assert "static_graph: ignored (world_size == 1" in out
 
-    def test_compile_fallback_warns_on_failure(self, monkeypatch, capsys):
+    def test_compile_fallback_warns_on_failure(self, pretend_cuda, monkeypatch, capsys):
         torch = pytest.importorskip("torch")
         import torch.nn as nn
 
