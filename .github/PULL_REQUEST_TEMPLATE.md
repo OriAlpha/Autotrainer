@@ -16,7 +16,7 @@
 - [ ] I have read **CONTRIBUTING.md**.
 - [ ] `ruff check src/ tests/` and `ruff format --check src/ tests/` pass.
 - [ ] `mypy src/autotrainer` passes.
-- [ ] `pytest tests/` passes (coverage stays at or above 75%).
+- [ ] `pytest tests/` passes (coverage stays at or above 80%).
 - [ ] I added tests for any new behavior.
 - [ ] I updated **CHANGELOG.md** under `[Unreleased]`.
 - [ ] New framework backends are placed in `src/autotrainer/backends/` and

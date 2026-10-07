@@ -59,7 +59,7 @@ Autotrainer maintains a strict separation between **hardware execution throughpu
 - **You need hyperparameter or architecture search.** Deliberately out of
   scope — the recipe and the model are yours. Reach for Optuna or Ray Tune,
   and use `prepare()` inside the objective.
-- **You can't take pre-1.0 churn.** The public API has been frozen since 0.10,
-  but this is 0.x and multi-node SLURM validation is still the open item before
-  1.0 (see [Roadmap](roadmap.md)).
+- **You can't take pre-1.0 churn.** The public execution-layer API is frozen
+  as of 0.17.0, but this is 0.x and physical multi-node SLURM validation is still
+  the open item before 1.0 (see [Roadmap](roadmap.md)).
 
