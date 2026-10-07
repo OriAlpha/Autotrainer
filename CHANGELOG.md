@@ -4,6 +4,13 @@ All notable changes to autotrainer are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (0.x: minor bumps may change APIs).
 
 ## [Unreleased]
+
+## [0.17.0] - 2026-10-07
+### Added
+- **Test suite expansion & quality gates**: Overall test coverage expanded to **86.5%**
+  (coverage floor raised to 80% in `pyproject.toml`), adding exhaustive unit coverage
+  across `cli`, `__init__`, `detect`, `auto_optim`, `tf_backend`, and `ui` endpoints.
+
 ### Fixed
 - **A `.json` `save_path` on an sklearn-API booster wrote a pickle.** The
   estimator branch of `train()` always called `joblib.dump`, so
