@@ -181,6 +181,27 @@ class TestSklearnBackend:
         # The nested estimator should inherit the n_jobs setting.
         assert out.get_params()["clf__n_jobs"] == 4
 
+    def test_prepare_skips_logistic_regression_n_jobs(self):
+        pytest.importorskip("sklearn")
+        import warnings
+
+        import numpy as np
+        from sklearn.linear_model import LogisticRegression
+
+        from autotrainer.backends.sklearn_backend import prepare
+
+        model = LogisticRegression()
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            prepared = prepare(model)
+            prepared.fit(np.random.randn(20, 2), np.random.randint(0, 2, 20))
+            future_warnings = [
+                w
+                for w in recorded
+                if issubclass(w.category, FutureWarning) and "n_jobs" in str(w.message)
+            ]
+            assert not future_warnings
+
 
 class TestBoostingBackend:
     def test_prepare_native_object_without_set_params_raises(self):
