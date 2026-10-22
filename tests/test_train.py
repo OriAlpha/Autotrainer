@@ -344,12 +344,7 @@ class TestTFKeras:
 
     def test_patience_installs_early_stopping(self, monkeypatch):
         """`patience` is documented as the Keras-only knob; check it reaches
-        model.fit as an EarlyStopping callback rather than being dropped.
-
-        Only that it is installed. It cannot currently fire: train() passes no
-        validation data, so the callback monitors a val_loss that never exists
-        and Keras warns on every epoch.
-        """
+        model.fit as an EarlyStopping callback monitoring 'loss' rather than 'val_loss'."""
         tf = pytest.importorskip("tensorflow")
         model, X, y = self._model_and_data()
         import autotrainer
@@ -359,7 +354,9 @@ class TestTFKeras:
         monkeypatch.setattr(model, "fit", lambda *a, **kw: seen.update(kw) or real_fit(*a, **kw))
         autotrainer.train(model, X, y, epochs=1, patience=2)
         cbs = seen.get("callbacks", [])
-        assert any(isinstance(c, tf.keras.callbacks.EarlyStopping) for c in cbs)
+        es = next((c for c in cbs if isinstance(c, tf.keras.callbacks.EarlyStopping)), None)
+        assert es is not None
+        assert es.monitor == "loss"
 
     def test_save_path_writes_a_loadable_keras_model(self, tmp_path):
         tf = pytest.importorskip("tensorflow")

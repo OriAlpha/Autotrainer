@@ -82,7 +82,9 @@ def train(
         bs = scale_batch_size(64)
         callbacks = []
         if patience is not None:
-            es = tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True)
+            es = tf.keras.callbacks.EarlyStopping(
+                monitor="loss", patience=patience, restore_best_weights=True
+            )
             callbacks.append(es)
         if loader is not None:
             if y is not None:
