@@ -127,12 +127,17 @@ def accumulate(
         zero_grad(optimizer)
 
     class _Accumulator:
-        def backward(self, loss: Any) -> None:
-            """Record one backward pass; step when the accumulator fills."""
-            sync = (state["count"] + 1) >= steps
+        def backward(self, loss: Any, sync: bool | None = None) -> None:
+            """Record one backward pass; step when the accumulator fills.
+
+            Set ``sync=True`` to force gradient synchronization (e.g. on the
+            final micro-batch of an epoch) regardless of the accumulation step
+            counter. Set ``sync=False`` to force intermediate non-syncing.
+            """
+            should_sync = sync if sync is not None else ((state["count"] + 1) >= steps)
             no_sync_ctx = (
                 model.no_sync()
-                if (model is not None and hasattr(model, "no_sync") and not sync)
+                if (model is not None and hasattr(model, "no_sync") and not should_sync)
                 else nullcontext()
             )
             with no_sync_ctx:

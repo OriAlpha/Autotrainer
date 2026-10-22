@@ -145,7 +145,7 @@ def train(
 
     from .auto_optim import auto
     from .summary import finish, get_active_summary
-    from .utils import print0, robust_forward, save0, to_device
+    from .utils import print0, robust_forward, save0, split_xy, to_device
 
     model, loader, opt, loss_fn, sched = auto(
         model, loader, epochs=epochs, lr=lr, loss=loss_fn, optimizer=optimizer
@@ -167,7 +167,8 @@ def train(
     for epoch in range(epochs):
         model.train()
         total_loss = 0.0
-        for xb, yb in loader:
+        for batch in loader:
+            xb, yb = split_xy(batch)
             xb = to_device(xb, device)
             if yb is not None:
                 yb = to_device(yb, device)

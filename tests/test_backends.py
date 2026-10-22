@@ -181,6 +181,22 @@ class TestSklearnBackend:
         # The nested estimator should inherit the n_jobs setting.
         assert out.get_params()["clf__n_jobs"] == 4
 
+    def test_prepare_mixed_ensemble_skips_logistic_regression_and_sets_random_forest(self):
+        pytest.importorskip("sklearn")
+        from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+        from sklearn.linear_model import LogisticRegression
+
+        from autotrainer.backends.sklearn_backend import prepare
+
+        ensemble = VotingClassifier(
+            estimators=[("lr", LogisticRegression()), ("rf", RandomForestClassifier())]
+        )
+        out = prepare(ensemble, n_jobs=4)
+        params = out.get_params()
+        # VotingClassifier n_jobs and rf n_jobs set, lr n_jobs skipped
+        assert params.get("rf__n_jobs") == 4
+        assert params.get("lr__n_jobs") is None
+
     def test_prepare_skips_logistic_regression_n_jobs(self):
         pytest.importorskip("sklearn")
         import warnings
@@ -191,6 +207,30 @@ class TestSklearnBackend:
         from autotrainer.backends.sklearn_backend import prepare
 
         model = LogisticRegression()
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            prepared = prepare(model)
+            prepared.fit(np.random.randn(20, 2), np.random.randint(0, 2, 20))
+            future_warnings = [
+                w
+                for w in recorded
+                if issubclass(w.category, FutureWarning) and "n_jobs" in str(w.message)
+            ]
+            assert not future_warnings
+
+    def test_prepare_skips_logistic_regression_subclass_n_jobs(self):
+        pytest.importorskip("sklearn")
+        import warnings
+
+        import numpy as np
+        from sklearn.linear_model import LogisticRegression
+
+        from autotrainer.backends.sklearn_backend import prepare
+
+        class CustomLogisticRegression(LogisticRegression):
+            pass
+
+        model = CustomLogisticRegression()
         with warnings.catch_warnings(record=True) as recorded:
             warnings.simplefilter("always")
             prepared = prepare(model)

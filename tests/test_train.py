@@ -72,9 +72,44 @@ try:
         def __getitem__(self, idx):
             return {"x": torch.randn(4), "mask": torch.ones(2)}, torch.tensor(0)
 
+    class _TupleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = nn.Linear(4, 2)
+            self.fc2 = nn.Linear(2, 2)
+
+        def forward(self, x1, x2):
+            return self.fc1(x1) + self.fc2(x2)
+
+    class _TupleDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 32
+
+        def __getitem__(self, idx):
+            return (torch.randn(4), torch.randn(2)), torch.tensor(0)
+
+    class _HFModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = nn.Linear(4, 2)
+
+        def forward(self, x):
+            return self.linear(x)
+
+    class _HFDictDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 32
+
+        def __getitem__(self, idx):
+            return {"x": torch.randn(4), "labels": torch.tensor(0)}
+
 except ImportError:
     _DictModel = None  # type: ignore[assignment,misc]
     _DictDataset = None  # type: ignore[assignment,misc]
+    _TupleModel = None  # type: ignore[assignment,misc]
+    _TupleDataset = None  # type: ignore[assignment,misc]
+    _HFModel = None  # type: ignore[assignment,misc]
+    _HFDictDataset = None  # type: ignore[assignment,misc]
 
 
 class TestTorchTraining:
@@ -213,6 +248,24 @@ class TestTorchTraining:
 
         loader = torch.utils.data.DataLoader(_DictDataset(), batch_size=8)
         model = _DictModel()
+        trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
+        assert isinstance(trained, torch.nn.Module)
+
+    def test_train_supports_tuple_batches(self):
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        loader = torch.utils.data.DataLoader(_TupleDataset(), batch_size=8)
+        model = _TupleModel()
+        trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
+        assert isinstance(trained, torch.nn.Module)
+
+    def test_train_supports_single_dict_hf_batches(self):
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        loader = torch.utils.data.DataLoader(_HFDictDataset(), batch_size=8)
+        model = _HFModel()
         trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
         assert isinstance(trained, torch.nn.Module)
 

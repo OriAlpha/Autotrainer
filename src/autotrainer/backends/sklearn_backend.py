@@ -37,7 +37,7 @@ def prepare(model: Any, n_jobs: int | None = None) -> Any:
             sub_estimator = model.get_params().get(prefix.rstrip("_")) if prefix else model
             # In scikit-learn >= 1.8, LogisticRegression deprecated n_jobs (it has no effect).
             # Setting it triggers a noisy FutureWarning on fit(); skip it.
-            if type(sub_estimator).__name__ == "LogisticRegression":
+            if any(base.__name__ == "LogisticRegression" for base in type(sub_estimator).__mro__):
                 continue
             updates[k] = jobs
     if updates:
