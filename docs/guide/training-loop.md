@@ -57,12 +57,16 @@ scales the *step count*, **not** the lr:
 
 ```python
 # Effective batch = 4 micro-batches; opt steps once per 4 backwards.
-with autotrainer.accumulate(opt, steps=4, scaler=scaler) as acc:
+# Under DDP, pass model=model to avoid redundant cross-GPU all-reduces on intermediate micro-batches.
+with autotrainer.accumulate(opt, steps=4, scaler=scaler, model=model) as acc:
     for micro_xb, micro_yb in micro_batches:
         with autotrainer.autocast_context():
             loss = loss_fn(model(micro_xb), micro_yb) / 4
+        # sync=True can be passed on tail micro-batches to force gradient all-reduce
         acc.backward(loss)
 ```
+
+Intermediate micro-batches execute inside `model.no_sync()` to eliminate cross-GPU collective communication until the accumulation window completes. If your micro-batch count in an epoch is not divisible by `steps`, passing `acc.backward(loss, sync=True)` on the final batch forces gradient synchronization before the optimizer step.
 
 ## Batch size
 

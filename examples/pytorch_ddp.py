@@ -31,7 +31,9 @@ def main() -> None:
     #   - save_path="ddp_model.pt"    : Auto-saves rank-0 checkpoint (.pt, .joblib, .keras, .json)
     #   - patience=5                  : Early stopping patience
     #   - lr=1e-3                     : Custom learning rate override
-    autotrainer.train(model, loader, epochs=3, optimizer=optimizer, loss_fn=loss_fn, save_path="ddp_model.pt")
+    autotrainer.train(
+        model, loader, epochs=3, optimizer=optimizer, loss_fn=loss_fn, save_path="ddp_model.pt"
+    )
 
 
 if __name__ == "__main__":

@@ -23,10 +23,10 @@ def main() -> None:
     # Supported kwargs for autotrainer.train():
     #   - epochs=10                          : Number of training epochs
     #   - save_path="model.pt"               : Auto-saves checkpoint (.pt, .joblib, .keras, .json)
-    #   - lr=1e-3                            : Custom learning rate (or None to auto-tune via LR range test)
-    #   - loss_fn=nn.CrossEntropyLoss()      : Custom loss function (or None to auto-infer from targets)
+    #   - lr=1e-3                            : Custom lr (or None to auto-tune via LR range test)
+    #   - loss_fn=nn.CrossEntropyLoss()      : Custom loss (or None to auto-infer from targets)
     #   - optimizer=optim.AdamW(model.parameters()) : Custom optimizer (or None for AdamW default)
-    #   - patience=5                         : Early stopping patience (halts when loss stops improving)
+    #   - patience=5                         : Early stopping patience (halts when loss plateaus)
     autotrainer.train(model, loader, epochs=3, save_path="model.pt")
 
 

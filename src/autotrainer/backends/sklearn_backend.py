@@ -30,7 +30,16 @@ def prepare(model: Any, n_jobs: int | None = None) -> Any:
     jobs = n_jobs if n_jobs is not None else available_cpus()
 
     params = model.get_params(deep=True)
-    updates = {k: jobs for k in params if k == "n_jobs" or k.endswith("__n_jobs")}
+    updates = {}
+    for k in params:
+        if k == "n_jobs" or k.endswith("__n_jobs"):
+            prefix = k[: -len("n_jobs")]
+            sub_estimator = model.get_params().get(prefix.rstrip("_")) if prefix else model
+            # In scikit-learn >= 1.8, LogisticRegression deprecated n_jobs (it has no effect).
+            # Setting it triggers a noisy FutureWarning on fit(); skip it.
+            if any(base.__name__ == "LogisticRegression" for base in type(sub_estimator).__mro__):
+                continue
+            updates[k] = jobs
     if updates:
         model.set_params(**updates)
 

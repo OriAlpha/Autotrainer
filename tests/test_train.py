@@ -50,6 +50,68 @@ def model():
     return torch.nn.Sequential(torch.nn.Linear(4, 16), torch.nn.ReLU(), torch.nn.Linear(16, 2))
 
 
+try:
+    import torch
+    import torch.nn as nn
+
+    class _DictModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4, 2)
+
+        def forward(self, x, mask=None):
+            out = self.fc(x)
+            if mask is not None:
+                out = out * mask
+            return out
+
+    class _DictDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 32
+
+        def __getitem__(self, idx):
+            return {"x": torch.randn(4), "mask": torch.ones(2)}, torch.tensor(0)
+
+    class _TupleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc1 = nn.Linear(4, 2)
+            self.fc2 = nn.Linear(2, 2)
+
+        def forward(self, x1, x2):
+            return self.fc1(x1) + self.fc2(x2)
+
+    class _TupleDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 32
+
+        def __getitem__(self, idx):
+            return (torch.randn(4), torch.randn(2)), torch.tensor(0)
+
+    class _HFModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = nn.Linear(4, 2)
+
+        def forward(self, x):
+            return self.linear(x)
+
+    class _HFDictDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 32
+
+        def __getitem__(self, idx):
+            return {"x": torch.randn(4), "labels": torch.tensor(0)}
+
+except ImportError:
+    _DictModel = None  # type: ignore[assignment,misc]
+    _DictDataset = None  # type: ignore[assignment,misc]
+    _TupleModel = None  # type: ignore[assignment,misc]
+    _TupleDataset = None  # type: ignore[assignment,misc]
+    _HFModel = None  # type: ignore[assignment,misc]
+    _HFDictDataset = None  # type: ignore[assignment,misc]
+
+
 class TestTorchTraining:
     """The PyTorch path: the one that runs its own loop."""
 
@@ -179,6 +241,33 @@ class TestTorchTraining:
         autotrainer.train(model, separable, epochs=2, lr=1e-2)
         losses = _epoch_losses(capsys)
         assert len(losses) == 2 and losses[-1] < losses[0]
+
+    def test_train_supports_dict_batches(self):
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        loader = torch.utils.data.DataLoader(_DictDataset(), batch_size=8)
+        model = _DictModel()
+        trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
+        assert isinstance(trained, torch.nn.Module)
+
+    def test_train_supports_tuple_batches(self):
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        loader = torch.utils.data.DataLoader(_TupleDataset(), batch_size=8)
+        model = _TupleModel()
+        trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
+        assert isinstance(trained, torch.nn.Module)
+
+    def test_train_supports_single_dict_hf_batches(self):
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        loader = torch.utils.data.DataLoader(_HFDictDataset(), batch_size=8)
+        model = _HFModel()
+        trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
+        assert isinstance(trained, torch.nn.Module)
 
 
 class TestSklearn:
@@ -344,12 +433,7 @@ class TestTFKeras:
 
     def test_patience_installs_early_stopping(self, monkeypatch):
         """`patience` is documented as the Keras-only knob; check it reaches
-        model.fit as an EarlyStopping callback rather than being dropped.
-
-        Only that it is installed. It cannot currently fire: train() passes no
-        validation data, so the callback monitors a val_loss that never exists
-        and Keras warns on every epoch.
-        """
+        model.fit as an EarlyStopping callback monitoring 'loss' rather than 'val_loss'."""
         tf = pytest.importorskip("tensorflow")
         model, X, y = self._model_and_data()
         import autotrainer
@@ -359,7 +443,9 @@ class TestTFKeras:
         monkeypatch.setattr(model, "fit", lambda *a, **kw: seen.update(kw) or real_fit(*a, **kw))
         autotrainer.train(model, X, y, epochs=1, patience=2)
         cbs = seen.get("callbacks", [])
-        assert any(isinstance(c, tf.keras.callbacks.EarlyStopping) for c in cbs)
+        es = next((c for c in cbs if isinstance(c, tf.keras.callbacks.EarlyStopping)), None)
+        assert es is not None
+        assert es.monitor == "loss"
 
     def test_save_path_writes_a_loadable_keras_model(self, tmp_path):
         tf = pytest.importorskip("tensorflow")

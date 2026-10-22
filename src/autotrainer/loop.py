@@ -16,7 +16,7 @@ forgettable boilerplate.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any
 
 _ZERO_GRAD_SET_TO_NONE = True  # torch default since 2.0; kept explicit for clarity
@@ -87,6 +87,7 @@ def accumulate(
     *,
     steps: int = 1,
     scaler: Any = None,
+    model: Any = None,
 ) -> Iterator[Any]:
     """Gradient accumulation context.
 
@@ -98,12 +99,14 @@ def accumulate(
     Set ``steps > 1`` to accumulate. With ``scaler`` (a GradScaler), the
     ``scaler.step`` / ``scaler.update`` calls are handled, so AMP + grad
     accumulation work together without the user wiring the bookkeeping.
+    With ``model`` (e.g. DDP), intermediate micro-batches use
+    ``model.no_sync()`` to avoid redundant cross-GPU gradient all-reduces.
 
-        with autotrainer.accumulate(opt, steps=4, scaler=scaler):
+        with autotrainer.accumulate(opt, steps=4, scaler=scaler, model=model) as acc:
             for micro_xb, micro_yb in micro_batches:
                 with autotrainer.autocast_context():
                     loss = loss_fn(model(micro_xb), micro_yb) / 4
-                scaler.scale(loss).backward()
+                acc.backward(loss)
         # optimizer stepped once here; grads zeroed
     """
     if steps < 1:
@@ -124,9 +127,21 @@ def accumulate(
         zero_grad(optimizer)
 
     class _Accumulator:
-        def backward(self, loss: Any) -> None:
-            """Record one backward pass; step when the accumulator fills."""
-            loss.backward()
+        def backward(self, loss: Any, sync: bool | None = None) -> None:
+            """Record one backward pass; step when the accumulator fills.
+
+            Set ``sync=True`` to force gradient synchronization (e.g. on the
+            final micro-batch of an epoch) regardless of the accumulation step
+            counter. Set ``sync=False`` to force intermediate non-syncing.
+            """
+            should_sync = sync if sync is not None else ((state["count"] + 1) >= steps)
+            no_sync_ctx = (
+                model.no_sync()
+                if (model is not None and hasattr(model, "no_sync") and not should_sync)
+                else nullcontext()
+            )
+            with no_sync_ctx:
+                loss.backward()
             state["count"] += 1
             if state["count"] >= steps:
                 _maybe_step(final=True)

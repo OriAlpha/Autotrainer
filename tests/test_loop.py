@@ -134,3 +134,70 @@ class TestAccumulate:
             for _ in range(4):
                 acc.backward(loss_fn(model(torch.randn(8, 4)), torch.randn(8, 2)))
         assert opt.param_groups[0]["lr"] == original_lr
+
+    def test_accumulate_uses_model_no_sync_for_intermediate_steps(self):
+        from autotrainer.loop import accumulate
+
+        model, opt, loss_fn, _ = self._setup()
+        no_sync_called = []
+
+        class DummyDDP(nn.Module):
+            def __init__(self, inner):
+                super().__init__()
+                self.inner = inner
+
+            def forward(self, x):
+                return self.inner(x)
+
+            from contextlib import contextmanager
+
+            @contextmanager
+            def no_sync(self):
+                no_sync_called.append(True)
+                yield
+
+        ddp_model = DummyDDP(model)
+        with accumulate(opt, steps=3, model=ddp_model) as acc:
+            for _ in range(3):
+                x = torch.randn(8, 4)
+                y = torch.randn(8, 2)
+                acc.backward(loss_fn(ddp_model(x), y))
+
+        # First 2 steps should be inside no_sync, 3rd step syncs
+        assert len(no_sync_called) == 2
+
+    def test_accumulate_with_explicit_sync_override(self):
+        from autotrainer.loop import accumulate
+
+        model, opt, loss_fn, _ = self._setup()
+        no_sync_called = []
+
+        class DummyDDP(nn.Module):
+            def __init__(self, inner):
+                super().__init__()
+                self.inner = inner
+
+            def forward(self, x):
+                return self.inner(x)
+
+            from contextlib import contextmanager
+
+            @contextmanager
+            def no_sync(self):
+                no_sync_called.append(True)
+                yield
+
+        ddp_model = DummyDDP(model)
+        with accumulate(opt, steps=4, model=ddp_model) as acc:
+            # Step 1 with sync=True: should NOT use no_sync despite count < steps
+            acc.backward(loss_fn(ddp_model(torch.randn(8, 4)), torch.randn(8, 2)), sync=True)
+
+        assert len(no_sync_called) == 0
+
+    def test_accumulate_with_standard_module_without_no_sync(self):
+        from autotrainer.loop import accumulate
+
+        model, opt, loss_fn, _ = self._setup()
+        with accumulate(opt, steps=2, model=model) as acc:
+            for _ in range(2):
+                acc.backward(loss_fn(model(torch.randn(8, 4)), torch.randn(8, 2)))

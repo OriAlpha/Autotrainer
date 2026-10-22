@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-22
+### Added
+- **Support for dictionary and tuple batches in `autotrainer.train()`**: PyTorch training now natively parses complex batch structures (e.g. HuggingFace datasets yielding `{"input_ids": ..., "labels": ...}` or multi-input tuples `(x1, x2)`) via `split_xy()` and forwards them cleanly to model forward methods via `robust_forward()`.
+- **DDP `model.no_sync()` optimization in `autotrainer.accumulate()`**: Intermediate micro-batches during gradient accumulation now bypass redundant cross-GPU gradient all-reductions using `model.no_sync()`. An explicit `sync: bool | None = None` parameter on `_Accumulator.backward()` allows callers to force synchronization on tail micro-batches when dataset lengths are not multiples of accumulation steps.
+- **CI example validation and linting**: Added `examples/` to GitHub Actions workflow for `ruff check` and `ruff format --check`, keeping all runnable example scripts strictly linted.
+
+### Fixed
+- **Keras `EarlyStopping` without validation data**: When training without validation data, `autotrainer.train()` now sets `EarlyStopping(monitor="loss")` instead of the default `val_loss`, eliminating noisy runtime warnings and ensuring early stopping triggers reliably.
+- **Scikit-learn 1.8+ `LogisticRegression` deprecation warning**: Setting `n_jobs` on `LogisticRegression` (and any custom subclasses evaluated via MRO) is now skipped in `sklearn_backend.prepare()`, preventing deprecation `FutureWarning` while preserving multithreading configuration on all other estimators (e.g., `RandomForestClassifier`).
+- **Robust batch unpacking in `train()`**: Replaced hardcoded `(xb, yb)` unpacking with `split_xy(batch)` across dataloader iterations, preventing `ValueError` or key-iteration string errors on non-2-tuple dataloaders.
+
 ## [0.17.0] - 2026-10-07
 ### Added
 - **Test suite expansion & quality gates**: Overall test coverage expanded to **86.5%**
