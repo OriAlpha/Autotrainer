@@ -31,7 +31,9 @@ Anything you pass explicitly wins over the inference:
 autotrainer.train(model, loader, epochs=5, lr=3e-4, loss_fn=my_loss, optimizer="sgd")
 ```
 
-(`patience=` is the Keras early-stopping knob and applies to that path only.)
+(`patience=` is the Keras early-stopping knob and applies to that path only; when training without validation data, it monitors `loss` rather than `val_loss`.)
+
+PyTorch `train()` natively handles dictionary batches (e.g. HuggingFace datasets yielding `{"input_ids": ..., "labels": ...}`) and multi-input tuples `(x1, x2)` via `split_xy()` and `robust_forward()`, as well as standard `(xb, yb)` pairs.
 
 ## `auto()` — the recipe, then your own loop
 
