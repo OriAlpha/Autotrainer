@@ -145,7 +145,7 @@ def train(
 
     from .auto_optim import auto
     from .summary import finish, get_active_summary
-    from .utils import print0, save0
+    from .utils import print0, robust_forward, save0, to_device
 
     model, loader, opt, loss_fn, sched = auto(
         model, loader, epochs=epochs, lr=lr, loss=loss_fn, optimizer=optimizer
@@ -168,17 +168,19 @@ def train(
         model.train()
         total_loss = 0.0
         for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
+            xb = to_device(xb, device)
+            if yb is not None:
+                yb = to_device(yb, device)
             opt.zero_grad()
             if scaler is not None:
                 with torch.amp.autocast("cuda"):
-                    out = model(xb)
+                    out = robust_forward(model, xb)
                     loss = loss_fn(out, yb)
                 scaler.scale(loss).backward()
                 scaler.step(opt)
                 scaler.update()
             else:
-                out = model(xb)
+                out = robust_forward(model, xb)
                 loss = loss_fn(out, yb)
                 loss.backward()
                 opt.step()

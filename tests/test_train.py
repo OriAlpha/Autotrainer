@@ -50,6 +50,33 @@ def model():
     return torch.nn.Sequential(torch.nn.Linear(4, 16), torch.nn.ReLU(), torch.nn.Linear(16, 2))
 
 
+try:
+    import torch
+    import torch.nn as nn
+
+    class _DictModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4, 2)
+
+        def forward(self, x, mask=None):
+            out = self.fc(x)
+            if mask is not None:
+                out = out * mask
+            return out
+
+    class _DictDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 32
+
+        def __getitem__(self, idx):
+            return {"x": torch.randn(4), "mask": torch.ones(2)}, torch.tensor(0)
+
+except ImportError:
+    _DictModel = None  # type: ignore[assignment,misc]
+    _DictDataset = None  # type: ignore[assignment,misc]
+
+
 class TestTorchTraining:
     """The PyTorch path: the one that runs its own loop."""
 
@@ -179,6 +206,15 @@ class TestTorchTraining:
         autotrainer.train(model, separable, epochs=2, lr=1e-2)
         losses = _epoch_losses(capsys)
         assert len(losses) == 2 and losses[-1] < losses[0]
+
+    def test_train_supports_dict_batches(self):
+        torch = pytest.importorskip("torch")
+        import autotrainer
+
+        loader = torch.utils.data.DataLoader(_DictDataset(), batch_size=8)
+        model = _DictModel()
+        trained = autotrainer.train(model, loader, epochs=1, lr=1e-3)
+        assert isinstance(trained, torch.nn.Module)
 
 
 class TestSklearn:
