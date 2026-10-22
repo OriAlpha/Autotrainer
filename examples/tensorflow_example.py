@@ -13,7 +13,8 @@ import autotrainer
 
 
 def main() -> None:
-    # autotrainer.scope() picks MirroredStrategy (local multi-GPU) or MultiWorkerMirroredStrategy (SLURM)
+    # autotrainer.scope() picks MirroredStrategy (local multi-GPU) or
+    # MultiWorkerMirroredStrategy (SLURM)
     with autotrainer.scope():
         model = tf.keras.Sequential(
             [

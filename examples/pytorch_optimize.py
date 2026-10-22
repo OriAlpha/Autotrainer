@@ -29,7 +29,7 @@ def main() -> None:
 
     model = nn.Sequential(nn.Linear(32, 128), nn.ReLU(), nn.Linear(128, 10))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)  # YOUR optimizer choice
-    loss_fn = nn.CrossEntropyLoss()                            # YOUR loss choice
+    loss_fn = nn.CrossEntropyLoss()  # YOUR loss choice
 
     # ONE line: DDP wrap, device placement, sampler, and the throughput wins.
     # Pass optimize=False to opt out of the hardware flags and keep only the
@@ -41,7 +41,7 @@ def main() -> None:
 
     for epoch in range(3):
         autotrainer.set_epoch(loader, epoch)  # optional: prepare()'s loader
-        model.train()                         # already reshuffles each epoch
+        model.train()  # already reshuffles each epoch
         for xb, yb in loader:
             # train_step does the order-sensitive AMP dance for you: forward
             # under autocast, backward, step, update, zero_grad. Write it by

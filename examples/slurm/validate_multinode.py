@@ -35,8 +35,10 @@ def check(name: str, ok: bool, detail: str = "") -> bool:
     if not ok:
         FAILURES.append(name)
     if _rank() == 0:
-        print(f"[CHECK] {'PASS' if ok else 'FAIL'}  {name}" + (f"  |  {detail}" if detail else ""),
-              flush=True)
+        print(
+            f"[CHECK] {'PASS' if ok else 'FAIL'}  {name}" + (f"  |  {detail}" if detail else ""),
+            flush=True,
+        )
     return ok
 
 
@@ -60,14 +62,17 @@ def main() -> int:
     # Every rank announces itself before any collective. If the job hangs after
     # this, the rendezvous is the problem, and this tells you which ranks got
     # far enough to try.
-    print(f"[rank {rank}] host={host} "
-          f"LOCAL_RANK={os.environ.get('LOCAL_RANK')} "
-          f"WORLD_SIZE={os.environ.get('WORLD_SIZE')} "
-          f"MASTER_ADDR={os.environ.get('MASTER_ADDR')} "
-          f"MASTER_PORT={os.environ.get('MASTER_PORT')} "
-          f"SLURM_PROCID={os.environ.get('SLURM_PROCID')} "
-          f"SLURM_NODEID={os.environ.get('SLURM_NODEID')} "
-          f"cuda_visible={os.environ.get('CUDA_VISIBLE_DEVICES')}", flush=True)
+    print(
+        f"[rank {rank}] host={host} "
+        f"LOCAL_RANK={os.environ.get('LOCAL_RANK')} "
+        f"WORLD_SIZE={os.environ.get('WORLD_SIZE')} "
+        f"MASTER_ADDR={os.environ.get('MASTER_ADDR')} "
+        f"MASTER_PORT={os.environ.get('MASTER_PORT')} "
+        f"SLURM_PROCID={os.environ.get('SLURM_PROCID')} "
+        f"SLURM_NODEID={os.environ.get('SLURM_NODEID')} "
+        f"cuda_visible={os.environ.get('CUDA_VISIBLE_DEVICES')}",
+        flush=True,
+    )
 
     torch.manual_seed(0)
     model = nn.Sequential(nn.Linear(16, 64), nn.ReLU(), nn.Linear(64, 4))
@@ -83,11 +88,17 @@ def main() -> int:
         print("\n" + "=" * 70 + "\nAUTOTRAINER MULTI-NODE VALIDATION\n" + "=" * 70, flush=True)
 
     distributed = dist.is_available() and dist.is_initialized()
-    check("process group initialized", distributed,
-          f"backend={dist.get_backend() if distributed else 'none'}")
+    check(
+        "process group initialized",
+        distributed,
+        f"backend={dist.get_backend() if distributed else 'none'}",
+    )
     if not distributed:
-        print("\nNot distributed - nothing below can be validated. Check that this ran "
-              "under `srun` with --ntasks > 1.", flush=True)
+        print(
+            "\nNot distributed - nothing below can be validated. Check that this ran "
+            "under `srun` with --ntasks > 1.",
+            flush=True,
+        )
         return 1
 
     world = dist.get_world_size()
@@ -98,16 +109,17 @@ def main() -> int:
     # proves nothing about cross-node rendezvous.
     hosts = _gather(host)
     nodes = sorted(set(hosts))
-    check("ranks span >1 physical node", len(nodes) > 1,
-          f"{len(nodes)} node(s): {nodes}")
+    check("ranks span >1 physical node", len(nodes) > 1, f"{len(nodes)} node(s): {nodes}")
 
     expected = int(os.environ.get("SLURM_NTASKS", world))
-    check("world_size matches SLURM_NTASKS", world == expected,
-          f"world_size={world} SLURM_NTASKS={expected}")
+    check(
+        "world_size matches SLURM_NTASKS",
+        world == expected,
+        f"world_size={world} SLURM_NTASKS={expected}",
+    )
 
     per_node = {n: hosts.count(n) for n in nodes}
-    check("tasks spread evenly over nodes", len(set(per_node.values())) == 1,
-          f"{per_node}")
+    check("tasks spread evenly over nodes", len(set(per_node.values())) == 1, f"{per_node}")
 
     # --- 2. One distinct GPU per rank -----------------------------------
     # The device comes from the model prepare() already placed, so this can
@@ -122,8 +134,11 @@ def main() -> int:
         # Not a failure by itself - on a CPU allocation this is correct. It is
         # only wrong if you asked for --gres=gpu, which section 3 of the sbatch
         # output will show you did.
-        print(f"[note] model is on {device}, not a GPU - per-GPU checks skipped. "
-              f"Expected only if this job requested no --gres=gpu.", flush=True)
+        print(
+            f"[note] model is on {device}, not a GPU - per-GPU checks skipped. "
+            f"Expected only if this job requested no --gres=gpu.",
+            flush=True,
+        )
 
     # --- 3. Do collectives actually cross the interconnect? -------------
     # Sum of ranks has one right answer. A wrong sum means the ranks are not in
@@ -131,8 +146,11 @@ def main() -> int:
     t = torch.tensor([float(rank)], device=device)
     dist.all_reduce(t, op=dist.ReduceOp.SUM)
     want = world * (world - 1) / 2
-    check("all_reduce spans the whole group", abs(t.item() - want) < 1e-6,
-          f"got {t.item():.0f}, expected {want:.0f}")
+    check(
+        "all_reduce spans the whole group",
+        abs(t.item() - want) < 1e-6,
+        f"got {t.item():.0f}, expected {want:.0f}",
+    )
 
     # --- 4. Does the sampler actually shard? ----------------------------
     # The failure this catches is every rank training on the identical rows,
@@ -140,12 +158,19 @@ def main() -> int:
     autotrainer.set_epoch(loader, 0)
     my_samples = sum(xb.shape[0] for xb, _ in loader)
     all_counts = _gather(my_samples)
-    check("each rank gets an equal shard", len(set(all_counts)) == 1,
-          f"samples/rank={all_counts} total={sum(all_counts)} dataset=512")
-    check("shards cover the dataset", abs(sum(all_counts) - 512) <= world,
-          f"{sum(all_counts)} vs 512")
-    check("each rank sees less than the whole dataset", my_samples < 512 or world == 1,
-          f"this rank saw {my_samples} of 512")
+    check(
+        "each rank gets an equal shard",
+        len(set(all_counts)) == 1,
+        f"samples/rank={all_counts} total={sum(all_counts)} dataset=512",
+    )
+    check(
+        "shards cover the dataset", abs(sum(all_counts) - 512) <= world, f"{sum(all_counts)} vs 512"
+    )
+    check(
+        "each rank sees less than the whole dataset",
+        my_samples < 512 or world == 1,
+        f"this rank saw {my_samples} of 512",
+    )
 
     # --- 5. Does DDP actually synchronize gradients? --------------------
     # The real proof. Each rank steps on its own shard; if gradients are being
@@ -171,17 +196,25 @@ def main() -> int:
     checksum = float(flat.double().sum().item())
     sums = _gather(checksum)
     spread = max(sums) - min(sums)
-    check("weights identical across ranks after stepping", spread < 1e-6,
-          f"max-min={spread:.3e} over {world} ranks")
+    check(
+        "weights identical across ranks after stepping",
+        spread < 1e-6,
+        f"max-min={spread:.3e} over {world} ranks",
+    )
 
     losses = _gather(last_loss)
-    check("every rank made progress", all(x is not None for x in losses),
-          f"first={first_loss:.4f} last/rank={[round(x, 4) for x in losses]}")
+    check(
+        "every rank made progress",
+        all(x is not None for x in losses),
+        f"first={first_loss:.4f} last/rank={[round(x, 4) for x in losses]}",
+    )
 
     # --- 6. Rank-aware helpers ------------------------------------------
-    check("rank()/is_main() agree with the env", autotrainer.rank() == rank
-          and autotrainer.is_main() == (rank == 0),
-          f"autotrainer.rank()={autotrainer.rank()} is_main={autotrainer.is_main()}")
+    check(
+        "rank()/is_main() agree with the env",
+        autotrainer.rank() == rank and autotrainer.is_main() == (rank == 0),
+        f"autotrainer.rank()={autotrainer.rank()} is_main={autotrainer.is_main()}",
+    )
 
     mains = _gather(autotrainer.is_main())
     check("exactly one rank is main", sum(1 for m in mains if m) == 1, f"{mains}")
@@ -190,9 +223,11 @@ def main() -> int:
     cpus = os.environ.get("SLURM_CPUS_PER_TASK")
     workers = getattr(loader, "num_workers", None)
     if cpus:
-        check("num_workers within the CPU allocation", workers is not None
-              and workers <= int(cpus),
-              f"num_workers={workers} SLURM_CPUS_PER_TASK={cpus}")
+        check(
+            "num_workers within the CPU allocation",
+            workers is not None and workers <= int(cpus),
+            f"num_workers={workers} SLURM_CPUS_PER_TASK={cpus}",
+        )
     else:
         print(f"[note] SLURM_CPUS_PER_TASK unset; num_workers={workers}", flush=True)
 
@@ -200,8 +235,11 @@ def main() -> int:
     # If it did not, there would be more processes than SLURM tasks and the
     # world size would disagree with SLURM_NTASKS - already checked above, so
     # this just reports what the launcher decided.
-    check("launcher reports slurm mode", os.environ.get("AUTOTRAINER_MODE") == "slurm",
-          f"AUTOTRAINER_MODE={os.environ.get('AUTOTRAINER_MODE')}")
+    check(
+        "launcher reports slurm mode",
+        os.environ.get("AUTOTRAINER_MODE") == "slurm",
+        f"AUTOTRAINER_MODE={os.environ.get('AUTOTRAINER_MODE')}",
+    )
 
     dist.barrier()
     if rank == 0:

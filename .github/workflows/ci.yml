@@ -34,8 +34,8 @@ jobs:
       - run: uv pip install ruff
       # .github/scripts is release-critical (it writes the release notes) and
       # was previously unlinted.
-      - run: uv run ruff check src/ tests/ .github/scripts/
-      - run: uv run ruff format --check src/ tests/ .github/scripts/
+      - run: uv run ruff check src/ tests/ examples/ .github/scripts/
+      - run: uv run ruff format --check src/ tests/ examples/ .github/scripts/
 
   test:
     runs-on: ubuntu-latest
