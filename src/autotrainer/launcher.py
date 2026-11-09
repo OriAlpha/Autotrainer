@@ -36,8 +36,8 @@ def _rendezvous_env(env: Environment, rank: int, local_rank: int) -> dict[str, s
         RANK=str(rank),
         LOCAL_RANK=str(local_rank),
         WORLD_SIZE=str(env.world_size),
-        MASTER_ADDR=env.master_addr,
-        MASTER_PORT=str(env.master_port),
+        MASTER_ADDR=os.environ.get("MASTER_ADDR", env.master_addr),
+        MASTER_PORT=os.environ.get("MASTER_PORT", str(env.master_port)),
         AUTOTRAINER_ACTIVE="1",
         AUTOTRAINER_MODE=env.mode,
     )

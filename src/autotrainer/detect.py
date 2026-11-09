@@ -91,13 +91,17 @@ def detect() -> Environment:
         nnodes = int(os.environ.get("SLURM_NNODES", "1"))
         gpus_on_node = int(os.environ.get("SLURM_GPUS_ON_NODE", "0") or 0)
         nproc = gpus_on_node or int(os.environ.get("SLURM_NTASKS_PER_NODE", "1") or 1)
+        master_addr = os.environ.get("MASTER_ADDR")
+        if not master_addr:
+            master_addr = "127.0.0.1" if nnodes == 1 else _slurm_master_addr()
+        master_port = int(os.environ.get("AUTOTRAINER_PORT", os.environ.get("MASTER_PORT", "29500")))
         env = Environment(
             mode="slurm",
             nnodes=nnodes,
             nproc_per_node=max(nproc, 1),
             node_rank=int(os.environ.get("SLURM_NODEID", "0")),
-            master_addr=_slurm_master_addr(),
-            master_port=int(os.environ.get("AUTOTRAINER_PORT", "29500")),
+            master_addr=master_addr,
+            master_port=master_port,
             gpus=gpus_on_node,
         )
         env.notes.append(f"SLURM job {os.environ['SLURM_JOB_ID']} detected")

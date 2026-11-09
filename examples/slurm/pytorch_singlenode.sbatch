@@ -10,6 +10,9 @@
 # Activate your virtual environment if needed
 # source .venv/bin/activate
 
+# Flush python prints immediately to the SLURM log
+export PYTHONUNBUFFERED=1
+
 # Optional sanity check - fails fast if the environment is broken
 srun autotrainer doctor
 

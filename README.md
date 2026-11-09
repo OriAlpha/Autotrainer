@@ -18,13 +18,40 @@ Works with **PyTorch** (DDP, SLURM multi-node), **TensorFlow/Keras**,
 
 ## Install
 
+### In your project
+
 ```bash
+# uv (recommended)
+uv add "autotrainer[torch]"        # PyTorch (recommended)
+uv add "autotrainer[all]"          # + TensorFlow, sklearn, XGBoost, LightGBM
+
+# pip
 pip install "autotrainer[torch]"   # PyTorch (recommended)
 pip install "autotrainer[all]"     # + TensorFlow, sklearn, XGBoost, LightGBM
 ```
 
 Only `psutil` is required by default; each framework is an opt-in extra
 (`torch`, `sklearn`, `tf`, `boosting`, `all`). Install only what you use.
+
+### From source (inside this repo)
+
+If you have cloned the repository and want to install or develop locally:
+
+```bash
+# uv (recommended)
+uv venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+uv pip install -e ".[all]"         # or: uv pip install -e ".[all,dev]"
+# (tip: you can skip activation entirely and run with: uv run python train.py)
+
+# pip
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e ".[all]"
+```
+
+> [!TIP]
+> **HPC / SLURM Clusters (NFS or Lustre):** If `uv` warns about hard links across network filesystems, use `uv pip install --link-mode=copy -e ".[all]"`.
 
 ## Use it
 
